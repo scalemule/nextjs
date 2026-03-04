@@ -1,0 +1,99 @@
+{
+  "name": "@scalemule/nextjs",
+  "version": "0.0.1",
+  "description": "ScaleMule SDK for Next.js applications - authentication, storage, and user management",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.mjs",
+      "require": "./dist/client.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.mjs",
+      "require": "./dist/server/index.js"
+    },
+    "./server/auth": {
+      "types": "./dist/server/auth.d.ts",
+      "import": "./dist/server/auth.mjs",
+      "require": "./dist/server/auth.js"
+    },
+    "./server/webhooks": {
+      "types": "./dist/server/webhook-handler.d.ts",
+      "import": "./dist/server/webhook-handler.mjs",
+      "require": "./dist/server/webhook-handler.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.mjs",
+      "require": "./dist/testing.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "next": ">=14.0.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.0.0",
+    "jsdom": "^28.0.0",
+    "next": "^16.1.6",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^4.0.18"
+  },
+  "keywords": [
+    "scalemule",
+    "nextjs",
+    "react",
+    "authentication",
+    "storage",
+    "sdk"
+  ],
+  "author": "ScaleMule Inc. <support@scalemule.com>",
+  "license": "MIT",
+  "homepage": "https://scalemule.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scalemule/nextjs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/scalemule/nextjs/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
