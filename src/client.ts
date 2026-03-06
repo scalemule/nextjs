@@ -637,13 +637,19 @@ export class ScaleMuleClient {
         clearTimeout(timeoutId)
 
         const text = await response.text()
-        const responseData = text ? JSON.parse(text) : null
+        let responseData: Record<string, unknown> | null = null
+        try {
+          responseData = text ? JSON.parse(text) : null
+        } catch {
+          // Response is not JSON (e.g. plain text error from service)
+          // Treat the raw text as the error message
+        }
 
         if (!response.ok) {
           // Handle API error response
-          const error: ApiError = responseData?.error || {
+          const error: ApiError = responseData?.error as ApiError || {
             code: `HTTP_${response.status}`,
-            message: responseData?.message || response.statusText,
+            message: (responseData?.message as string) || text || response.statusText,
           }
 
           // Check if we should retry this status code
@@ -840,12 +846,17 @@ export class ScaleMuleClient {
         })
 
         const uploadText = await response.text()
-        const responseData = uploadText ? JSON.parse(uploadText) : null
+        let responseData: Record<string, unknown> | null = null
+        try {
+          responseData = uploadText ? JSON.parse(uploadText) : null
+        } catch {
+          // Non-JSON response
+        }
 
         if (!response.ok) {
-          const error: ApiError = responseData?.error || {
+          const error: ApiError = responseData?.error as ApiError || {
             code: `HTTP_${response.status}`,
-            message: responseData?.message || response.statusText,
+            message: (responseData?.message as string) || uploadText || response.statusText,
           }
 
           // Check if this is a retryable error
@@ -955,16 +966,21 @@ export class ScaleMuleClient {
 
       xhr.addEventListener('load', () => {
         try {
-          const data = JSON.parse(xhr.responseText)
+          let data: Record<string, unknown> | null = null
+          try {
+            data = xhr.responseText ? JSON.parse(xhr.responseText) : null
+          } catch {
+            // Non-JSON response
+          }
 
           if (xhr.status >= 200 && xhr.status < 300) {
             // Unwrap envelope: backend may return { data: T } or raw T
             const unwrapped = data?.data !== undefined ? data.data : data
             resolve(unwrapped as T)
           } else {
-            reject(new ScaleMuleApiError(data.error || {
+            reject(new ScaleMuleApiError((data?.error as ApiError) || {
               code: `HTTP_${xhr.status}`,
-              message: data.message || 'Upload failed',
+              message: (data?.message as string) || xhr.responseText || 'Upload failed',
             }))
           }
         } catch {

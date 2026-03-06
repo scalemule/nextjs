@@ -118,12 +118,17 @@ export class ScaleMuleServer {
       })
 
       const text = await response.text()
-      const responseData = text ? JSON.parse(text) : null
+      let responseData: Record<string, unknown> | null = null
+      try {
+        responseData = text ? JSON.parse(text) : null
+      } catch {
+        // Non-JSON response
+      }
 
       if (!response.ok) {
-        const error: ApiError = responseData?.error || {
+        const error: ApiError = responseData?.error as ApiError || {
           code: `HTTP_${response.status}`,
-          message: responseData?.message || response.statusText,
+          message: (responseData?.message as string) || text || response.statusText,
         }
         throw new ScaleMuleApiError(error)
       }
@@ -635,11 +640,16 @@ export class ScaleMuleServer {
         })
 
         const text = await response.text()
-        const responseData = text ? JSON.parse(text) : null
+        let responseData: Record<string, unknown> | null = null
+        try {
+          responseData = text ? JSON.parse(text) : null
+        } catch {
+          // Non-JSON response
+        }
 
         if (!response.ok) {
           throw new ScaleMuleApiError(
-            responseData?.error || { code: 'UPLOAD_FAILED', message: 'Upload failed' }
+            (responseData?.error as ApiError) || { code: 'UPLOAD_FAILED', message: text || 'Upload failed' }
           )
         }
 
