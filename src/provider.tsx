@@ -174,19 +174,21 @@ export function ScaleMuleProvider({
             setInitializing(false)
           }
 
-          const response = await client.get<User>('/v1/auth/me')
+          try {
+            const userData = await client.get<User>('/v1/auth/me')
 
-          if (mounted) {
-            if (response.success && response.data) {
-              setUser(response.data)
-              setCachedUser(response.data)
-            } else {
+            if (mounted) {
+              setUser(userData)
+              setCachedUser(userData)
+            }
+          } catch (authErr) {
+            if (mounted) {
               // Session invalid, clear it
               setUser(null)
               setCachedUser(null)
               await client.clearSession()
-              if (response.error && onAuthError) {
-                onAuthError(response.error)
+              if (onAuthError && authErr && typeof authErr === 'object' && 'code' in authErr) {
+                onAuthError(authErr as { code: string; message: string })
               }
             }
           }

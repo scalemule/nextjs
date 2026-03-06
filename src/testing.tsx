@@ -27,7 +27,8 @@ import {
   useMemo,
   type ReactNode,
 } from 'react'
-import type { User, ApiError, ApiResponse, StorageFile } from './types'
+import { ScaleMuleApiError } from './types'
+import type { User, ApiError, StorageFile } from './types'
 
 // ============================================================================
 // Mock User Factory
@@ -95,8 +96,8 @@ export function createMockFile(options: MockFileOptions = {}): StorageFile {
 // ============================================================================
 
 export interface MockClientConfig {
-  /** Simulated responses for specific paths */
-  responses?: Record<string, ApiResponse<unknown>>
+  /** Simulated responses for specific paths (return value, not wrapped) */
+  responses?: Record<string, unknown>
   /** Default delay in ms (simulates network latency) */
   delay?: number
   /** Whether to simulate errors */
@@ -104,7 +105,7 @@ export interface MockClientConfig {
 }
 
 export class MockScaleMuleClient {
-  private responses: Record<string, ApiResponse<unknown>>
+  private responses: Record<string, unknown>
   private delay: number
   private simulateErrors: boolean
 
@@ -144,46 +145,43 @@ export class MockScaleMuleClient {
     return true
   }
 
-  async request<T>(path: string): Promise<ApiResponse<T>> {
+  async request<T>(path: string): Promise<T> {
     await this.simulateDelay()
 
     if (this.simulateErrors) {
-      return {
-        success: false,
-        error: { code: 'MOCK_ERROR', message: 'Simulated error' },
-      }
+      throw new ScaleMuleApiError({ code: 'MOCK_ERROR', message: 'Simulated error' })
     }
 
-    if (this.responses[path]) {
-      return this.responses[path] as ApiResponse<T>
+    if (this.responses[path] !== undefined) {
+      return this.responses[path] as T
     }
 
-    return { success: true, data: {} as T }
+    return {} as T
   }
 
-  async get<T>(path: string): Promise<ApiResponse<T>> {
+  async get<T>(path: string): Promise<T> {
     return this.request<T>(path)
   }
 
-  async post<T>(path: string): Promise<ApiResponse<T>> {
+  async post<T>(path: string): Promise<T> {
     return this.request<T>(path)
   }
 
-  async patch<T>(path: string): Promise<ApiResponse<T>> {
+  async patch<T>(path: string): Promise<T> {
     return this.request<T>(path)
   }
 
-  async put<T>(path: string): Promise<ApiResponse<T>> {
+  async put<T>(path: string): Promise<T> {
     return this.request<T>(path)
   }
 
-  async delete<T>(path: string): Promise<ApiResponse<T>> {
+  async delete<T>(path: string): Promise<T> {
     return this.request<T>(path)
   }
 
-  async upload<T>(): Promise<ApiResponse<T>> {
+  async upload<T>(): Promise<T> {
     await this.simulateDelay()
-    return { success: true, data: {} as T }
+    return {} as T
   }
 }
 

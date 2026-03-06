@@ -81,6 +81,24 @@ export interface StorageAdapter {
 }
 
 // ============================================================================
+// API Error Class
+// ============================================================================
+
+export class ScaleMuleApiError extends Error {
+  code: string
+  status?: number
+  field?: string
+  details?: unknown
+
+  constructor(error: ApiError) {
+    super(error.message)
+    this.name = 'ScaleMuleApiError'
+    this.code = error.code
+    this.field = error.field
+  }
+}
+
+// ============================================================================
 // API Response Wrapper
 // ============================================================================
 

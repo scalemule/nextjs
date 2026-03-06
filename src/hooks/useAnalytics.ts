@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useScaleMule } from '../provider'
+import { ScaleMuleApiError } from '../types'
 import type {
   UseAnalyticsReturn,
   UseAnalyticsOptions,
@@ -479,17 +480,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       // Fall back to client (requires API key exposed to browser)
       const endpoint = useV2 ? '/v1/analytics/v2/events' : '/v1/analytics/events'
 
-      const response = await client.post<TrackEventResponse>(endpoint, fullEvent)
-
-      if (!response.success) {
-        const err = response.error || {
-          code: 'TRACK_FAILED',
-          message: 'Failed to track event',
-        }
-        throw err
-      }
-
-      return response.data || { tracked: 1, session_id: sessionIdRef.current || undefined }
+      return await client.post<TrackEventResponse>(endpoint, fullEvent)
     },
     // Note: sessionId removed - we use ref to keep this stable
     [client, buildFullEvent, useV2, analyticsProxyUrl, publishableKey, gatewayUrl]
@@ -526,8 +517,8 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
         return await sendEvent(event)
       } catch (err) {
-        if (err && typeof err === 'object' && 'code' in err) {
-          setError(err as ApiError)
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
         throw err
       } finally {
@@ -613,20 +604,9 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
         // Fall back to client
         const endpoint = useV2 ? '/v1/analytics/v2/events/batch' : '/v1/analytics/events/batch'
 
-        const response = await client.post<TrackEventResponse>(endpoint, {
+        return await client.post<TrackEventResponse>(endpoint, {
           events: fullEvents,
         })
-
-        if (!response.success) {
-          const err = response.error || {
-            code: 'BATCH_TRACK_FAILED',
-            message: 'Failed to track events',
-          }
-          setError(err)
-          throw err
-        }
-
-        return response.data || { tracked: events.length, session_id: sessionIdRef.current || undefined }
       } finally {
         setLoading(false)
       }

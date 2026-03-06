@@ -20,6 +20,7 @@
  * ```
  */
 
+import { ScaleMuleApiError } from '../types'
 import { createServerClient } from './client'
 
 // ============================================================================
@@ -113,27 +114,20 @@ export async function getAppSecret(key: string): Promise<string | undefined> {
     const client = createServerClient()
     const result = await client.secrets.get(key)
 
-    if (!result.success) {
-      // Secret not found or error
-      if (result.error?.code === 'SECRET_NOT_FOUND') {
-        return undefined
-      }
-      // Log other errors but don't throw
-      console.error(`[ScaleMule Secrets] Failed to fetch ${key}:`, result.error)
-      return undefined
-    }
-
     // Cache the result
-    if (!noCache && result.data) {
+    if (!noCache && result) {
       secretsCache[key] = {
-        value: result.data.value,
-        version: result.data.version,
+        value: result.value,
+        version: result.version,
         cachedAt: Date.now(),
       }
     }
 
-    return result.data?.value
+    return result?.value
   } catch (error) {
+    if (error instanceof ScaleMuleApiError && error.code === 'SECRET_NOT_FOUND') {
+      return undefined
+    }
     console.error(`[ScaleMule Secrets] Error fetching ${key}:`, error)
     return undefined
   }

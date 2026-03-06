@@ -181,13 +181,9 @@ export async function registerVideoWebhook(
     events: options?.events || ['video.ready', 'video.failed'],
   })
 
-  if (!result.success || !result.data) {
-    throw new Error(result.error?.message || 'Failed to register webhook')
-  }
-
   return {
-    id: result.data.id,
-    secret: result.data.secret,
+    id: result.id,
+    secret: result.secret,
   }
 }
 

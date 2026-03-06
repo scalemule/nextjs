@@ -5,8 +5,8 @@
  * Does not manage sessions - that's handled by cookies.
  */
 
+import { ScaleMuleApiError } from '../types'
 import type {
-  ApiResponse,
   ApiError,
   User,
   LoginRequest,
@@ -89,7 +89,7 @@ export class ScaleMuleServer {
       sessionToken?: string
       clientContext?: ClientContext
     } = {}
-  ): Promise<ApiResponse<T>> {
+  ): Promise<T> {
     const url = `${this.gatewayUrl}${path}`
 
     const headers: Record<string, string> = {
@@ -117,25 +117,30 @@ export class ScaleMuleServer {
         body: options.body ? JSON.stringify(options.body) : undefined,
       })
 
-      const data = await response.json()
+      const text = await response.text()
+      const responseData = text ? JSON.parse(text) : null
 
       if (!response.ok) {
-        const error: ApiError = data.error || {
+        const error: ApiError = responseData?.error || {
           code: `HTTP_${response.status}`,
-          message: data.message || response.statusText,
+          message: responseData?.message || response.statusText,
         }
-        return { success: false, error }
+        throw new ScaleMuleApiError(error)
       }
 
-      return data as ApiResponse<T>
+      // Unwrap envelope: backend may return { data: T } or raw T
+      const data = responseData?.data !== undefined ? responseData.data : responseData
+      return data as T
     } catch (err) {
-      return {
-        success: false,
-        error: {
-          code: 'SERVER_ERROR',
-          message: err instanceof Error ? err.message : 'Request failed',
-        },
+      // Re-throw ScaleMuleApiError as-is
+      if (err instanceof ScaleMuleApiError) {
+        throw err
       }
+
+      throw new ScaleMuleApiError({
+        code: 'SERVER_ERROR',
+        message: err instanceof Error ? err.message : 'Request failed',
+      })
     }
   }
 
@@ -147,21 +152,21 @@ export class ScaleMuleServer {
     /**
      * Register a new user
      */
-    register: async (data: RegisterRequest): Promise<ApiResponse<User>> => {
+    register: async (data: RegisterRequest): Promise<User> => {
       return this.request<User>('POST', '/v1/auth/register', { body: data })
     },
 
     /**
      * Login user - returns session token (store in HTTP-only cookie)
      */
-    login: async (data: LoginRequest): Promise<ApiResponse<LoginResponse>> => {
+    login: async (data: LoginRequest): Promise<LoginResponse> => {
       return this.request<LoginResponse>('POST', '/v1/auth/login', { body: data })
     },
 
     /**
      * Logout user
      */
-    logout: async (sessionToken: string): Promise<ApiResponse<void>> => {
+    logout: async (sessionToken: string): Promise<void> => {
       return this.request<void>('POST', '/v1/auth/logout', {
         body: { session_token: sessionToken },
       })
@@ -170,7 +175,7 @@ export class ScaleMuleServer {
     /**
      * Get current user from session token
      */
-    me: async (sessionToken: string): Promise<ApiResponse<User>> => {
+    me: async (sessionToken: string): Promise<User> => {
       return this.request<User>('GET', '/v1/auth/me', { sessionToken })
     },
 
@@ -179,7 +184,7 @@ export class ScaleMuleServer {
      */
     refresh: async (
       sessionToken: string
-    ): Promise<ApiResponse<{ session_token: string; expires_at: string }>> => {
+    ): Promise<{ session_token: string; expires_at: string }> => {
       return this.request('POST', '/v1/auth/refresh', {
         body: { session_token: sessionToken },
       })
@@ -188,7 +193,7 @@ export class ScaleMuleServer {
     /**
      * Request password reset email
      */
-    forgotPassword: async (email: string): Promise<ApiResponse<{ message: string }>> => {
+    forgotPassword: async (email: string): Promise<{ message: string }> => {
       return this.request('POST', '/v1/auth/forgot-password', { body: { email } })
     },
 
@@ -198,7 +203,7 @@ export class ScaleMuleServer {
     resetPassword: async (
       token: string,
       newPassword: string
-    ): Promise<ApiResponse<{ message: string }>> => {
+    ): Promise<{ message: string }> => {
       return this.request('POST', '/v1/auth/reset-password', {
         body: { token, new_password: newPassword },
       })
@@ -207,7 +212,7 @@ export class ScaleMuleServer {
     /**
      * Verify email with token
      */
-    verifyEmail: async (token: string): Promise<ApiResponse<{ message: string }>> => {
+    verifyEmail: async (token: string): Promise<{ message: string }> => {
       return this.request('POST', '/v1/auth/verify-email', { body: { token } })
     },
 
@@ -218,7 +223,7 @@ export class ScaleMuleServer {
     resendVerification: async (
       sessionTokenOrEmail: string,
       options?: { email?: string },
-    ): Promise<ApiResponse<{ message: string }>> => {
+    ): Promise<{ message: string }> => {
       // If options.email is provided, treat first arg as session token
       // If first arg looks like an email, send email-based (no session required)
       if (options?.email) {
@@ -249,7 +254,7 @@ export class ScaleMuleServer {
     update: async (
       sessionToken: string,
       data: { full_name?: string; avatar_url?: string }
-    ): Promise<ApiResponse<User>> => {
+    ): Promise<User> => {
       return this.request<User>('PATCH', '/v1/auth/profile', {
         sessionToken,
         body: data,
@@ -263,7 +268,7 @@ export class ScaleMuleServer {
       sessionToken: string,
       currentPassword: string,
       newPassword: string
-    ): Promise<ApiResponse<{ message: string }>> => {
+    ): Promise<{ message: string }> => {
       return this.request('POST', '/v1/auth/change-password', {
         sessionToken,
         body: { current_password: currentPassword, new_password: newPassword },
@@ -277,7 +282,7 @@ export class ScaleMuleServer {
       sessionToken: string,
       newEmail: string,
       password: string
-    ): Promise<ApiResponse<{ message: string }>> => {
+    ): Promise<{ message: string }> => {
       return this.request('POST', '/v1/auth/change-email', {
         sessionToken,
         body: { new_email: newEmail, password },
@@ -290,7 +295,7 @@ export class ScaleMuleServer {
     deleteAccount: async (
       sessionToken: string,
       password: string
-    ): Promise<ApiResponse<{ message: string }>> => {
+    ): Promise<{ message: string }> => {
       return this.request('DELETE', '/v1/auth/me', {
         sessionToken,
         body: { password },
@@ -318,7 +323,7 @@ export class ScaleMuleServer {
      * }
      * ```
      */
-    get: async (key: string): Promise<ApiResponse<{ value: string; version: number }>> => {
+    get: async (key: string): Promise<{ value: string; version: number }> => {
       return this.request<{ value: string; version: number }>('GET', `/v1/vault/secrets/${encodeURIComponent(key)}`)
     },
 
@@ -330,7 +335,7 @@ export class ScaleMuleServer {
      * await scalemule.secrets.set('ANONYMOUS_USER_SALT', 'my-secret-salt')
      * ```
      */
-    set: async (key: string, value: string): Promise<ApiResponse<{ value: string; version: number }>> => {
+    set: async (key: string, value: string): Promise<{ value: string; version: number }> => {
       return this.request<{ value: string; version: number }>('PUT', `/v1/vault/secrets/${encodeURIComponent(key)}`, {
         body: { value },
       })
@@ -339,21 +344,21 @@ export class ScaleMuleServer {
     /**
      * Delete a secret from the tenant vault
      */
-    delete: async (key: string): Promise<ApiResponse<void>> => {
+    delete: async (key: string): Promise<void> => {
       return this.request<void>('DELETE', `/v1/vault/secrets/${encodeURIComponent(key)}`)
     },
 
     /**
      * List all secrets in the tenant vault
      */
-    list: async (): Promise<ApiResponse<{ secrets: Array<{ path: string; version: number }> }>> => {
+    list: async (): Promise<{ secrets: Array<{ path: string; version: number }> }> => {
       return this.request<{ secrets: Array<{ path: string; version: number }> }>('GET', '/v1/vault/secrets')
     },
 
     /**
      * Get secret version history
      */
-    versions: async (key: string): Promise<ApiResponse<{ versions: Array<{ version: number; created_at: string }> }>> => {
+    versions: async (key: string): Promise<{ versions: Array<{ version: number; created_at: string }> }> => {
       return this.request<{ versions: Array<{ version: number; created_at: string }> }>(
         'GET',
         `/v1/vault/versions/${encodeURIComponent(key)}`
@@ -363,7 +368,7 @@ export class ScaleMuleServer {
     /**
      * Rollback to a specific version
      */
-    rollback: async (key: string, version: number): Promise<ApiResponse<{ value: string; version: number }>> => {
+    rollback: async (key: string, version: number): Promise<{ value: string; version: number }> => {
       return this.request<{ value: string; version: number }>(
         'POST',
         `/v1/vault/actions/rollback/${encodeURIComponent(key)}`,
@@ -374,7 +379,7 @@ export class ScaleMuleServer {
     /**
      * Rotate a secret (copy current version as new version)
      */
-    rotate: async (key: string, newValue: string): Promise<ApiResponse<{ value: string; version: number }>> => {
+    rotate: async (key: string, newValue: string): Promise<{ value: string; version: number }> => {
       return this.request<{ value: string; version: number }>(
         'POST',
         `/v1/vault/actions/rotate/${encodeURIComponent(key)}`,
@@ -405,7 +410,7 @@ export class ScaleMuleServer {
     get: async <T = Record<string, unknown>>(
       key: string,
       resolve = true
-    ): Promise<ApiResponse<{ type: string; data: T; version: number; inherits_from?: string }>> => {
+    ): Promise<{ type: string; data: T; version: number; inherits_from?: string }> => {
       const params = new URLSearchParams({ resolve: resolve.toString() })
       return this.request<{ type: string; data: T; version: number; inherits_from?: string }>(
         'GET',
@@ -443,7 +448,7 @@ export class ScaleMuleServer {
       type: string,
       data: T,
       inheritsFrom?: string
-    ): Promise<ApiResponse<{ type: string; data: T; version: number }>> => {
+    ): Promise<{ type: string; data: T; version: number }> => {
       return this.request<{ type: string; data: T; version: number }>(
         'PUT',
         `/v1/vault/bundles/${encodeURIComponent(key)}`,
@@ -460,14 +465,14 @@ export class ScaleMuleServer {
     /**
      * Delete a bundle
      */
-    delete: async (key: string): Promise<ApiResponse<void>> => {
+    delete: async (key: string): Promise<void> => {
       return this.request<void>('DELETE', `/v1/vault/bundles/${encodeURIComponent(key)}`)
     },
 
     /**
      * List all bundles
      */
-    list: async (): Promise<ApiResponse<{ bundles: Array<{ path: string; type: string; version: number; inherits_from?: string }> }>> => {
+    list: async (): Promise<{ bundles: Array<{ path: string; type: string; version: number; inherits_from?: string }> }> => {
       return this.request<{ bundles: Array<{ path: string; type: string; version: number; inherits_from?: string }> }>(
         'GET',
         '/v1/vault/bundles'
@@ -485,7 +490,7 @@ export class ScaleMuleServer {
      * }
      * ```
      */
-    connectionUrl: async (key: string): Promise<ApiResponse<{ url: string }>> => {
+    connectionUrl: async (key: string): Promise<{ url: string }> => {
       return this.request<{ url: string }>(
         'GET',
         `/v1/vault/bundles/${encodeURIComponent(key)}?connection_url=true`
@@ -516,13 +521,13 @@ export class ScaleMuleServer {
       since?: string
       until?: string
       limit?: number
-    }): Promise<ApiResponse<{ logs: Array<{
+    }): Promise<{ logs: Array<{
       timestamp: string
       action: string
       resource_path: string
       success: boolean
       error_message?: string
-    }> }>> => {
+    }> }> => {
       const params = new URLSearchParams()
       if (options?.action) params.set('action', options.action)
       if (options?.path) params.set('path', options.path)
@@ -548,7 +553,7 @@ export class ScaleMuleServer {
     list: async (
       userId: string,
       params?: ListFilesParams
-    ): Promise<ApiResponse<ListFilesResponse>> => {
+    ): Promise<ListFilesResponse> => {
       const query = new URLSearchParams()
       if (params?.content_type) query.set('content_type', params.content_type)
       if (params?.search) query.set('search', params.search)
@@ -564,14 +569,14 @@ export class ScaleMuleServer {
     /**
      * Get file info
      */
-    get: async (fileId: string): Promise<ApiResponse<StorageFile>> => {
+    get: async (fileId: string): Promise<StorageFile> => {
       return this.request<StorageFile>('GET', `/v1/storage/files/${fileId}/info`)
     },
 
     /**
      * Delete file
      */
-    delete: async (userId: string, fileId: string): Promise<ApiResponse<void>> => {
+    delete: async (userId: string, fileId: string): Promise<void> => {
       return this.request<void>('DELETE', `/v1/storage/files/${fileId}`, { userId })
     },
 
@@ -603,7 +608,7 @@ export class ScaleMuleServer {
       options?: {
         clientContext?: ClientContext
       }
-    ): Promise<ApiResponse<UploadResponse>> => {
+    ): Promise<UploadResponse> => {
       const formData = new FormData()
       const blob = new Blob([file.buffer], { type: file.contentType })
       formData.append('file', blob, file.filename)
@@ -629,24 +634,27 @@ export class ScaleMuleServer {
           body: formData,
         })
 
-        const data = await response.json()
+        const text = await response.text()
+        const responseData = text ? JSON.parse(text) : null
 
         if (!response.ok) {
-          return {
-            success: false,
-            error: data.error || { code: 'UPLOAD_FAILED', message: 'Upload failed' },
-          }
+          throw new ScaleMuleApiError(
+            responseData?.error || { code: 'UPLOAD_FAILED', message: 'Upload failed' }
+          )
         }
 
-        return data as ApiResponse<UploadResponse>
+        // Unwrap envelope: backend may return { data: T } or raw T
+        const data = responseData?.data !== undefined ? responseData.data : responseData
+        return data as UploadResponse
       } catch (err) {
-        return {
-          success: false,
-          error: {
-            code: 'UPLOAD_ERROR',
-            message: err instanceof Error ? err.message : 'Upload failed',
-          },
+        if (err instanceof ScaleMuleApiError) {
+          throw err
         }
+
+        throw new ScaleMuleApiError({
+          code: 'UPLOAD_ERROR',
+          message: err instanceof Error ? err.message : 'Upload failed',
+        })
       }
     },
   }
@@ -672,14 +680,14 @@ export class ScaleMuleServer {
      * })
      *
      * // Store the secret for signature verification
-     * console.log('Webhook secret:', result.data.secret)
+     * console.log('Webhook secret:', result.secret)
      * ```
      */
     create: async (data: {
       webhook_name: string
       url: string
       events: string[]
-    }): Promise<ApiResponse<{ id: string; secret: string; url: string; events: string[] }>> => {
+    }): Promise<{ id: string; secret: string; url: string; events: string[] }> => {
       return this.request<{ id: string; secret: string; url: string; events: string[] }>(
         'POST',
         '/v1/webhooks',
@@ -690,17 +698,15 @@ export class ScaleMuleServer {
     /**
      * List all webhook subscriptions
      */
-    list: async (): Promise<
-      ApiResponse<{
-        webhooks: Array<{
-          id: string
-          webhook_name: string
-          url: string
-          events: string[]
-          is_enabled: boolean
-        }>
+    list: async (): Promise<{
+      webhooks: Array<{
+        id: string
+        webhook_name: string
+        url: string
+        events: string[]
+        is_enabled: boolean
       }>
-    > => {
+    }> => {
       return this.request<{
         webhooks: Array<{
           id: string
@@ -715,7 +721,7 @@ export class ScaleMuleServer {
     /**
      * Delete a webhook subscription
      */
-    delete: async (id: string): Promise<ApiResponse<void>> => {
+    delete: async (id: string): Promise<void> => {
       return this.request<void>('DELETE', `/v1/webhooks/${id}`)
     },
 
@@ -725,7 +731,7 @@ export class ScaleMuleServer {
     update: async (
       id: string,
       data: { url?: string; events?: string[]; is_enabled?: boolean }
-    ): Promise<ApiResponse<{ id: string; url: string; events: string[] }>> => {
+    ): Promise<{ id: string; url: string; events: string[] }> => {
       return this.request<{ id: string; url: string; events: string[] }>(
         'PATCH',
         `/v1/webhooks/${id}`,
@@ -736,15 +742,13 @@ export class ScaleMuleServer {
     /**
      * Get available webhook event types
      */
-    eventTypes: async (): Promise<
-      ApiResponse<{
-        events: Array<{
-          event_name: string
-          event_description: string
-          payload_schema: Record<string, unknown>
-        }>
+    eventTypes: async (): Promise<{
+      events: Array<{
+        event_name: string
+        event_description: string
+        payload_schema: Record<string, unknown>
       }>
-    > => {
+    }> => {
       return this.request<{
         events: Array<{
           event_name: string
@@ -813,7 +817,7 @@ export class ScaleMuleServer {
         timestamp?: string
       },
       options?: { clientContext?: ClientContext }
-    ): Promise<ApiResponse<{ tracked: number; session_id?: string }>> => {
+    ): Promise<{ tracked: number; session_id?: string }> => {
       return this.request<{ tracked: number; session_id?: string }>('POST', '/v1/analytics/v2/events', {
         body: event,
         clientContext: options?.clientContext,
@@ -841,7 +845,7 @@ export class ScaleMuleServer {
         user_id?: string
       },
       options?: { clientContext?: ClientContext }
-    ): Promise<ApiResponse<{ tracked: number; session_id?: string }>> => {
+    ): Promise<{ tracked: number; session_id?: string }> => {
       return this.request<{ tracked: number; session_id?: string }>('POST', '/v1/analytics/v2/events', {
         body: {
           event_name: 'page_viewed',
@@ -896,7 +900,7 @@ export class ScaleMuleServer {
         timestamp?: string
       }>,
       options?: { clientContext?: ClientContext }
-    ): Promise<ApiResponse<{ tracked: number }>> => {
+    ): Promise<{ tracked: number }> => {
       return this.request<{ tracked: number }>('POST', '/v1/analytics/v2/events/batch', {
         body: { events },
         clientContext: options?.clientContext,

@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from 'react'
 import { useScaleMule } from '../provider'
+import { ScaleMuleApiError } from '../types'
 import type {
   User,
   UseAuthReturn,
@@ -138,18 +139,14 @@ export function useAuth(): UseAuthReturn {
         return response.data.user
       }
 
-      const response = await client.post<User>('/v1/auth/register', data)
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'REGISTER_FAILED',
-          message: 'Registration failed',
+      try {
+        return await client.post<User>('/v1/auth/register', data)
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
-        setError(err)
         throw err
       }
-
-      return response.data
     },
     [client, setError, authProxyUrl]
   )
@@ -193,25 +190,24 @@ export function useAuth(): UseAuthReturn {
         return response.data as LoginResponse
       }
 
-      const response = await client.post<LoginResponse | LoginResponseWithMFA>('/v1/auth/login', data)
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'LOGIN_FAILED',
-          message: 'Login failed',
+      let loginResult: LoginResponse | LoginResponseWithMFA
+      try {
+        loginResult = await client.post<LoginResponse | LoginResponseWithMFA>('/v1/auth/login', data)
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
-        setError(err)
         throw err
       }
 
       // Check if MFA is required
-      if ('requires_mfa' in response.data && response.data.requires_mfa) {
+      if ('requires_mfa' in loginResult && loginResult.requires_mfa) {
         // Return MFA challenge, don't set session yet
-        return response.data as LoginResponseWithMFA
+        return loginResult as LoginResponseWithMFA
       }
 
       // Normal login - set session
-      const loginData = response.data as LoginResponse
+      const loginData = loginResult as LoginResponse
       await client.setSession(loginData.session_token, loginData.user.id)
       setUser(loginData.user)
 
@@ -257,17 +253,25 @@ export function useAuth(): UseAuthReturn {
     async (email: string): Promise<void> => {
       setError(null)
 
-      const response = authProxyUrl
-        ? await proxyFetch(authProxyUrl, 'forgot-password', { body: { email } })
-        : await client.post('/v1/auth/forgot-password', { email })
-
-      if (!response.success) {
-        const err = response.error || {
-          code: 'FORGOT_PASSWORD_FAILED',
-          message: 'Failed to send password reset email',
+      if (authProxyUrl) {
+        const response = await proxyFetch(authProxyUrl, 'forgot-password', { body: { email } })
+        if (!response.success) {
+          const err = response.error || {
+            code: 'FORGOT_PASSWORD_FAILED',
+            message: 'Failed to send password reset email',
+          }
+          setError(err)
+          throw err
         }
-        setError(err)
-        throw err
+      } else {
+        try {
+          await client.post('/v1/auth/forgot-password', { email })
+        } catch (err) {
+          if (err instanceof ScaleMuleApiError) {
+            setError(err)
+          }
+          throw err
+        }
       }
     },
     [client, setError, authProxyUrl]
@@ -280,17 +284,25 @@ export function useAuth(): UseAuthReturn {
     async (token: string, newPassword: string): Promise<void> => {
       setError(null)
 
-      const response = authProxyUrl
-        ? await proxyFetch(authProxyUrl, 'reset-password', { body: { token, new_password: newPassword } })
-        : await client.post('/v1/auth/reset-password', { token, new_password: newPassword })
-
-      if (!response.success) {
-        const err = response.error || {
-          code: 'RESET_PASSWORD_FAILED',
-          message: 'Failed to reset password',
+      if (authProxyUrl) {
+        const response = await proxyFetch(authProxyUrl, 'reset-password', { body: { token, new_password: newPassword } })
+        if (!response.success) {
+          const err = response.error || {
+            code: 'RESET_PASSWORD_FAILED',
+            message: 'Failed to reset password',
+          }
+          setError(err)
+          throw err
         }
-        setError(err)
-        throw err
+      } else {
+        try {
+          await client.post('/v1/auth/reset-password', { token, new_password: newPassword })
+        } catch (err) {
+          if (err instanceof ScaleMuleApiError) {
+            setError(err)
+          }
+          throw err
+        }
       }
     },
     [client, setError, authProxyUrl]
@@ -303,17 +315,25 @@ export function useAuth(): UseAuthReturn {
     async (token: string): Promise<void> => {
       setError(null)
 
-      const response = authProxyUrl
-        ? await proxyFetch(authProxyUrl, 'verify-email', { body: { token } })
-        : await client.post('/v1/auth/verify-email', { token })
-
-      if (!response.success) {
-        const err = response.error || {
-          code: 'VERIFY_EMAIL_FAILED',
-          message: 'Failed to verify email',
+      if (authProxyUrl) {
+        const response = await proxyFetch(authProxyUrl, 'verify-email', { body: { token } })
+        if (!response.success) {
+          const err = response.error || {
+            code: 'VERIFY_EMAIL_FAILED',
+            message: 'Failed to verify email',
+          }
+          setError(err)
+          throw err
         }
-        setError(err)
-        throw err
+      } else {
+        try {
+          await client.post('/v1/auth/verify-email', { token })
+        } catch (err) {
+          if (err instanceof ScaleMuleApiError) {
+            setError(err)
+          }
+          throw err
+        }
       }
 
       // Refresh user to get updated email_verified status
@@ -324,9 +344,11 @@ export function useAuth(): UseAuthReturn {
             setUser(userResponse.data.user)
           }
         } else {
-          const userResponse = await client.get<User>('/v1/auth/me')
-          if (userResponse.success && userResponse.data) {
-            setUser(userResponse.data)
+          try {
+            const userData = await client.get<User>('/v1/auth/me')
+            setUser(userData)
+          } catch {
+            // Ignore refresh errors
           }
         }
       }
@@ -340,28 +362,32 @@ export function useAuth(): UseAuthReturn {
   const resendVerification = useCallback(async (): Promise<void> => {
     setError(null)
 
-    const response = authProxyUrl
-      ? await proxyFetch(authProxyUrl, 'resend-verification', { body: user ? {} : undefined })
-      : (() => {
-          if (!user) {
-            const err: ApiError = {
-              code: 'NOT_AUTHENTICATED',
-              message: 'Must be logged in to resend verification',
-            }
-            throw err
-          }
-          return client.post('/v1/auth/resend-verification')
-        })()
-
-    const result = await response
-
-    if (!result.success) {
-      const err = result.error || {
-        code: 'RESEND_FAILED',
-        message: 'Failed to resend verification email',
+    if (authProxyUrl) {
+      const response = await proxyFetch(authProxyUrl, 'resend-verification', { body: user ? {} : undefined })
+      if (!response.success) {
+        const err = response.error || {
+          code: 'RESEND_FAILED',
+          message: 'Failed to resend verification email',
+        }
+        setError(err)
+        throw err
       }
-      setError(err)
-      throw err
+    } else {
+      if (!user) {
+        const err: ApiError = {
+          code: 'NOT_AUTHENTICATED',
+          message: 'Must be logged in to resend verification',
+        }
+        throw err
+      }
+      try {
+        await client.post('/v1/auth/resend-verification')
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
+        }
+        throw err
+      }
     }
   }, [client, user, setError, authProxyUrl])
 
@@ -404,26 +430,24 @@ export function useAuth(): UseAuthReturn {
       throw err
     }
 
-    const response = await client.post<{ session_token: string; expires_at: string }>(
-      '/v1/auth/refresh',
-      { session_token: sessionToken }
-    )
+    try {
+      const refreshData = await client.post<{ session_token: string; expires_at: string }>(
+        '/v1/auth/refresh',
+        { session_token: sessionToken }
+      )
 
-    if (!response.success || !response.data) {
+      const userId = client.getUserId()
+      if (userId) {
+        await client.setSession(refreshData.session_token, userId)
+      }
+    } catch (err) {
       await client.clearSession()
       setUser(null)
 
-      const err = response.error || {
-        code: 'REFRESH_FAILED',
-        message: 'Session expired',
+      if (err instanceof ScaleMuleApiError) {
+        setError(err)
       }
-      setError(err)
       throw err
-    }
-
-    const userId = client.getUserId()
-    if (userId) {
-      await client.setSession(response.data.session_token, userId)
     }
   }, [client, setUser, setError, authProxyUrl])
 
@@ -454,19 +478,18 @@ export function useAuth(): UseAuthReturn {
     async (config: OAuthConfig): Promise<OAuthStartResponse> => {
       setError(null)
 
-      const response = await client.post<OAuthStartResponse>('/v1/auth/oauth/start', {
-        provider: config.provider,
-        redirect_url: config.redirectUrl,
-        scopes: config.scopes,
-        state: config.state,
-      })
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'OAUTH_START_FAILED',
-          message: 'Failed to start OAuth flow',
+      let oauthData: OAuthStartResponse
+      try {
+        oauthData = await client.post<OAuthStartResponse>('/v1/auth/oauth/start', {
+          provider: config.provider,
+          redirect_url: config.redirectUrl,
+          scopes: config.scopes,
+          state: config.state,
+        })
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
-        setError(err)
         throw err
       }
 
@@ -474,10 +497,10 @@ export function useAuth(): UseAuthReturn {
       // NOTE: For better security, use server-side routes with httpOnly cookies
       // See setOAuthState/validateOAuthState from '@scalemule/nextjs/server'
       if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem('scalemule_oauth_state', response.data.state)
+        sessionStorage.setItem('scalemule_oauth_state', oauthData.state)
       }
 
-      return response.data
+      return oauthData
     },
     [client, setError]
   )
@@ -521,22 +544,21 @@ export function useAuth(): UseAuthReturn {
         sessionStorage.removeItem('scalemule_oauth_state')
       }
 
-      const response = await client.post<OAuthCallbackResponse>('/v1/auth/oauth/callback', request)
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'OAUTH_CALLBACK_FAILED',
-          message: 'Failed to complete OAuth flow',
+      let callbackData: OAuthCallbackResponse
+      try {
+        callbackData = await client.post<OAuthCallbackResponse>('/v1/auth/oauth/callback', request)
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
-        setError(err)
         throw err
       }
 
       // Set session
-      await client.setSession(response.data.session_token, response.data.user.id)
-      setUser(response.data.user)
+      await client.setSession(callbackData.session_token, callbackData.user.id)
+      setUser(callbackData.user)
 
-      return response.data
+      return callbackData
     },
     [client, setUser, setError]
   )
@@ -547,18 +569,15 @@ export function useAuth(): UseAuthReturn {
   const getLinkedAccounts = useCallback(async (): Promise<LinkedAccount[]> => {
     setError(null)
 
-    const response = await client.get<{ accounts: LinkedAccount[] }>('/v1/auth/oauth/accounts')
-
-    if (!response.success || !response.data) {
-      const err = response.error || {
-        code: 'GET_ACCOUNTS_FAILED',
-        message: 'Failed to get linked accounts',
+    try {
+      const data = await client.get<{ accounts: LinkedAccount[] }>('/v1/auth/oauth/accounts')
+      return data.accounts
+    } catch (err) {
+      if (err instanceof ScaleMuleApiError) {
+        setError(err)
       }
-      setError(err)
       throw err
     }
-
-    return response.data.accounts
   }, [client, setError])
 
   /**
@@ -577,26 +596,25 @@ export function useAuth(): UseAuthReturn {
         throw err
       }
 
-      const response = await client.post<OAuthStartResponse>('/v1/auth/oauth/link', {
-        provider: config.provider,
-        redirect_url: config.redirectUrl,
-        scopes: config.scopes,
-      })
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'LINK_ACCOUNT_FAILED',
-          message: 'Failed to start account linking',
+      let linkData: OAuthStartResponse
+      try {
+        linkData = await client.post<OAuthStartResponse>('/v1/auth/oauth/link', {
+          provider: config.provider,
+          redirect_url: config.redirectUrl,
+          scopes: config.scopes,
+        })
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
-        setError(err)
         throw err
       }
 
       if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem('scalemule_oauth_state', response.data.state)
+        sessionStorage.setItem('scalemule_oauth_state', linkData.state)
       }
 
-      return response.data
+      return linkData
     },
     [client, user, setError]
   )
@@ -608,14 +626,12 @@ export function useAuth(): UseAuthReturn {
     async (provider: OAuthProvider): Promise<void> => {
       setError(null)
 
-      const response = await client.delete(`/v1/auth/oauth/accounts/${provider}`)
-
-      if (!response.success) {
-        const err = response.error || {
-          code: 'UNLINK_ACCOUNT_FAILED',
-          message: 'Failed to unlink account',
+      try {
+        await client.delete(`/v1/auth/oauth/accounts/${provider}`)
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
-        setError(err)
         throw err
       }
     },
@@ -632,18 +648,14 @@ export function useAuth(): UseAuthReturn {
   const getMFAStatus = useCallback(async (): Promise<MFAStatus> => {
     setError(null)
 
-    const response = await client.get<MFAStatus>('/v1/auth/mfa/status')
-
-    if (!response.success || !response.data) {
-      const err = response.error || {
-        code: 'GET_MFA_STATUS_FAILED',
-        message: 'Failed to get MFA status',
+    try {
+      return await client.get<MFAStatus>('/v1/auth/mfa/status')
+    } catch (err) {
+      if (err instanceof ScaleMuleApiError) {
+        setError(err)
       }
-      setError(err)
       throw err
     }
-
-    return response.data
   }, [client, setError])
 
   /**
@@ -653,21 +665,17 @@ export function useAuth(): UseAuthReturn {
     async (request: MFASetupRequest): Promise<MFATOTPSetupResponse | MFASMSSetupResponse> => {
       setError(null)
 
-      const response = await client.post<MFATOTPSetupResponse | MFASMSSetupResponse>(
-        '/v1/auth/mfa/setup',
-        request
-      )
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'MFA_SETUP_FAILED',
-          message: 'Failed to setup MFA',
+      try {
+        return await client.post<MFATOTPSetupResponse | MFASMSSetupResponse>(
+          '/v1/auth/mfa/setup',
+          request
+        )
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
-        setError(err)
         throw err
       }
-
-      return response.data
     },
     [client, setError]
   )
@@ -679,14 +687,12 @@ export function useAuth(): UseAuthReturn {
     async (request: MFAVerifyRequest): Promise<void> => {
       setError(null)
 
-      const response = await client.post('/v1/auth/mfa/verify', request)
-
-      if (!response.success) {
-        const err = response.error || {
-          code: 'MFA_VERIFY_FAILED',
-          message: 'Failed to verify MFA code',
+      try {
+        await client.post('/v1/auth/mfa/verify', request)
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
-        setError(err)
         throw err
       }
     },
@@ -700,26 +706,25 @@ export function useAuth(): UseAuthReturn {
     async (challengeToken: string, code: string, method: MFAMethod): Promise<LoginResponse> => {
       setError(null)
 
-      const response = await client.post<LoginResponse>('/v1/auth/mfa/challenge', {
-        challenge_token: challengeToken,
-        code,
-        method,
-      })
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'MFA_CHALLENGE_FAILED',
-          message: 'Failed to complete MFA challenge',
+      let mfaResult: LoginResponse
+      try {
+        mfaResult = await client.post<LoginResponse>('/v1/auth/mfa/challenge', {
+          challenge_token: challengeToken,
+          code,
+          method,
+        })
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
-        setError(err)
         throw err
       }
 
       // Set session after successful MFA
-      await client.setSession(response.data.session_token, response.data.user.id)
-      setUser(response.data.user)
+      await client.setSession(mfaResult.session_token, mfaResult.user.id)
+      setUser(mfaResult.user)
 
-      return response.data
+      return mfaResult
     },
     [client, setUser, setError]
   )
@@ -731,14 +736,12 @@ export function useAuth(): UseAuthReturn {
     async (password: string): Promise<void> => {
       setError(null)
 
-      const response = await client.post('/v1/auth/mfa/disable', { password })
-
-      if (!response.success) {
-        const err = response.error || {
-          code: 'MFA_DISABLE_FAILED',
-          message: 'Failed to disable MFA',
+      try {
+        await client.post('/v1/auth/mfa/disable', { password })
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
-        setError(err)
         throw err
       }
     },
@@ -752,20 +755,17 @@ export function useAuth(): UseAuthReturn {
     async (password: string): Promise<string[]> => {
       setError(null)
 
-      const response = await client.post<{ backup_codes: string[] }>('/v1/auth/mfa/backup-codes', {
-        password,
-      })
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'REGENERATE_CODES_FAILED',
-          message: 'Failed to regenerate backup codes',
+      try {
+        const data = await client.post<{ backup_codes: string[] }>('/v1/auth/mfa/backup-codes', {
+          password,
+        })
+        return data.backup_codes
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
-        setError(err)
         throw err
       }
-
-      return response.data.backup_codes
     },
     [client, setError]
   )
@@ -781,17 +781,25 @@ export function useAuth(): UseAuthReturn {
     async (request: PhoneSendCodeRequest): Promise<void> => {
       setError(null)
 
-      const response = authProxyUrl
-        ? await proxyFetch(authProxyUrl, 'phone/send-code', { body: request })
-        : await client.post('/v1/auth/phone/send-code', request)
-
-      if (!response.success) {
-        const err = response.error || {
-          code: 'SEND_CODE_FAILED',
-          message: 'Failed to send verification code',
+      if (authProxyUrl) {
+        const response = await proxyFetch(authProxyUrl, 'phone/send-code', { body: request })
+        if (!response.success) {
+          const err = response.error || {
+            code: 'SEND_CODE_FAILED',
+            message: 'Failed to send verification code',
+          }
+          setError(err)
+          throw err
         }
-        setError(err)
-        throw err
+      } else {
+        try {
+          await client.post('/v1/auth/phone/send-code', request)
+        } catch (err) {
+          if (err instanceof ScaleMuleApiError) {
+            setError(err)
+          }
+          throw err
+        }
       }
     },
     [client, setError, authProxyUrl]
@@ -804,17 +812,25 @@ export function useAuth(): UseAuthReturn {
     async (request: PhoneVerifyRequest): Promise<void> => {
       setError(null)
 
-      const response = authProxyUrl
-        ? await proxyFetch(authProxyUrl, 'phone/verify', { body: request })
-        : await client.post('/v1/auth/phone/verify', request)
-
-      if (!response.success) {
-        const err = response.error || {
-          code: 'VERIFY_PHONE_FAILED',
-          message: 'Failed to verify phone number',
+      if (authProxyUrl) {
+        const response = await proxyFetch(authProxyUrl, 'phone/verify', { body: request })
+        if (!response.success) {
+          const err = response.error || {
+            code: 'VERIFY_PHONE_FAILED',
+            message: 'Failed to verify phone number',
+          }
+          setError(err)
+          throw err
         }
-        setError(err)
-        throw err
+      } else {
+        try {
+          await client.post('/v1/auth/phone/verify', request)
+        } catch (err) {
+          if (err instanceof ScaleMuleApiError) {
+            setError(err)
+          }
+          throw err
+        }
       }
 
       // Refresh user to get updated phone_verified status
@@ -825,9 +841,11 @@ export function useAuth(): UseAuthReturn {
             setUser(userResponse.data.user)
           }
         } else {
-          const userResponse = await client.get<User>('/v1/auth/me')
-          if (userResponse.success && userResponse.data) {
-            setUser(userResponse.data)
+          try {
+            const userData = await client.get<User>('/v1/auth/me')
+            setUser(userData)
+          } catch {
+            // Ignore refresh errors
           }
         }
       }
@@ -865,21 +883,20 @@ export function useAuth(): UseAuthReturn {
         return response.data as LoginResponse
       }
 
-      const response = await client.post<LoginResponse>('/v1/auth/phone/login', request)
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'PHONE_LOGIN_FAILED',
-          message: 'Failed to login with phone',
+      let phoneLoginData: LoginResponse
+      try {
+        phoneLoginData = await client.post<LoginResponse>('/v1/auth/phone/login', request)
+      } catch (err) {
+        if (err instanceof ScaleMuleApiError) {
+          setError(err)
         }
-        setError(err)
         throw err
       }
 
-      await client.setSession(response.data.session_token, response.data.user.id)
-      setUser(response.data.user)
+      await client.setSession(phoneLoginData.session_token, phoneLoginData.user.id)
+      setUser(phoneLoginData.user)
 
-      return response.data
+      return phoneLoginData
     },
     [client, setUser, setError, authProxyUrl]
   )

@@ -8,7 +8,8 @@
  * - Error handling and response parsing
  */
 
-import type { ApiResponse, ApiError, StorageAdapter } from './types'
+import { ScaleMuleApiError } from './types'
+import type { ApiError, StorageAdapter } from './types'
 
 // ============================================================================
 // Environment Presets
@@ -80,8 +81,8 @@ function sanitizeFilename(filename: string): string {
 // ============================================================================
 
 interface QueuedRequest<T> {
-  execute: () => Promise<ApiResponse<T>>
-  resolve: (value: ApiResponse<T>) => void
+  execute: () => Promise<T>
+  resolve: (value: T) => void
   reject: (reason: unknown) => void
   priority: number
 }
@@ -102,11 +103,11 @@ class RateLimitQueue {
   /**
    * Add request to queue
    */
-  enqueue<T>(execute: () => Promise<ApiResponse<T>>, priority = 0): Promise<ApiResponse<T>> {
+  enqueue<T>(execute: () => Promise<T>, priority = 0): Promise<T> {
     return new Promise((resolve, reject) => {
       this.queue.push({
-        execute: execute as () => Promise<ApiResponse<unknown>>,
-        resolve: resolve as (value: ApiResponse<unknown>) => void,
+        execute: execute as () => Promise<unknown>,
+        resolve: resolve as (value: unknown) => void,
         reject,
         priority,
       })
@@ -151,18 +152,17 @@ class RateLimitQueue {
       try {
         this.requestsInWindow++
         const result = await request.execute()
-
+        request.resolve(result)
+      } catch (error) {
         // Check for rate limit response
-        if (!result.success && result.error?.code === 'RATE_LIMITED') {
+        if (error instanceof ScaleMuleApiError && error.code === 'RATE_LIMITED') {
           // Re-queue the request
           this.queue.unshift(request)
           // Set rate limit delay (default 60s if not specified)
           this.rateLimitedUntil = Date.now() + 60000
         } else {
-          request.resolve(result)
+          request.reject(error)
         }
-      } catch (error) {
-        request.reject(error)
       }
     }
 
@@ -611,7 +611,7 @@ export class ScaleMuleClient {
   async request<T>(
     path: string,
     options: RequestOptions = {}
-  ): Promise<ApiResponse<T>> {
+  ): Promise<T> {
     const url = `${this.gatewayUrl}${path}`
     const headers = this.buildHeaders(options)
     const maxRetries = options.skipRetry ? 0 : (options.retries ?? 2)
@@ -661,14 +661,19 @@ export class ScaleMuleClient {
             console.error('[ScaleMule] Request failed:', error)
           }
 
-          return { success: false, error }
+          throw new ScaleMuleApiError(error)
         }
 
         // Unwrap envelope: backend may return { data: T } or raw T
         const data = responseData?.data !== undefined ? responseData.data : responseData
-        return { success: true, data: data as T }
+        return data as T
       } catch (err) {
         clearTimeout(timeoutId)
+
+        // Re-throw ScaleMuleApiError as-is
+        if (err instanceof ScaleMuleApiError) {
+          throw err
+        }
 
         const error: ApiError = {
           code: err instanceof Error && err.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK_ERROR',
@@ -690,18 +695,18 @@ export class ScaleMuleClient {
           console.error('[ScaleMule] Network error:', err)
         }
 
-        return { success: false, error }
+        throw new ScaleMuleApiError(error)
       }
     }
 
-    // Should not reach here, but return last error if we do
-    return { success: false, error: lastError || { code: 'UNKNOWN', message: 'Request failed' } }
+    // Should not reach here, but throw last error if we do
+    throw new ScaleMuleApiError(lastError || { code: 'UNKNOWN', message: 'Request failed' })
   }
 
   /**
    * GET request
    */
-  async get<T>(path: string, options?: RequestOptions): Promise<ApiResponse<T>> {
+  async get<T>(path: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(path, { ...options, method: 'GET' })
   }
 
@@ -712,7 +717,7 @@ export class ScaleMuleClient {
     path: string,
     body?: unknown,
     options?: RequestOptions
-  ): Promise<ApiResponse<T>> {
+  ): Promise<T> {
     return this.request<T>(path, {
       ...options,
       method: 'POST',
@@ -727,7 +732,7 @@ export class ScaleMuleClient {
     path: string,
     body?: unknown,
     options?: RequestOptions
-  ): Promise<ApiResponse<T>> {
+  ): Promise<T> {
     return this.request<T>(path, {
       ...options,
       method: 'PUT',
@@ -742,7 +747,7 @@ export class ScaleMuleClient {
     path: string,
     body?: unknown,
     options?: RequestOptions
-  ): Promise<ApiResponse<T>> {
+  ): Promise<T> {
     return this.request<T>(path, {
       ...options,
       method: 'PATCH',
@@ -753,7 +758,7 @@ export class ScaleMuleClient {
   /**
    * DELETE request
    */
-  async delete<T>(path: string, options?: RequestOptions): Promise<ApiResponse<T>> {
+  async delete<T>(path: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(path, { ...options, method: 'DELETE' })
   }
 
@@ -768,7 +773,7 @@ export class ScaleMuleClient {
     file: File,
     additionalFields?: Record<string, string>,
     options?: RequestOptions & { onProgress?: (progress: number) => void }
-  ): Promise<ApiResponse<T>> {
+  ): Promise<T> {
     // Sanitize filename to handle Safari/iOS unicode issues
     const sanitizedName = sanitizeFilename(file.name)
     const sanitizedFile = sanitizedName !== file.name
@@ -854,13 +859,18 @@ export class ScaleMuleClient {
             continue
           }
 
-          return { success: false, error }
+          throw new ScaleMuleApiError(error)
         }
 
         // Unwrap envelope: backend may return { data: T } or raw T
         const data = responseData?.data !== undefined ? responseData.data : responseData
-        return { success: true, data: data as T }
+        return data as T
       } catch (err) {
+        // Re-throw ScaleMuleApiError as-is
+        if (err instanceof ScaleMuleApiError) {
+          throw err
+        }
+
         lastError = {
           code: 'UPLOAD_ERROR',
           message: err instanceof Error ? err.message : 'Upload failed',
@@ -878,10 +888,7 @@ export class ScaleMuleClient {
       }
     }
 
-    return {
-      success: false,
-      error: lastError || { code: 'UPLOAD_ERROR', message: 'Upload failed after retries' },
-    }
+    throw new ScaleMuleApiError(lastError || { code: 'UPLOAD_ERROR', message: 'Upload failed after retries' })
   }
 
   /**
@@ -892,41 +899,40 @@ export class ScaleMuleClient {
     formData: FormData,
     onProgress: (progress: number) => void,
     maxRetries = 2
-  ): Promise<ApiResponse<T>> {
+  ): Promise<T> {
     let lastError: ApiError | null = null
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const result = await this.singleUploadWithProgress<T>(url, formData, onProgress)
-
-      if (result.success) {
-        return result
-      }
-
-      // Check if this is a retryable error
-      const errorCode = result.error?.code || ''
-      const isNetworkError = errorCode === 'UPLOAD_ERROR' || errorCode === 'NETWORK_ERROR'
-      const isRetryableHttp = errorCode.startsWith('HTTP_') &&
-        RETRYABLE_STATUS_CODES.has(parseInt(errorCode.replace('HTTP_', ''), 10))
-
-      if (attempt < maxRetries && (isNetworkError || isRetryableHttp)) {
-        lastError = result.error || null
-        const delay = getBackoffDelay(attempt)
-        if (this.debug) {
-          console.log(`[ScaleMule] Upload retry ${attempt + 1}/${maxRetries} after ${delay}ms`)
+      try {
+        return await this.singleUploadWithProgress<T>(url, formData, onProgress)
+      } catch (err) {
+        if (!(err instanceof ScaleMuleApiError)) {
+          throw err
         }
-        await sleep(delay)
-        // Reset progress for retry
-        onProgress(0)
-        continue
+
+        // Check if this is a retryable error
+        const errorCode = err.code
+        const isNetworkError = errorCode === 'UPLOAD_ERROR' || errorCode === 'NETWORK_ERROR'
+        const isRetryableHttp = errorCode.startsWith('HTTP_') &&
+          RETRYABLE_STATUS_CODES.has(parseInt(errorCode.replace('HTTP_', ''), 10))
+
+        if (attempt < maxRetries && (isNetworkError || isRetryableHttp)) {
+          lastError = { code: err.code, message: err.message }
+          const delay = getBackoffDelay(attempt)
+          if (this.debug) {
+            console.log(`[ScaleMule] Upload retry ${attempt + 1}/${maxRetries} after ${delay}ms`)
+          }
+          await sleep(delay)
+          // Reset progress for retry
+          onProgress(0)
+          continue
+        }
+
+        throw err
       }
-
-      return result
     }
 
-    return {
-      success: false,
-      error: lastError || { code: 'UPLOAD_ERROR', message: 'Upload failed after retries' },
-    }
+    throw new ScaleMuleApiError(lastError || { code: 'UPLOAD_ERROR', message: 'Upload failed after retries' })
   }
 
   /**
@@ -936,8 +942,8 @@ export class ScaleMuleClient {
     url: string,
     formData: FormData,
     onProgress: (progress: number) => void
-  ): Promise<ApiResponse<T>> {
-    return new Promise((resolve) => {
+  ): Promise<T> {
+    return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
 
       xhr.upload.addEventListener('progress', (event) => {
@@ -952,36 +958,26 @@ export class ScaleMuleClient {
           const data = JSON.parse(xhr.responseText)
 
           if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(data as ApiResponse<T>)
+            // Unwrap envelope: backend may return { data: T } or raw T
+            const unwrapped = data?.data !== undefined ? data.data : data
+            resolve(unwrapped as T)
           } else {
-            resolve({
-              success: false,
-              error: data.error || {
-                code: `HTTP_${xhr.status}`,
-                message: data.message || 'Upload failed',
-              },
-            })
+            reject(new ScaleMuleApiError(data.error || {
+              code: `HTTP_${xhr.status}`,
+              message: data.message || 'Upload failed',
+            }))
           }
         } catch {
-          resolve({
-            success: false,
-            error: { code: 'PARSE_ERROR', message: 'Failed to parse response' },
-          })
+          reject(new ScaleMuleApiError({ code: 'PARSE_ERROR', message: 'Failed to parse response' }))
         }
       })
 
       xhr.addEventListener('error', () => {
-        resolve({
-          success: false,
-          error: { code: 'UPLOAD_ERROR', message: 'Upload failed' },
-        })
+        reject(new ScaleMuleApiError({ code: 'UPLOAD_ERROR', message: 'Upload failed' }))
       })
 
       xhr.addEventListener('abort', () => {
-        resolve({
-          success: false,
-          error: { code: 'UPLOAD_ABORTED', message: 'Upload cancelled' },
-        })
+        reject(new ScaleMuleApiError({ code: 'UPLOAD_ABORTED', message: 'Upload cancelled' }))
       })
 
       xhr.open('POST', url)

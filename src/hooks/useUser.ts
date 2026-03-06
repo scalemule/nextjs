@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react'
 import { useScaleMule } from '../provider'
+import { ScaleMuleApiError } from '../types'
 import type {
   UseUserReturn,
   Profile,
@@ -40,21 +41,12 @@ export function useUser(): UseUserReturn {
       setLoading(true)
 
       try {
-        const response = await client.patch<Profile>('/v1/auth/profile', data)
-
-        if (!response.success || !response.data) {
-          const err = response.error || {
-            code: 'UPDATE_FAILED',
-            message: 'Failed to update profile',
-          }
-          setLocalError(err)
-          throw err
-        }
+        const profileData = await client.patch<Profile>('/v1/auth/profile', data)
 
         // Update user in context
-        setUser(response.data)
+        setUser(profileData)
 
-        return response.data
+        return profileData
       } finally {
         setLoading(false)
       }
@@ -71,19 +63,10 @@ export function useUser(): UseUserReturn {
       setLoading(true)
 
       try {
-        const response = await client.post('/v1/auth/change-password', {
+        await client.post('/v1/auth/change-password', {
           current_password: currentPassword,
           new_password: newPassword,
         })
-
-        if (!response.success) {
-          const err = response.error || {
-            code: 'CHANGE_PASSWORD_FAILED',
-            message: 'Failed to change password',
-          }
-          setLocalError(err)
-          throw err
-        }
       } finally {
         setLoading(false)
       }
@@ -100,19 +83,10 @@ export function useUser(): UseUserReturn {
       setLoading(true)
 
       try {
-        const response = await client.post('/v1/auth/change-email', {
+        await client.post('/v1/auth/change-email', {
           new_email: newEmail,
           password,
         })
-
-        if (!response.success) {
-          const err = response.error || {
-            code: 'CHANGE_EMAIL_FAILED',
-            message: 'Failed to change email',
-          }
-          setLocalError(err)
-          throw err
-        }
 
         // Note: Email change typically requires verification
         // User should check their email
@@ -132,18 +106,9 @@ export function useUser(): UseUserReturn {
       setLoading(true)
 
       try {
-        const response = await client.post('/v1/auth/delete-account', {
+        await client.post('/v1/auth/delete-account', {
           password,
         })
-
-        if (!response.success) {
-          const err = response.error || {
-            code: 'DELETE_ACCOUNT_FAILED',
-            message: 'Failed to delete account',
-          }
-          setLocalError(err)
-          throw err
-        }
 
         // Clear session after account deletion
         await client.clearSession()
@@ -163,20 +128,9 @@ export function useUser(): UseUserReturn {
     setLoading(true)
 
     try {
-      const response = await client.post<{ download_url: string }>(
+      return await client.post<{ download_url: string }>(
         '/v1/auth/export-data'
       )
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'EXPORT_FAILED',
-          message: 'Failed to export data',
-        }
-        setLocalError(err)
-        throw err
-      }
-
-      return response.data
     } finally {
       setLoading(false)
     }

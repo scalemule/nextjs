@@ -54,6 +54,9 @@ export type {
   UseRealtimeReturn,
 } from './hooks/useRealtime'
 
+// Error class
+export { ScaleMuleApiError } from './types'
+
 // Types
 export type {
   // Config

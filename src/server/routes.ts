@@ -15,6 +15,7 @@
  */
 
 import { type NextRequest } from 'next/server'
+import { ScaleMuleApiError } from '../types'
 import { createServerClient, type ServerConfig } from './client'
 import { extractClientContext } from './context'
 import {
@@ -132,21 +133,23 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('VALIDATION_ERROR', 'Email and password required', 400)
           }
 
-          const result = await sm.auth.register({ email, password, full_name, username, phone })
-
-          if (!result.success) {
+          let registeredUser
+          try {
+            registeredUser = await sm.auth.register({ email, password, full_name, username, phone })
+          } catch (err) {
+            const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
-              result.error?.code || 'REGISTER_FAILED',
-              result.error?.message || 'Registration failed',
+              apiErr?.code || 'REGISTER_FAILED',
+              apiErr?.message || 'Registration failed',
               400
             )
           }
 
-          if (config.onRegister && result.data) {
-            await config.onRegister({ id: result.data.id, email: result.data.email })
+          if (config.onRegister) {
+            await config.onRegister({ id: registeredUser.id, email: registeredUser.email })
           }
 
-          return successResponse({ user: result.data, message: 'Registration successful' }, 201)
+          return successResponse({ user: registeredUser, message: 'Registration successful' }, 201)
         }
 
         // ==================== Login ====================
@@ -157,10 +160,12 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('VALIDATION_ERROR', 'Email and password required', 400)
           }
 
-          const result = await sm.auth.login({ email, password, remember_me })
-
-          if (!result.success || !result.data) {
-            const errorCode = result.error?.code || 'LOGIN_FAILED'
+          let loginData
+          try {
+            loginData = await sm.auth.login({ email, password, remember_me })
+          } catch (err) {
+            const apiErr = err instanceof ScaleMuleApiError ? err : null
+            const errorCode = apiErr?.code || 'LOGIN_FAILED'
             let status = 400
             if (errorCode === 'INVALID_CREDENTIALS' || errorCode === 'UNAUTHORIZED') status = 401
             if (['EMAIL_NOT_VERIFIED', 'PHONE_NOT_VERIFIED', 'ACCOUNT_LOCKED', 'ACCOUNT_DISABLED', 'MFA_REQUIRED'].includes(errorCode)) {
@@ -168,20 +173,20 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             }
             return errorResponse(
               errorCode,
-              result.error?.message || 'Login failed',
+              apiErr?.message || 'Login failed',
               status
             )
           }
 
           if (config.onLogin) {
             await config.onLogin({
-              id: result.data.user.id,
-              email: result.data.user.email,
+              id: loginData.user.id,
+              email: loginData.user.email,
             })
           }
 
           // Return user with HTTP-only session cookie (no token in response!)
-          return withSession(result.data, { user: result.data.user }, cookieOptions)
+          return withSession(loginData, { user: loginData.user }, cookieOptions)
         }
 
         // ==================== Logout ====================
@@ -221,12 +226,13 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('VALIDATION_ERROR', 'Token and new password required', 400)
           }
 
-          const result = await sm.auth.resetPassword(token, new_password)
-
-          if (!result.success) {
+          try {
+            await sm.auth.resetPassword(token, new_password)
+          } catch (err) {
+            const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
-              result.error?.code || 'RESET_FAILED',
-              result.error?.message || 'Password reset failed',
+              apiErr?.code || 'RESET_FAILED',
+              apiErr?.message || 'Password reset failed',
               400
             )
           }
@@ -242,12 +248,13 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('VALIDATION_ERROR', 'Token required', 400)
           }
 
-          const result = await sm.auth.verifyEmail(token)
-
-          if (!result.success) {
+          try {
+            await sm.auth.verifyEmail(token)
+          } catch (err) {
+            const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
-              result.error?.code || 'VERIFY_FAILED',
-              result.error?.message || 'Email verification failed',
+              apiErr?.code || 'VERIFY_FAILED',
+              apiErr?.message || 'Email verification failed',
               400
             )
           }
@@ -263,12 +270,14 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
           if (email) {
             // Email-based resend (no session required — e.g., post-registration)
-            const result = await sm.auth.resendVerification(email)
-            if (!result.success) {
+            try {
+              await sm.auth.resendVerification(email)
+            } catch (err) {
+              const apiErr = err instanceof ScaleMuleApiError ? err : null
               return errorResponse(
-                result.error?.code || 'RESEND_FAILED',
-                result.error?.message || 'Failed to resend verification',
-                result.error?.code === 'RATE_LIMITED' ? 429 : 400
+                apiErr?.code || 'RESEND_FAILED',
+                apiErr?.message || 'Failed to resend verification',
+                apiErr?.code === 'RATE_LIMITED' ? 429 : 400
               )
             }
             return successResponse({ message: 'Verification email sent' })
@@ -278,11 +287,13 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('UNAUTHORIZED', 'Email or session required', 401)
           }
 
-          const result = await sm.auth.resendVerification(session.sessionToken)
-          if (!result.success) {
+          try {
+            await sm.auth.resendVerification(session.sessionToken)
+          } catch (err) {
+            const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
-              result.error?.code || 'RESEND_FAILED',
-              result.error?.message || 'Failed to resend verification',
+              apiErr?.code || 'RESEND_FAILED',
+              apiErr?.message || 'Failed to resend verification',
               400
             )
           }
@@ -298,9 +309,10 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('UNAUTHORIZED', 'Authentication required', 401)
           }
 
-          const result = await sm.auth.refresh(session.sessionToken)
-
-          if (!result.success || !result.data) {
+          let refreshData
+          try {
+            refreshData = await sm.auth.refresh(session.sessionToken)
+          } catch {
             return clearSession(
               { message: 'Session expired' },
               cookieOptions
@@ -308,7 +320,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           }
 
           return withRefreshedSession(
-            result.data.session_token,
+            refreshData.session_token,
             session.userId,
             { message: 'Session refreshed' },
             cookieOptions
@@ -329,16 +341,17 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('VALIDATION_ERROR', 'Current and new password required', 400)
           }
 
-          const result = await sm.user.changePassword(
-            session.sessionToken,
-            current_password,
-            new_password
-          )
-
-          if (!result.success) {
+          try {
+            await sm.user.changePassword(
+              session.sessionToken,
+              current_password,
+              new_password
+            )
+          } catch (err) {
+            const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
-              result.error?.code || 'CHANGE_FAILED',
-              result.error?.message || 'Failed to change password',
+              apiErr?.code || 'CHANGE_FAILED',
+              apiErr?.message || 'Failed to change password',
               400
             )
           }
@@ -370,9 +383,10 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('UNAUTHORIZED', 'Authentication required', 401)
           }
 
-          const result = await sm.auth.me(session.sessionToken)
-
-          if (!result.success || !result.data) {
+          let userData
+          try {
+            userData = await sm.auth.me(session.sessionToken)
+          } catch {
             // Session invalid, clear cookies
             return clearSession(
               { error: { code: 'SESSION_EXPIRED', message: 'Session expired' } },
@@ -380,7 +394,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             )
           }
 
-          return successResponse({ user: result.data })
+          return successResponse({ user: userData })
         }
 
         // ==================== Get Session Status ====================
@@ -424,12 +438,13 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('VALIDATION_ERROR', 'Password required', 400)
           }
 
-          const result = await sm.user.deleteAccount(session.sessionToken, password)
-
-          if (!result.success) {
+          try {
+            await sm.user.deleteAccount(session.sessionToken, password)
+          } catch (err) {
+            const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
-              result.error?.code || 'DELETE_FAILED',
-              result.error?.message || 'Failed to delete account',
+              apiErr?.code || 'DELETE_FAILED',
+              apiErr?.message || 'Failed to delete account',
               400
             )
           }
@@ -465,17 +480,19 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           const body = await request.json().catch(() => ({}))
           const { full_name, avatar_url } = body
 
-          const result = await sm.user.update(session.sessionToken, { full_name, avatar_url })
-
-          if (!result.success || !result.data) {
+          let updatedUser
+          try {
+            updatedUser = await sm.user.update(session.sessionToken, { full_name, avatar_url })
+          } catch (err) {
+            const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
-              result.error?.code || 'UPDATE_FAILED',
-              result.error?.message || 'Failed to update profile',
+              apiErr?.code || 'UPDATE_FAILED',
+              apiErr?.message || 'Failed to update profile',
               400
             )
           }
 
-          return successResponse({ user: result.data })
+          return successResponse({ user: updatedUser })
         }
 
         default:
@@ -588,51 +605,53 @@ export function createAnalyticsRoutes(config: AnalyticsRoutesConfig = {}): {
       return errorResponse('VALIDATION_ERROR', 'event_name is required', 400)
     }
 
-    const result = await sm.analytics.trackEvent(
-      {
-        event_name: event_name as string,
-        event_category: event_category as string | undefined,
-        properties: properties as Record<string, unknown> | undefined,
-        user_id: user_id as string | undefined,
-        session_id: session_id as string | undefined,
-        anonymous_id: anonymous_id as string | undefined,
-        session_duration_seconds: session_duration_seconds as number | undefined,
-        page_url: page_url as string | undefined,
-        page_title: page_title as string | undefined,
-        referrer: referrer as string | undefined,
-        landing_page: landing_page as string | undefined,
-        device_type: device_type as string | undefined,
-        device_brand: device_brand as string | undefined,
-        device_model: device_model as string | undefined,
-        browser: browser as string | undefined,
-        browser_version: browser_version as string | undefined,
-        os: os as string | undefined,
-        os_version: os_version as string | undefined,
-        screen_resolution: screen_resolution as string | undefined,
-        viewport_size: viewport_size as string | undefined,
-        utm_source: utm_source as string | undefined,
-        utm_medium: utm_medium as string | undefined,
-        utm_campaign: utm_campaign as string | undefined,
-        utm_term: utm_term as string | undefined,
-        utm_content: utm_content as string | undefined,
-        client_timestamp: (client_timestamp || timestamp) as string | undefined,
-      },
-      { clientContext }
-    )
-
-    if (!result.success) {
+    let trackResult
+    try {
+      trackResult = await sm.analytics.trackEvent(
+        {
+          event_name: event_name as string,
+          event_category: event_category as string | undefined,
+          properties: properties as Record<string, unknown> | undefined,
+          user_id: user_id as string | undefined,
+          session_id: session_id as string | undefined,
+          anonymous_id: anonymous_id as string | undefined,
+          session_duration_seconds: session_duration_seconds as number | undefined,
+          page_url: page_url as string | undefined,
+          page_title: page_title as string | undefined,
+          referrer: referrer as string | undefined,
+          landing_page: landing_page as string | undefined,
+          device_type: device_type as string | undefined,
+          device_brand: device_brand as string | undefined,
+          device_model: device_model as string | undefined,
+          browser: browser as string | undefined,
+          browser_version: browser_version as string | undefined,
+          os: os as string | undefined,
+          os_version: os_version as string | undefined,
+          screen_resolution: screen_resolution as string | undefined,
+          viewport_size: viewport_size as string | undefined,
+          utm_source: utm_source as string | undefined,
+          utm_medium: utm_medium as string | undefined,
+          utm_campaign: utm_campaign as string | undefined,
+          utm_term: utm_term as string | undefined,
+          utm_content: utm_content as string | undefined,
+          client_timestamp: (client_timestamp || timestamp) as string | undefined,
+        },
+        { clientContext }
+      )
+    } catch (err) {
+      const apiErr = err instanceof ScaleMuleApiError ? err : null
       return errorResponse(
-        result.error?.code || 'TRACK_FAILED',
-        result.error?.message || 'Failed to track event',
+        apiErr?.code || 'TRACK_FAILED',
+        apiErr?.message || 'Failed to track event',
         400
       )
     }
 
     if (config.onEvent) {
-      await config.onEvent({ event_name: event_name as string, session_id: result.data?.session_id })
+      await config.onEvent({ event_name: event_name as string, session_id: trackResult?.session_id })
     }
 
-    return successResponse({ tracked: result.data?.tracked || 1, session_id: result.data?.session_id })
+    return successResponse({ tracked: trackResult?.tracked || 1, session_id: trackResult?.session_id })
   }
 
   const POST: RouteHandler = async (request, context) => {
@@ -673,17 +692,19 @@ export function createAnalyticsRoutes(config: AnalyticsRoutesConfig = {}): {
             return errorResponse('VALIDATION_ERROR', 'Maximum 100 events per batch', 400)
           }
 
-          const result = await sm.analytics.trackBatch(events, { clientContext })
-
-          if (!result.success) {
+          let batchResult
+          try {
+            batchResult = await sm.analytics.trackBatch(events, { clientContext })
+          } catch (err) {
+            const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
-              result.error?.code || 'BATCH_FAILED',
-              result.error?.message || 'Failed to track events',
+              apiErr?.code || 'BATCH_FAILED',
+              apiErr?.message || 'Failed to track events',
               400
             )
           }
 
-          return successResponse({ tracked: result.data?.tracked || events.length })
+          return successResponse({ tracked: batchResult?.tracked || events.length })
         }
 
         // ==================== Track Page View ====================
@@ -695,24 +716,26 @@ export function createAnalyticsRoutes(config: AnalyticsRoutesConfig = {}): {
             return errorResponse('VALIDATION_ERROR', 'page_url is required', 400)
           }
 
-          const result = await sm.analytics.trackPageView(
-            { page_url, page_title, referrer, session_id, user_id },
-            { clientContext }
-          )
-
-          if (!result.success) {
+          let pageViewResult
+          try {
+            pageViewResult = await sm.analytics.trackPageView(
+              { page_url, page_title, referrer, session_id, user_id },
+              { clientContext }
+            )
+          } catch (err) {
+            const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
-              result.error?.code || 'TRACK_FAILED',
-              result.error?.message || 'Failed to track page view',
+              apiErr?.code || 'TRACK_FAILED',
+              apiErr?.message || 'Failed to track page view',
               400
             )
           }
 
           if (config.onEvent) {
-            await config.onEvent({ event_name: 'page_viewed', session_id: result.data?.session_id })
+            await config.onEvent({ event_name: 'page_viewed', session_id: pageViewResult?.session_id })
           }
 
-          return successResponse({ tracked: result.data?.tracked || 1, session_id: result.data?.session_id })
+          return successResponse({ tracked: pageViewResult?.tracked || 1, session_id: pageViewResult?.session_id })
         }
 
         default:

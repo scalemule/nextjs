@@ -153,17 +153,9 @@ export function createAuthMiddleware(config: AuthMiddlewareConfig = {}) {
     if (!skipValidation) {
       try {
         const sm = createServerClient()
-        const result = await sm.auth.me(session.sessionToken)
-
-        if (!result.success) {
-          // Session invalid - clear cookies and redirect
-          const response = NextResponse.redirect(new URL(redirectTo, request.url))
-          response.cookies.delete(SESSION_COOKIE_NAME)
-          response.cookies.delete(USER_ID_COOKIE_NAME)
-          return response
-        }
+        await sm.auth.me(session.sessionToken)
       } catch (error) {
-        // Network error - fail closed for security (block access)
+        // Session invalid or network error - fail closed for security (block access)
         // If you need fail-open behavior, use skipValidation: true
         console.error('[ScaleMule Middleware] Session validation failed, blocking request:', error)
         const response = NextResponse.redirect(new URL(redirectTo, request.url))

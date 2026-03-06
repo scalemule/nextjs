@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react'
 import { useScaleMule } from '../provider'
+import { ScaleMuleApiError } from '../types'
 import type {
   UseBillingReturn,
   ConnectedAccount,
@@ -53,12 +54,11 @@ export function useBilling(): UseBillingReturn {
       setError(null)
       setLoading(true)
       try {
-        const response = await client.post<ConnectedAccount>('/v1/billing/connected-accounts', data)
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return null
-        }
-        return response.data
+        return await client.post<ConnectedAccount>('/v1/billing/connected-accounts', data)
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return null
       } finally {
         setLoading(false)
       }
@@ -70,12 +70,11 @@ export function useBilling(): UseBillingReturn {
     setError(null)
     setLoading(true)
     try {
-      const response = await client.get<ConnectedAccount>('/v1/billing/connected-accounts/me')
-      if (!response.success || !response.data) {
-        setError(response.error || null)
-        return null
-      }
-      return response.data
+      return await client.get<ConnectedAccount>('/v1/billing/connected-accounts/me')
+    } catch (err) {
+      const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+      setError(apiError)
+      return null
     } finally {
       setLoading(false)
     }
@@ -86,12 +85,11 @@ export function useBilling(): UseBillingReturn {
       setError(null)
       setLoading(true)
       try {
-        const response = await client.get<ConnectedAccount>(`/v1/billing/connected-accounts/${id}`)
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return null
-        }
-        return response.data
+        return await client.get<ConnectedAccount>(`/v1/billing/connected-accounts/${id}`)
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return null
       } finally {
         setLoading(false)
       }
@@ -104,15 +102,15 @@ export function useBilling(): UseBillingReturn {
       setError(null)
       setLoading(true)
       try {
-        const response = await client.post<{ url: string }>(
+        const result = await client.post<{ url: string }>(
           `/v1/billing/connected-accounts/${id}/onboarding-link`,
           data
         )
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return null
-        }
-        return response.data.url
+        return result.url
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return null
       } finally {
         setLoading(false)
       }
@@ -125,14 +123,13 @@ export function useBilling(): UseBillingReturn {
       setError(null)
       setLoading(true)
       try {
-        const response = await client.get<AccountBalance>(
+        return await client.get<AccountBalance>(
           `/v1/billing/connected-accounts/${id}/balance`
         )
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return null
-        }
-        return response.data
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return null
       } finally {
         setLoading(false)
       }
@@ -153,12 +150,11 @@ export function useBilling(): UseBillingReturn {
       setError(null)
       setLoading(true)
       try {
-        const response = await client.post<BillingPayment>('/v1/billing/payments', data)
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return null
-        }
-        return response.data
+        return await client.post<BillingPayment>('/v1/billing/payments', data)
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return null
       } finally {
         setLoading(false)
       }
@@ -171,12 +167,11 @@ export function useBilling(): UseBillingReturn {
       setError(null)
       setLoading(true)
       try {
-        const response = await client.get<BillingPayment>(`/v1/billing/payments/${id}`)
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return null
-        }
-        return response.data
+        return await client.get<BillingPayment>(`/v1/billing/payments/${id}`)
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return null
       } finally {
         setLoading(false)
       }
@@ -196,12 +191,11 @@ export function useBilling(): UseBillingReturn {
               .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
               .join('&')
           : ''
-        const response = await client.get<BillingPayment[]>(`/v1/billing/payments${query}`)
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return []
-        }
-        return response.data
+        return await client.get<BillingPayment[]>(`/v1/billing/payments${query}`)
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return []
       } finally {
         setLoading(false)
       }
@@ -214,12 +208,11 @@ export function useBilling(): UseBillingReturn {
       setError(null)
       setLoading(true)
       try {
-        const response = await client.post<BillingRefund>(`/v1/billing/payments/${id}/refund`, data)
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return null
-        }
-        return response.data
+        return await client.post<BillingRefund>(`/v1/billing/payments/${id}/refund`, data)
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return null
       } finally {
         setLoading(false)
       }
@@ -239,14 +232,13 @@ export function useBilling(): UseBillingReturn {
               .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
               .join('&')
           : ''
-        const response = await client.get<BillingPayout[]>(
+        return await client.get<BillingPayout[]>(
           `/v1/billing/connected-accounts/${accountId}/payouts${query}`
         )
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return []
-        }
-        return response.data
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return []
       } finally {
         setLoading(false)
       }
@@ -259,14 +251,13 @@ export function useBilling(): UseBillingReturn {
       setError(null)
       setLoading(true)
       try {
-        const response = await client.get<PayoutSchedule>(
+        return await client.get<PayoutSchedule>(
           `/v1/billing/connected-accounts/${accountId}/payout-schedule`
         )
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return null
-        }
-        return response.data
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return null
       } finally {
         setLoading(false)
       }
@@ -282,15 +273,14 @@ export function useBilling(): UseBillingReturn {
       setError(null)
       setLoading(true)
       try {
-        const response = await client.put<PayoutSchedule>(
+        return await client.put<PayoutSchedule>(
           `/v1/billing/connected-accounts/${accountId}/payout-schedule`,
           data
         )
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return null
-        }
-        return response.data
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return null
       } finally {
         setLoading(false)
       }
@@ -310,12 +300,11 @@ export function useBilling(): UseBillingReturn {
               .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
               .join('&')
           : ''
-        const response = await client.get<BillingTransaction[]>(`/v1/billing/transactions${query}`)
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return []
-        }
-        return response.data
+        return await client.get<BillingTransaction[]>(`/v1/billing/transactions${query}`)
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return []
       } finally {
         setLoading(false)
       }
@@ -335,14 +324,13 @@ export function useBilling(): UseBillingReturn {
               .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
               .join('&')
           : ''
-        const response = await client.get<TransactionSummary>(
+        return await client.get<TransactionSummary>(
           `/v1/billing/transactions/summary${query}`
         )
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return null
-        }
-        return response.data
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return null
       } finally {
         setLoading(false)
       }
@@ -355,15 +343,15 @@ export function useBilling(): UseBillingReturn {
       setError(null)
       setLoading(true)
       try {
-        const response = await client.post<{ client_secret: string }>(
+        const result = await client.post<{ client_secret: string }>(
           '/v1/billing/setup-sessions',
           data
         )
-        if (!response.success || !response.data) {
-          setError(response.error || null)
-          return null
-        }
-        return response.data.client_secret
+        return result.client_secret
+      } catch (err) {
+        const apiError = err instanceof ScaleMuleApiError ? err : { code: 'UNKNOWN', message: err instanceof Error ? err.message : 'Unknown error' }
+        setError(apiError)
+        return null
       } finally {
         setLoading(false)
       }

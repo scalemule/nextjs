@@ -18,6 +18,7 @@
  * ```
  */
 
+import { ScaleMuleApiError } from '../types'
 import { createServerClient } from './client'
 
 // ============================================================================
@@ -153,27 +154,22 @@ export async function getBundle<T = Record<string, unknown>>(
     const client = createServerClient()
     const result = await client.bundles.get<T>(key, resolve)
 
-    if (!result.success) {
-      if (result.error?.code === 'BUNDLE_NOT_FOUND') {
-        return undefined
-      }
-      console.error(`[ScaleMule Bundles] Failed to fetch ${key}:`, result.error)
-      return undefined
-    }
-
     // Cache the result
-    if (!noCache && result.data) {
+    if (!noCache && result) {
       bundlesCache[key] = {
-        type: result.data.type,
-        data: result.data.data,
-        version: result.data.version,
-        inheritsFrom: result.data.inherits_from,
+        type: result.type,
+        data: result.data,
+        version: result.version,
+        inheritsFrom: result.inherits_from,
         cachedAt: Date.now(),
       }
     }
 
-    return result.data?.data
+    return result?.data
   } catch (error) {
+    if (error instanceof ScaleMuleApiError && error.code === 'BUNDLE_NOT_FOUND') {
+      return undefined
+    }
     console.error(`[ScaleMule Bundles] Error fetching ${key}:`, error)
     return undefined
   }

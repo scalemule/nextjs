@@ -98,7 +98,7 @@ export function errorCodeToStatus(code: string): number {
 // ============================================================================
 
 /**
- * Result shape accepted by unwrap().
+ * Result shape accepted by unwrap() for backward compatibility.
  * Compatible with both the base SDK's { data, error } and the
  * Next.js SDK's { success, data, error } response contracts.
  */
@@ -109,30 +109,46 @@ type SdkResult<T> = {
 }
 
 /**
- * Convert an SDK result into throw-on-error.
+ * Convert an SDK result into throw-on-error, or pass through a raw value.
  *
- * If the result has an error (or success === false), throws a ScaleMuleError
- * with the appropriate HTTP status code. Otherwise returns the data, typed
- * and non-null.
+ * Since SDK methods now throw on error and return data directly,
+ * unwrap() acts as a pass-through for direct values. It still supports
+ * the legacy { success, data, error } envelope for backward compatibility.
  *
  * @example
  * ```ts
- * const user = unwrap(await sm.auth.me(token))
- * const snaps = unwrap(await sm.data.query('snaps', { ... }))
+ * // New style (SDK methods throw on error, return T directly):
+ * const user = await sm.auth.me(token)
+ *
+ * // Legacy style (still works with unwrap):
+ * const user = unwrap(legacyResult)
  * ```
  */
-export function unwrap<T>(result: SdkResult<T>): T {
-  if (result.error || result.success === false) {
-    const err = result.error
-    const code = err?.code || 'UNKNOWN_ERROR'
-    const status = (err as Record<string, unknown> | undefined)?.status as number | undefined
-      || errorCodeToStatus(code)
-    throw new ScaleMuleError(
-      code,
-      err?.message || 'An error occurred',
-      status,
-      (err as Record<string, unknown> | undefined)?.details as Record<string, unknown> | undefined
-    )
+export function unwrap<T>(result: T | SdkResult<T>): T {
+  // If result looks like a legacy envelope, unwrap it
+  if (
+    result !== null &&
+    result !== undefined &&
+    typeof result === 'object' &&
+    ('success' in result || 'error' in result) &&
+    'data' in result
+  ) {
+    const envelope = result as SdkResult<T>
+    if (envelope.error || envelope.success === false) {
+      const err = envelope.error
+      const code = err?.code || 'UNKNOWN_ERROR'
+      const status = (err as Record<string, unknown> | undefined)?.status as number | undefined
+        || errorCodeToStatus(code)
+      throw new ScaleMuleError(
+        code,
+        err?.message || 'An error occurred',
+        status,
+        (err as Record<string, unknown> | undefined)?.details as Record<string, unknown> | undefined
+      )
+    }
+    return envelope.data as T
   }
-  return result.data as T
+
+  // Direct value pass-through (new SDK style)
+  return result as T
 }

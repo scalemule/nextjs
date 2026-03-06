@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { useScaleMule } from '../provider'
+import { ScaleMuleApiError } from '../types'
 import type {
   UseContentReturn,
   StorageFile,
@@ -93,19 +94,10 @@ export function useContent(options: UseContentOptions = {}): UseContentReturn {
         const query = queryParams.toString()
         const path = `/v1/storage/my-files${query ? `?${query}` : ''}`
 
-        const response = await client.get<ListFilesResponse>(path)
+        const data = await client.get<ListFilesResponse>(path)
 
-        if (!response.success || !response.data) {
-          const err = response.error || {
-            code: 'LIST_FAILED',
-            message: 'Failed to list files',
-          }
-          setLocalError(err)
-          throw err
-        }
-
-        setFiles(response.data.files)
-        return response.data
+        setFiles(data.files)
+        return data
       } finally {
         setLoading(false)
       }
@@ -141,26 +133,17 @@ export function useContent(options: UseContentOptions = {}): UseContentReturn {
           options?.onProgress?.(progress)
         }
 
-        const response = await client.upload<UploadResponse>(
+        const data = await client.upload<UploadResponse>(
           '/v1/storage/upload',
           file,
           additionalFields,
           { onProgress }
         )
 
-        if (!response.success || !response.data) {
-          const err = response.error || {
-            code: 'UPLOAD_FAILED',
-            message: 'Failed to upload file',
-          }
-          setLocalError(err)
-          throw err
-        }
-
         // Refresh file list after successful upload
         await list()
 
-        return response.data
+        return data
       } finally {
         setLoading(false)
         setUploadProgress(null)
@@ -178,16 +161,7 @@ export function useContent(options: UseContentOptions = {}): UseContentReturn {
       setLoading(true)
 
       try {
-        const response = await client.delete(`/v1/storage/files/${fileId}`)
-
-        if (!response.success) {
-          const err = response.error || {
-            code: 'DELETE_FAILED',
-            message: 'Failed to delete file',
-          }
-          setLocalError(err)
-          throw err
-        }
+        await client.delete(`/v1/storage/files/${fileId}`)
 
         // Remove from local state
         setFiles((prev) => prev.filter((f) => f.id !== fileId))
@@ -205,18 +179,7 @@ export function useContent(options: UseContentOptions = {}): UseContentReturn {
     async (fileId: string): Promise<StorageFile> => {
       setLocalError(null)
 
-      const response = await client.get<StorageFile>(`/v1/storage/files/${fileId}/info`)
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'GET_FAILED',
-          message: 'Failed to get file info',
-        }
-        setLocalError(err)
-        throw err
-      }
-
-      return response.data
+      return await client.get<StorageFile>(`/v1/storage/files/${fileId}/info`)
     },
     [client]
   )
@@ -240,18 +203,7 @@ export function useContent(options: UseContentOptions = {}): UseContentReturn {
     async (request: SignedUploadRequest): Promise<SignedUploadResponse> => {
       setLocalError(null)
 
-      const response = await client.post<SignedUploadResponse>('/v1/storage/signed-upload', request)
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'SIGNED_URL_FAILED',
-          message: 'Failed to get signed upload URL',
-        }
-        setLocalError(err)
-        throw err
-      }
-
-      return response.data
+      return await client.post<SignedUploadResponse>('/v1/storage/signed-upload', request)
     },
     [client]
   )
@@ -332,21 +284,12 @@ export function useContent(options: UseContentOptions = {}): UseContentReturn {
     async (fileId: string): Promise<StorageFile> => {
       setLocalError(null)
 
-      const response = await client.post<StorageFile>(`/v1/storage/signed-upload/${fileId}/complete`)
-
-      if (!response.success || !response.data) {
-        const err = response.error || {
-          code: 'COMPLETE_UPLOAD_FAILED',
-          message: 'Failed to complete upload',
-        }
-        setLocalError(err)
-        throw err
-      }
+      const data = await client.post<StorageFile>(`/v1/storage/signed-upload/${fileId}/complete`)
 
       // Refresh file list
       await list()
 
-      return response.data
+      return data
     },
     [client, list]
   )
