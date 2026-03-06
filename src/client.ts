@@ -636,13 +636,14 @@ export class ScaleMuleClient {
 
         clearTimeout(timeoutId)
 
-        const data = await response.json()
+        const text = await response.text()
+        const responseData = text ? JSON.parse(text) : null
 
         if (!response.ok) {
           // Handle API error response
-          const error: ApiError = data.error || {
+          const error: ApiError = responseData?.error || {
             code: `HTTP_${response.status}`,
-            message: data.message || response.statusText,
+            message: responseData?.message || response.statusText,
           }
 
           // Check if we should retry this status code
@@ -663,7 +664,9 @@ export class ScaleMuleClient {
           return { success: false, error }
         }
 
-        return data as ApiResponse<T>
+        // Unwrap envelope: backend may return { data: T } or raw T
+        const data = responseData?.data !== undefined ? responseData.data : responseData
+        return { success: true, data: data as T }
       } catch (err) {
         clearTimeout(timeoutId)
 
@@ -831,12 +834,13 @@ export class ScaleMuleClient {
           body: retryFormData,
         })
 
-        const data = await response.json()
+        const uploadText = await response.text()
+        const responseData = uploadText ? JSON.parse(uploadText) : null
 
         if (!response.ok) {
-          const error: ApiError = data.error || {
+          const error: ApiError = responseData?.error || {
             code: `HTTP_${response.status}`,
-            message: data.message || response.statusText,
+            message: responseData?.message || response.statusText,
           }
 
           // Check if this is a retryable error
@@ -853,7 +857,9 @@ export class ScaleMuleClient {
           return { success: false, error }
         }
 
-        return data as ApiResponse<T>
+        // Unwrap envelope: backend may return { data: T } or raw T
+        const data = responseData?.data !== undefined ? responseData.data : responseData
+        return { success: true, data: data as T }
       } catch (err) {
         lastError = {
           code: 'UPLOAD_ERROR',
