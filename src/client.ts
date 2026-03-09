@@ -360,6 +360,12 @@ export interface ClientConfig {
   enableRateLimitQueue?: boolean
   /** Enable offline queue (queues requests when offline, syncs when back online) */
   enableOfflineQueue?: boolean
+  /**
+   * Signal that a session will be established asynchronously (e.g. via auth proxy).
+   * When true, API requests will wait for the session to be resolved before sending,
+   * preventing race conditions where requests fire before the auth token is available.
+   */
+  pendingSessionInit?: boolean
 }
 
 /**
@@ -424,6 +430,8 @@ export class ScaleMuleClient {
   private offlineQueue: OfflineQueue | null = null
   private enableRateLimitQueue: boolean
   private enableOfflineQueue: boolean
+  private sessionGate: Promise<void> | null = null
+  private resolveSessionGate: (() => void) | null = null
 
   constructor(config: ClientConfig) {
     this.apiKey = config.apiKey
@@ -441,6 +449,12 @@ export class ScaleMuleClient {
     if (this.enableOfflineQueue) {
       this.offlineQueue = new OfflineQueue(this.storage)
       this.offlineQueue.setOnlineCallback(() => this.syncOfflineQueue())
+    }
+
+    // If session will be established asynchronously, set up a gate
+    // so API requests wait for auth before sending
+    if (config.pendingSessionInit) {
+      this.setSessionPending()
     }
   }
 
@@ -519,6 +533,30 @@ export class ScaleMuleClient {
   }
 
   /**
+   * Signal that a session is being established asynchronously.
+   * API requests will wait until resolveSessionPending() is called.
+   */
+  setSessionPending(): void {
+    if (!this.sessionGate) {
+      this.sessionGate = new Promise((resolve) => {
+        this.resolveSessionGate = resolve
+      })
+    }
+  }
+
+  /**
+   * Resolve the pending session gate, allowing queued API requests to proceed.
+   * Must be called after setSessionPending(), whether session was established or not.
+   */
+  resolveSessionPending(): void {
+    if (this.resolveSessionGate) {
+      this.resolveSessionGate()
+      this.resolveSessionGate = null
+      this.sessionGate = null
+    }
+  }
+
+  /**
    * Initialize client by loading persisted session
    */
   async initialize(): Promise<void> {
@@ -527,6 +565,12 @@ export class ScaleMuleClient {
 
     if (token) this.sessionToken = token
     if (userId) this.userId = userId
+
+    // If we restored a session from storage, resolve the gate immediately
+    // so API requests don't wait for /me revalidation
+    if (token) {
+      this.resolveSessionPending()
+    }
 
     if (this.debug) {
       console.log('[ScaleMule] Initialized with session:', !!token)
@@ -612,6 +656,12 @@ export class ScaleMuleClient {
     path: string,
     options: RequestOptions = {}
   ): Promise<T> {
+    // If a session is being established asynchronously, wait for it
+    // before sending the request so auth headers are included
+    if (this.sessionGate) {
+      await this.sessionGate
+    }
+
     const url = `${this.gatewayUrl}${path}`
     const headers = this.buildHeaders(options)
     const maxRetries = options.skipRetry ? 0 : (options.retries ?? 2)

@@ -110,6 +110,8 @@ export function ScaleMuleProvider({
   const [error, setError] = useState<ApiError | null>(null)
 
   // Create client instance (memoized to prevent recreating on every render)
+  // In auth proxy mode, set pendingSessionInit so API requests wait for the
+  // session token before sending (prevents race conditions with child effects)
   const client = useMemo(
     () =>
       createClient({
@@ -119,8 +121,9 @@ export function ScaleMuleProvider({
         gatewayUrl,
         debug,
         storage,
+        pendingSessionInit: !!authProxyUrl,
       }),
-    [apiKey, applicationId, environment, gatewayUrl, debug, storage]
+    [apiKey, applicationId, environment, gatewayUrl, debug, storage, authProxyUrl]
   )
 
   // Initialize client and restore session on mount
@@ -170,6 +173,10 @@ export function ScaleMuleProvider({
             if (mounted && debug) {
               console.debug('[ScaleMule] Auth proxy session check failed')
             }
+          } finally {
+            // Always resolve the session gate so API requests can proceed,
+            // whether the session was established or not
+            client.resolveSessionPending()
           }
         } else if (client.isAuthenticated()) {
           // Direct mode: validate session via client
