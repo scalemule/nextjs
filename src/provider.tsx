@@ -155,6 +155,10 @@ export function ScaleMuleProvider({
               if (data.success && data.data?.user) {
                 setUser(data.data.user)
                 setCachedUser(data.data.user)
+                // Set the session token on the client so API calls include Authorization header
+                if (data.data.sessionToken) {
+                  await client.setSession(data.data.sessionToken, data.data.userId || '')
+                }
               } else {
                 // Session invalid — clear cached user
                 setUser(null)

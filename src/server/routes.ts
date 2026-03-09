@@ -394,7 +394,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             )
           }
 
-          return successResponse({ user: userData })
+          return successResponse({ user: userData, sessionToken: session.sessionToken, userId: session.userId })
         }
 
         // ==================== Get Session Status ====================
