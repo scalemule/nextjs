@@ -696,11 +696,11 @@ export class ScaleMuleClient {
         }
 
         if (!response.ok) {
-          // Handle API error response
-          const error: ApiError = responseData?.error as ApiError || {
-            code: `HTTP_${response.status}`,
-            message: (responseData?.message as string) || text || response.statusText,
-          }
+          // Handle API error response — normalize string-valued error to ApiError shape
+          const rawError = responseData?.error
+          const error: ApiError = (rawError && typeof rawError === 'object')
+            ? rawError as ApiError
+            : { code: `HTTP_${response.status}`, message: (typeof rawError === 'string' ? rawError : (responseData?.message as string) || text || response.statusText) }
 
           // Check if we should retry this status code
           if (attempt < maxRetries && RETRYABLE_STATUS_CODES.has(response.status)) {

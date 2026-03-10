@@ -358,12 +358,14 @@ export function useAuth(): UseAuthReturn {
 
   /**
    * Resend email verification
+   * @param email - Optional email address for unauthenticated resend (e.g., after EMAIL_NOT_VERIFIED login error)
    */
-  const resendVerification = useCallback(async (): Promise<void> => {
+  const resendVerification = useCallback(async (email?: string): Promise<void> => {
     setError(null)
 
     if (authProxyUrl) {
-      const response = await proxyFetch(authProxyUrl, 'resend-verification', { body: user ? {} : undefined })
+      const body = email ? { email } : user ? {} : undefined
+      const response = await proxyFetch(authProxyUrl, 'resend-verification', { body })
       if (!response.success) {
         const err = response.error || {
           code: 'RESEND_FAILED',
@@ -373,15 +375,19 @@ export function useAuth(): UseAuthReturn {
         throw err
       }
     } else {
-      if (!user) {
+      if (!user && !email) {
         const err: ApiError = {
           code: 'NOT_AUTHENTICATED',
-          message: 'Must be logged in to resend verification',
+          message: 'Must be logged in or provide email to resend verification',
         }
         throw err
       }
       try {
-        await client.post('/v1/auth/resend-verification')
+        if (email && !user) {
+          await client.post('/v1/auth/resend-verification', { email })
+        } else {
+          await client.post('/v1/auth/resend-verification')
+        }
       } catch (err) {
         if (err instanceof ScaleMuleApiError) {
           setError(err)
