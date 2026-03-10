@@ -149,7 +149,16 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             await config.onRegister({ id: registeredUser.id, email: registeredUser.email })
           }
 
-          return successResponse({ user: registeredUser, message: 'Registration successful' }, 201)
+          // Auto-login after registration to establish session
+          let loginData
+          try {
+            loginData = await sm.auth.login({ email, password })
+          } catch {
+            // Registration succeeded but auto-login failed (e.g., email verification required)
+            return successResponse({ user: registeredUser, message: 'Registration successful' }, 201)
+          }
+
+          return withSession(loginData, { user: registeredUser, sessionToken: loginData.session_token, userId: registeredUser.id }, cookieOptions)
         }
 
         // ==================== Login ====================
@@ -185,8 +194,9 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             })
           }
 
-          // Return user with HTTP-only session cookie (no token in response!)
-          return withSession(loginData, { user: loginData.user }, cookieOptions)
+          // Return user + session token with HTTP-only session cookie
+          // Client needs the token to set Authorization headers on API requests
+          return withSession(loginData, { user: loginData.user, sessionToken: loginData.session_token, userId: loginData.user.id }, cookieOptions)
         }
 
         // ==================== Logout ====================

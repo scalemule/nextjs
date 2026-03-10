@@ -123,7 +123,7 @@ export function useAuth(): UseAuthReturn {
       setError(null)
 
       if (authProxyUrl) {
-        const response = await proxyFetch<{ user: User; message: string }>(
+        const response = await proxyFetch<{ user: User; message: string; sessionToken?: string; userId?: string }>(
           authProxyUrl, 'register', { body: data }
         )
 
@@ -134,6 +134,11 @@ export function useAuth(): UseAuthReturn {
           }
           setError(err)
           throw err
+        }
+
+        // Set session token on client if auto-login succeeded
+        if (response.data.sessionToken) {
+          await client.setSession(response.data.sessionToken, response.data.userId || response.data.user?.id || '')
         }
 
         return response.data.user
@@ -179,12 +184,19 @@ export function useAuth(): UseAuthReturn {
           return response.data as LoginResponseWithMFA
         }
 
-        // Proxy sets cookies. Extract user from response.
-        const loginData = response.data as LoginResponse | { user: User }
+        // Proxy sets cookies. Extract user and session token from response.
+        const loginData = response.data as LoginResponse | { user: User; sessionToken?: string; userId?: string }
         const responseUser = 'user' in loginData ? loginData.user : null
 
         if (responseUser) {
           setUser(responseUser)
+        }
+
+        // Set session token on client so API requests include Authorization header
+        const sessionToken = 'sessionToken' in loginData ? loginData.sessionToken : undefined
+        const userId = 'userId' in loginData ? loginData.userId : undefined
+        if (sessionToken) {
+          await client.setSession(sessionToken, userId || responseUser?.id || '')
         }
 
         return response.data as LoginResponse
@@ -880,10 +892,17 @@ export function useAuth(): UseAuthReturn {
           throw err
         }
 
-        const loginData = response.data as LoginResponse | { user: User }
+        const loginData = response.data as LoginResponse | { user: User; sessionToken?: string; userId?: string }
         const responseUser = 'user' in loginData ? loginData.user : null
         if (responseUser) {
           setUser(responseUser)
+        }
+
+        // Set session token on client so API requests include Authorization header
+        const sessionToken = 'sessionToken' in loginData ? loginData.sessionToken : undefined
+        const userId = 'userId' in loginData ? loginData.userId : undefined
+        if (sessionToken) {
+          await client.setSession(sessionToken, userId || responseUser?.id || '')
         }
 
         return response.data as LoginResponse
