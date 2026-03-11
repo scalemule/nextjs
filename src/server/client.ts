@@ -157,15 +157,15 @@ export class ScaleMuleServer {
     /**
      * Register a new user
      */
-    register: async (data: RegisterRequest): Promise<User> => {
-      return this.request<User>('POST', '/v1/auth/register', { body: data })
+    register: async (data: RegisterRequest, options?: { clientContext?: ClientContext }): Promise<User> => {
+      return this.request<User>('POST', '/v1/auth/register', { body: data, clientContext: options?.clientContext })
     },
 
     /**
      * Login user - returns session token (store in HTTP-only cookie)
      */
-    login: async (data: LoginRequest): Promise<LoginResponse> => {
-      return this.request<LoginResponse>('POST', '/v1/auth/login', { body: data })
+    login: async (data: LoginRequest, options?: { clientContext?: ClientContext }): Promise<LoginResponse> => {
+      return this.request<LoginResponse>('POST', '/v1/auth/login', { body: data, clientContext: options?.clientContext })
     },
 
     /**
@@ -198,8 +198,8 @@ export class ScaleMuleServer {
     /**
      * Request password reset email
      */
-    forgotPassword: async (email: string): Promise<{ message: string }> => {
-      return this.request('POST', '/v1/auth/forgot-password', { body: { email } })
+    forgotPassword: async (email: string, options?: { clientContext?: ClientContext }): Promise<{ message: string }> => {
+      return this.request('POST', '/v1/auth/forgot-password', { body: { email }, clientContext: options?.clientContext })
     },
 
     /**
@@ -207,10 +207,12 @@ export class ScaleMuleServer {
      */
     resetPassword: async (
       token: string,
-      newPassword: string
+      newPassword: string,
+      options?: { clientContext?: ClientContext }
     ): Promise<{ message: string }> => {
       return this.request('POST', '/v1/auth/reset-password', {
         body: { token, new_password: newPassword },
+        clientContext: options?.clientContext,
       })
     },
 

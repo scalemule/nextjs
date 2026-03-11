@@ -124,6 +124,10 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
     try {
       const body = await request.json().catch(() => ({}))
 
+      // Extract real client IP/UA for trust scoring — without this, the gateway
+      // sees the server IP and failed logins from one user penalize all users.
+      const clientContext = extractClientContext(request as unknown as { headers: { get(name: string): string | null } })
+
       switch (path) {
         // ==================== Register ====================
         case 'register': {
@@ -135,7 +139,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
           let registeredUser
           try {
-            registeredUser = await sm.auth.register({ email, password, full_name, username, phone })
+            registeredUser = await sm.auth.register({ email, password, full_name, username, phone }, { clientContext })
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
@@ -152,7 +156,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           // Auto-login after registration to establish session
           let loginData
           try {
-            loginData = await sm.auth.login({ email, password })
+            loginData = await sm.auth.login({ email, password }, { clientContext })
           } catch {
             // Registration succeeded but auto-login failed (e.g., email verification required)
             return successResponse({ user: registeredUser, message: 'Registration successful' }, 201)
@@ -171,7 +175,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
           let loginData
           try {
-            loginData = await sm.auth.login({ email, password, remember_me })
+            loginData = await sm.auth.login({ email, password, remember_me }, { clientContext })
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
             const errorCode = apiErr?.code || 'LOGIN_FAILED'
@@ -222,7 +226,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('VALIDATION_ERROR', 'Email required', 400)
           }
 
-          const result = await sm.auth.forgotPassword(email)
+          const result = await sm.auth.forgotPassword(email, { clientContext })
 
           // Always return success to prevent email enumeration
           return successResponse({ message: 'If an account exists, a reset email has been sent' })
@@ -237,7 +241,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           }
 
           try {
-            await sm.auth.resetPassword(token, new_password)
+            await sm.auth.resetPassword(token, new_password, { clientContext })
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
