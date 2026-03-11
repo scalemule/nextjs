@@ -24,6 +24,7 @@ const GATEWAY_URLS: Record<ScaleMuleEnvironment, string> = {
 
 const SESSION_STORAGE_KEY = 'scalemule_session'
 const USER_ID_STORAGE_KEY = 'scalemule_user_id'
+const WORKSPACE_STORAGE_KEY = 'scalemule_workspace_id'
 
 // Status codes that should trigger a retry
 const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504])
@@ -432,6 +433,7 @@ export class ScaleMuleClient {
   private enableOfflineQueue: boolean
   private sessionGate: Promise<void> | null = null
   private resolveSessionGate: (() => void) | null = null
+  private workspaceId: string | null = null
 
   constructor(config: ClientConfig) {
     this.apiKey = config.apiKey
@@ -519,6 +521,26 @@ export class ScaleMuleClient {
   }
 
   /**
+   * Set the active workspace context. All subsequent requests will include
+   * x-sm-workspace-id header. Pass null to clear.
+   */
+  setWorkspaceContext(id: string | null): void {
+    this.workspaceId = id
+    if (id) {
+      this.storage.setItem(WORKSPACE_STORAGE_KEY, id)
+    } else {
+      this.storage.removeItem(WORKSPACE_STORAGE_KEY)
+    }
+  }
+
+  /**
+   * Get the current workspace ID
+   */
+  getWorkspaceId(): string | null {
+    return this.workspaceId
+  }
+
+  /**
    * Get the gateway URL
    */
   getGatewayUrl(): string {
@@ -566,6 +588,9 @@ export class ScaleMuleClient {
     if (token) this.sessionToken = token
     if (userId) this.userId = userId
 
+    const wsId = await this.storage.getItem(WORKSPACE_STORAGE_KEY)
+    if (wsId) this.workspaceId = wsId
+
     // If we restored a session from storage, resolve the gate immediately
     // so API requests don't wait for /me revalidation
     if (token) {
@@ -597,8 +622,10 @@ export class ScaleMuleClient {
   async clearSession(): Promise<void> {
     this.sessionToken = null
     this.userId = null
+    this.workspaceId = null
     await this.storage.removeItem(SESSION_STORAGE_KEY)
     await this.storage.removeItem(USER_ID_STORAGE_KEY)
+    await this.storage.removeItem(WORKSPACE_STORAGE_KEY)
 
     if (this.debug) {
       console.log('[ScaleMule] Session cleared')
@@ -639,6 +666,10 @@ export class ScaleMuleClient {
     // Gateway validates the Bearer token and injects x-user-id downstream
     if (!options?.skipAuth && this.sessionToken) {
       headers.set('Authorization', `Bearer ${this.sessionToken}`)
+    }
+
+    if (this.workspaceId) {
+      headers.set('x-sm-workspace-id', this.workspaceId)
     }
 
     // Set content type if not already set and body is present
@@ -871,6 +902,10 @@ export class ScaleMuleClient {
       headers.set('Authorization', `Bearer ${this.sessionToken}`)
     }
 
+    if (this.workspaceId) {
+      headers.set('x-sm-workspace-id', this.workspaceId)
+    }
+
     let lastError: ApiError | null = null
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -1050,6 +1085,9 @@ export class ScaleMuleClient {
       xhr.setRequestHeader('x-api-key', this.apiKey)
       if (this.sessionToken) {
         xhr.setRequestHeader('Authorization', `Bearer ${this.sessionToken}`)
+      }
+      if (this.workspaceId) {
+        xhr.setRequestHeader('x-sm-workspace-id', this.workspaceId)
       }
 
       xhr.send(formData)

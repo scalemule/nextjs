@@ -20,6 +20,7 @@ var GATEWAY_URLS = {
 };
 var SESSION_STORAGE_KEY = "scalemule_session";
 var USER_ID_STORAGE_KEY = "scalemule_user_id";
+var WORKSPACE_STORAGE_KEY = "scalemule_workspace_id";
 var RETRYABLE_STATUS_CODES = /* @__PURE__ */ new Set([408, 429, 500, 502, 503, 504]);
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -278,6 +279,7 @@ var ScaleMuleClient = class {
     this.offlineQueue = null;
     this.sessionGate = null;
     this.resolveSessionGate = null;
+    this.workspaceId = null;
     this.apiKey = config.apiKey;
     this.applicationId = config.applicationId || null;
     this.gatewayUrl = resolveGatewayUrl(config);
@@ -349,6 +351,24 @@ var ScaleMuleClient = class {
     return this.rateLimitQueue?.isRateLimited || false;
   }
   /**
+   * Set the active workspace context. All subsequent requests will include
+   * x-sm-workspace-id header. Pass null to clear.
+   */
+  setWorkspaceContext(id) {
+    this.workspaceId = id;
+    if (id) {
+      this.storage.setItem(WORKSPACE_STORAGE_KEY, id);
+    } else {
+      this.storage.removeItem(WORKSPACE_STORAGE_KEY);
+    }
+  }
+  /**
+   * Get the current workspace ID
+   */
+  getWorkspaceId() {
+    return this.workspaceId;
+  }
+  /**
    * Get the gateway URL
    */
   getGatewayUrl() {
@@ -390,6 +410,8 @@ var ScaleMuleClient = class {
     const userId = await this.storage.getItem(USER_ID_STORAGE_KEY);
     if (token) this.sessionToken = token;
     if (userId) this.userId = userId;
+    const wsId = await this.storage.getItem(WORKSPACE_STORAGE_KEY);
+    if (wsId) this.workspaceId = wsId;
     if (token) {
       this.resolveSessionPending();
     }
@@ -415,8 +437,10 @@ var ScaleMuleClient = class {
   async clearSession() {
     this.sessionToken = null;
     this.userId = null;
+    this.workspaceId = null;
     await this.storage.removeItem(SESSION_STORAGE_KEY);
     await this.storage.removeItem(USER_ID_STORAGE_KEY);
+    await this.storage.removeItem(WORKSPACE_STORAGE_KEY);
     if (this.debug) {
       console.log("[ScaleMule] Session cleared");
     }
@@ -447,6 +471,9 @@ var ScaleMuleClient = class {
     headers.set("x-api-key", this.apiKey);
     if (!options?.skipAuth && this.sessionToken) {
       headers.set("Authorization", `Bearer ${this.sessionToken}`);
+    }
+    if (this.workspaceId) {
+      headers.set("x-sm-workspace-id", this.workspaceId);
     }
     if (!headers.has("Content-Type") && options?.body && typeof options.body === "string") {
       headers.set("Content-Type", "application/json");
@@ -603,6 +630,9 @@ var ScaleMuleClient = class {
     if (this.sessionToken) {
       headers.set("Authorization", `Bearer ${this.sessionToken}`);
     }
+    if (this.workspaceId) {
+      headers.set("x-sm-workspace-id", this.workspaceId);
+    }
     let lastError = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -739,6 +769,9 @@ var ScaleMuleClient = class {
       xhr.setRequestHeader("x-api-key", this.apiKey);
       if (this.sessionToken) {
         xhr.setRequestHeader("Authorization", `Bearer ${this.sessionToken}`);
+      }
+      if (this.workspaceId) {
+        xhr.setRequestHeader("x-sm-workspace-id", this.workspaceId);
       }
       xhr.send(formData);
     });

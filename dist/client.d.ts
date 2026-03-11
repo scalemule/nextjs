@@ -64,6 +64,7 @@ declare class ScaleMuleClient {
     private enableOfflineQueue;
     private sessionGate;
     private resolveSessionGate;
+    private workspaceId;
     constructor(config: ClientConfig);
     /**
      * Sync offline queue when coming back online
@@ -85,6 +86,15 @@ declare class ScaleMuleClient {
      * Check if currently rate limited
      */
     isRateLimited(): boolean;
+    /**
+     * Set the active workspace context. All subsequent requests will include
+     * x-sm-workspace-id header. Pass null to clear.
+     */
+    setWorkspaceContext(id: string | null): void;
+    /**
+     * Get the current workspace ID
+     */
+    getWorkspaceId(): string | null;
     /**
      * Get the gateway URL
      */
