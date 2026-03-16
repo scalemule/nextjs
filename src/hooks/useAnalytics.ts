@@ -422,10 +422,11 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       if (typeof window !== 'undefined') {
         fullEvent.page_url = window.location.href
         fullEvent.page_title = document.title
-        // Use original external referrer if available, otherwise current document.referrer
-        // This ensures we track the original traffic source (e.g., Google) even after
-        // the user navigates within the site
-        fullEvent.referrer = originalReferrerRef.current || document.referrer || undefined
+        // Send both referrer values — let the backend analytics decide what to use.
+        // referrer: the confirmed external referrer captured on session start
+        // document_referrer: the raw browser document.referrer (may be self-referral after redirects)
+        fullEvent.referrer = originalReferrerRef.current || undefined
+        fullEvent.document_referrer = document.referrer || undefined
       }
 
       return fullEvent
@@ -541,7 +542,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
           ...(data?.properties || {}),
           page_url: data?.page_url || (typeof window !== 'undefined' ? window.location.href : undefined),
           page_title: data?.page_title || (typeof document !== 'undefined' ? document.title : undefined),
-          referrer: data?.referrer || (typeof document !== 'undefined' ? document.referrer : undefined),
+          referrer: data?.referrer || originalReferrerRef.current || undefined,
         },
       }
 
