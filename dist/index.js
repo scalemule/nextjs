@@ -2646,7 +2646,8 @@ function useAnalytics(options = {}) {
       if (typeof window !== "undefined") {
         fullEvent.page_url = window.location.href;
         fullEvent.page_title = document.title;
-        fullEvent.referrer = originalReferrerRef.current || document.referrer || void 0;
+        fullEvent.referrer = originalReferrerRef.current || void 0;
+        fullEvent.document_referrer = document.referrer || void 0;
       }
       return fullEvent;
     },
@@ -2719,7 +2720,7 @@ function useAnalytics(options = {}) {
           ...data?.properties || {},
           page_url: data?.page_url || (typeof window !== "undefined" ? window.location.href : void 0),
           page_title: data?.page_title || (typeof document !== "undefined" ? document.title : void 0),
-          referrer: data?.referrer || (typeof document !== "undefined" ? document.referrer : void 0)
+          referrer: data?.referrer || originalReferrerRef.current || void 0
         }
       };
       return trackEvent(pageEvent);
