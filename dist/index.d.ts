@@ -26,6 +26,8 @@ interface ScaleMuleContextValue {
     publishableKey?: string;
     /** Gateway URL for direct API calls */
     gatewayUrl?: string;
+    /** Configured environment ('dev' or 'prod') */
+    environment?: string;
     /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
     bootstrapFlags?: Record<string, unknown>;
 }

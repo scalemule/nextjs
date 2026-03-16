@@ -1,5 +1,5 @@
-import { S as ServerConfig } from '../webhook-handler-CweF_nT3.mjs';
-export { a as ScaleMuleServer, d as VideoFailedEvent, V as VideoReadyEvent, f as VideoTranscodedEvent, e as VideoUploadedEvent, W as WebhookEvent, g as WebhookRoutesConfig, c as createServerClient, h as createWebhookHandler, b as createWebhookRoutes, p as parseWebhookEvent, r as registerVideoWebhook, v as verifyWebhookSignature } from '../webhook-handler-CweF_nT3.mjs';
+import { S as ServerConfig } from '../webhook-handler-CN_N2XlA.mjs';
+export { a as ScaleMuleServer, e as VideoFailedEvent, V as VideoReadyEvent, g as VideoTranscodedEvent, f as VideoUploadedEvent, W as WebhookEvent, h as WebhookRoutesConfig, c as createServerClient, i as createWebhookHandler, d as createWebhookRoutes, p as parseWebhookEvent, b as registerVideoWebhook, r as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-CN_N2XlA.mjs';
 import { $ as ClientContext, L as LoginResponse, A as ApiError } from '../index-jomBa89d.mjs';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -436,13 +436,8 @@ declare function apiHandler(handler: HandlerFn, options?: HandlerOptions): (requ
 /**
  * Server-side flag bootstrapping for Next.js layouts.
  *
- * Evaluates feature flags on the server during SSR so the client
- * has correct values on first render -- no loading flash, no race condition.
- *
- * Results are cached in-memory with a configurable TTL (default: 60s) to
- * prevent excessive API calls. Since feature flags change infrequently,
- * a short cache window is fine and avoids hammering the flags service on
- * every page render.
+ * Uses @scalemule/sdk FlagClient for local evaluation — ZERO API calls per SSR render.
+ * Falls back to legacy evaluateBatch API call if FlagClient init fails.
  *
  * @example
  * ```ts
@@ -462,20 +457,13 @@ declare function apiHandler(handler: HandlerFn, options?: HandlerOptions): (requ
 /**
  * Evaluate feature flags server-side for bootstrapping the client provider.
  *
- * Extracts the client IP from request headers (x-forwarded-for, x-real-ip)
- * and passes it as ip_address in the evaluation context so IP-based targeting
- * rules work correctly.
- *
- * Results are cached in-memory for `cacheTtlMs` milliseconds (default: 60s).
- * Pass `cacheTtlMs: 0` to disable caching.
- *
- * Returns a Record that can be passed directly to ScaleMuleProvider's
- * bootstrapFlags prop.
+ * Uses local evaluation via FlagClient (zero network calls per render).
+ * Falls back to legacy API if FlagClient is unavailable.
  *
  * @param flagKeys - Array of flag keys to evaluate
  * @param environment - Environment name (default: 'prod')
  * @param extraContext - Additional context attributes to include
- * @param cacheTtlMs - Cache TTL in milliseconds (default: 60000). Set to 0 to disable.
+ * @param cacheTtlMs - Deprecated (ignored). FlagClient handles caching internally.
  */
 declare function getBootstrapFlags(flagKeys: string[], environment?: string, extraContext?: Record<string, unknown>, cacheTtlMs?: number): Promise<Record<string, unknown>>;
 

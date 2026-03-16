@@ -931,6 +931,7 @@ function ScaleMuleProvider({
       authProxyUrl,
       publishableKey,
       gatewayUrl: gatewayUrl || (environment === "dev" ? "https://api-dev.scalemule.com" : "https://api.scalemule.com"),
+      environment: environment || void 0,
       bootstrapFlags
     }),
     [client, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, bootstrapFlags]
@@ -2847,13 +2848,23 @@ function toApiError(error) {
   };
 }
 function useFeatureFlags(options = {}) {
+  const smContext = useScaleMule();
   const {
-    environment = "prod",
+    environment = smContext.environment ?? "prod",
     context = {},
     keys,
     enabled = true
   } = options;
-  const { client, publishableKey, gatewayUrl, bootstrapFlags } = useScaleMule();
+  const { client, publishableKey, gatewayUrl, bootstrapFlags } = smContext;
+  const warnedRef = react.useRef(false);
+  react.useEffect(() => {
+    if (!warnedRef.current && (!keys || keys.length === 0)) {
+      warnedRef.current = true;
+      console.warn(
+        'useFeatureFlags: "keys" option should be provided. Calling /evaluate/all without explicit keys is deprecated and will be blocked in a future release. Pass keys: ["flag1", "flag2"].'
+      );
+    }
+  }, [keys]);
   const initialFlags = react.useMemo(() => {
     if (!bootstrapFlags) return {};
     const result = {};
@@ -2869,10 +2880,14 @@ function useFeatureFlags(options = {}) {
   const [loading, setLoading] = react.useState(enabled && !hasBootstrap);
   const [error, setError] = react.useState(null);
   const contextRef = react.useRef(context);
+  const keysRef = react.useRef(keys);
   const keysKey = react.useMemo(() => keys && keys.length > 0 ? [...keys].sort().join("|") : "", [keys]);
   react.useEffect(() => {
     contextRef.current = context;
   }, [context]);
+  react.useEffect(() => {
+    keysRef.current = keys;
+  }, [keys]);
   const refresh = react.useCallback(async () => {
     if (!enabled) {
       setLoading(false);
@@ -2880,8 +2895,9 @@ function useFeatureFlags(options = {}) {
     }
     setLoading(true);
     try {
-      const payload = keys && keys.length > 0 ? { flag_keys: keys, environment, context: contextRef.current } : { environment, context: contextRef.current };
-      const endpoint = keys && keys.length > 0 ? "/v1/flags/evaluate/batch" : "/v1/flags/evaluate/all";
+      const currentKeys = keysRef.current;
+      const payload = currentKeys && currentKeys.length > 0 ? { flag_keys: currentKeys, environment, context: contextRef.current } : { environment, context: contextRef.current };
+      const endpoint = currentKeys && currentKeys.length > 0 ? "/v1/flags/evaluate/batch" : "/v1/flags/evaluate/all";
       let result;
       if (publishableKey && gatewayUrl) {
         const response = await fetch(`${gatewayUrl}${endpoint}`, {
@@ -2907,11 +2923,15 @@ function useFeatureFlags(options = {}) {
     } finally {
       setLoading(false);
     }
-  }, [client, enabled, environment, keys, keysKey, publishableKey, gatewayUrl]);
+  }, [client, enabled, environment, keysKey, publishableKey, gatewayUrl]);
   const bootstrapCoversKeys = react.useMemo(() => {
     if (!hasBootstrap || !keys || keys.length === 0) return false;
-    return keys.every((k) => k in initialFlags);
-  }, [hasBootstrap, keys, initialFlags]);
+    if (!keys.every((k) => k in initialFlags)) return false;
+    if (environment !== (smContext.environment ?? "prod")) return false;
+    const contextKeys = Object.keys(context).filter((k) => k !== "ip_address");
+    if (contextKeys.length > 0) return false;
+    return true;
+  }, [hasBootstrap, keys, initialFlags, environment, smContext.environment, context]);
   react.useEffect(() => {
     if (!bootstrapCoversKeys) {
       void refresh();

@@ -1,6 +1,7 @@
 import { cookies, headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { FlagClient } from '@scalemule/sdk/flags/server';
 
 // src/types/index.ts
 var ScaleMuleApiError = class extends Error {
@@ -1763,50 +1764,87 @@ function createWebhookHandler(config = {}) {
     }
   };
 }
+var _clients = /* @__PURE__ */ new Map();
+var _initPromises = /* @__PURE__ */ new Map();
 var _serverClient = null;
-function getClient() {
+function getServerClient() {
   if (!_serverClient) {
     _serverClient = createServerClient();
   }
   return _serverClient;
 }
-var _flagCache = /* @__PURE__ */ new Map();
-var DEFAULT_CACHE_TTL_MS = 6e4;
-async function getBootstrapFlags(flagKeys, environment = "prod", extraContext = {}, cacheTtlMs = DEFAULT_CACHE_TTL_MS) {
+var GATEWAY_URLS2 = {
+  dev: "https://api-dev.scalemule.com",
+  prod: "https://api.scalemule.com"
+};
+function resolveGatewayUrl2() {
+  if (process.env.SCALEMULE_API_URL) return process.env.SCALEMULE_API_URL;
+  const env = process.env.SCALEMULE_ENV || "prod";
+  return GATEWAY_URLS2[env] || GATEWAY_URLS2.prod;
+}
+async function getFlagClient(environment) {
+  const apiKey = process.env.SCALEMULE_API_KEY;
+  const gatewayUrl = resolveGatewayUrl2();
+  const key = `${environment}:${gatewayUrl}`;
+  const existing = _clients.get(key);
+  if (existing) return existing;
+  const pending = _initPromises.get(key);
+  if (pending) return pending;
+  const promise = (async () => {
+    const client = new FlagClient({ apiKey, environment, gatewayUrl });
+    await Promise.race([
+      client.init(),
+      new Promise(
+        (_, reject) => setTimeout(() => reject(new Error("FlagClient init timeout")), 3e3)
+      )
+    ]);
+    _clients.set(key, client);
+    return client;
+  })();
+  _initPromises.set(key, promise);
   try {
-    const cacheKey = [...flagKeys].sort().join("|") + ":" + environment;
-    if (cacheTtlMs > 0) {
-      const cached = _flagCache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < cacheTtlMs) {
-        return cached.result;
-      }
-    }
+    return await promise;
+  } catch (e) {
+    _initPromises.delete(key);
+    throw e;
+  }
+}
+var _shutdownRegistered = false;
+function ensureShutdownHook() {
+  if (_shutdownRegistered) return;
+  _shutdownRegistered = true;
+  if (typeof process !== "undefined" && typeof process.once === "function") {
+    process.once("SIGTERM", async () => {
+      const shutdowns = Array.from(_clients.values()).map((c) => c.shutdown());
+      await Promise.allSettled(shutdowns);
+    });
+  }
+}
+function extractClientIp(hdrs) {
+  const realIp = hdrs.get("x-real-ip") || hdrs.get("x-real-client-ip");
+  const forwardedFor = hdrs.get("x-forwarded-for");
+  return realIp || (forwardedFor ? forwardedFor.split(",")[0].trim() : void 0);
+}
+async function getBootstrapFlags(flagKeys, environment = "prod", extraContext = {}, cacheTtlMs = 0) {
+  try {
+    const client = await getFlagClient(environment);
+    ensureShutdownHook();
     const hdrs = await headers();
-    const forwardedFor = hdrs.get("x-forwarded-for");
-    const realIp = hdrs.get("x-real-ip") || hdrs.get("x-real-client-ip");
-    const clientIp = realIp || (forwardedFor ? forwardedFor.split(",")[0].trim() : void 0);
-    const context = {
-      ...extraContext
-    };
-    if (clientIp) {
-      context.ip_address = clientIp;
-    }
-    const result = await getClient().flags.evaluateBatch(flagKeys, context, environment);
-    const flagResult = result || {};
-    if (cacheTtlMs > 0) {
-      _flagCache.set(cacheKey, { result: flagResult, timestamp: Date.now() });
-      if (_flagCache.size > 100) {
-        const now = Date.now();
-        for (const [key, entry] of _flagCache) {
-          if (now - entry.timestamp > cacheTtlMs) {
-            _flagCache.delete(key);
-          }
-        }
-      }
-    }
-    return flagResult;
+    const clientIp = extractClientIp(hdrs);
+    const context = { ...extraContext };
+    if (clientIp) context.ip_address = clientIp;
+    return client.evaluateBatch(flagKeys, context);
   } catch {
-    return {};
+    try {
+      const hdrs = await headers();
+      const clientIp = extractClientIp(hdrs);
+      const context = { ...extraContext };
+      if (clientIp) context.ip_address = clientIp;
+      const result = await getServerClient().flags.evaluateBatch(flagKeys, context, environment);
+      return result || {};
+    } catch {
+      return {};
+    }
   }
 }
 function globToRegex(pattern) {
@@ -1936,14 +1974,14 @@ function clearOAuthState(response) {
 }
 
 // src/server/secrets.ts
-var DEFAULT_CACHE_TTL_MS2 = 5 * 60 * 1e3;
+var DEFAULT_CACHE_TTL_MS = 5 * 60 * 1e3;
 var secretsCache = {};
 var globalConfig = {};
 function configureSecrets(config) {
   globalConfig = { ...globalConfig, ...config };
 }
 async function getAppSecret(key) {
-  const cacheTtl = globalConfig.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS2;
+  const cacheTtl = globalConfig.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
   const noCache = globalConfig.noCache ?? false;
   if (!noCache) {
     const cached = secretsCache[key];
@@ -1995,14 +2033,14 @@ async function prefetchSecrets(keys) {
 }
 
 // src/server/bundles.ts
-var DEFAULT_CACHE_TTL_MS3 = 5 * 60 * 1e3;
+var DEFAULT_CACHE_TTL_MS2 = 5 * 60 * 1e3;
 var bundlesCache = {};
 var globalConfig2 = {};
 function configureBundles(config) {
   globalConfig2 = { ...globalConfig2, ...config };
 }
 async function getBundle(key, resolve = true) {
-  const cacheTtl = globalConfig2.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS3;
+  const cacheTtl = globalConfig2.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS2;
   const noCache = globalConfig2.noCache ?? false;
   if (!noCache) {
     const cached = bundlesCache[key];
@@ -2096,4 +2134,4 @@ async function prefetchBundles(keys) {
   await Promise.all(keys.map((key) => getBundle(key)));
 }
 
-export { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, OAUTH_STATE_COOKIE_NAME, SESSION_COOKIE_NAME, ScaleMuleError, ScaleMuleServer, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createServerClient, createWebhookHandler, createWebhookRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, parseWebhookEvent, prefetchBundles, prefetchSecrets, registerVideoWebhook, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, verifyWebhookSignature, withAuth, withCSRFProtection, withCSRFToken, withSession };
+export { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, OAUTH_STATE_COOKIE_NAME, SESSION_COOKIE_NAME, ScaleMuleError, ScaleMuleServer, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createServerClient, createWebhookHandler, createWebhookRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, parseWebhookEvent, prefetchBundles, prefetchSecrets, registerVideoWebhook, requireAppSecret, requireBundle, requireSession, resolveGatewayUrl, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, verifyWebhookSignature, withAuth, withCSRFProtection, withCSRFToken, withSession };
