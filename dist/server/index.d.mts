@@ -439,6 +439,11 @@ declare function apiHandler(handler: HandlerFn, options?: HandlerOptions): (requ
  * Evaluates feature flags on the server during SSR so the client
  * has correct values on first render -- no loading flash, no race condition.
  *
+ * Results are cached in-memory with a configurable TTL (default: 60s) to
+ * prevent excessive API calls. Since feature flags change infrequently,
+ * a short cache window is fine and avoids hammering the flags service on
+ * every page render.
+ *
  * @example
  * ```ts
  * // app/layout.tsx
@@ -461,14 +466,18 @@ declare function apiHandler(handler: HandlerFn, options?: HandlerOptions): (requ
  * and passes it as ip_address in the evaluation context so IP-based targeting
  * rules work correctly.
  *
+ * Results are cached in-memory for `cacheTtlMs` milliseconds (default: 60s).
+ * Pass `cacheTtlMs: 0` to disable caching.
+ *
  * Returns a Record that can be passed directly to ScaleMuleProvider's
  * bootstrapFlags prop.
  *
  * @param flagKeys - Array of flag keys to evaluate
  * @param environment - Environment name (default: 'prod')
  * @param extraContext - Additional context attributes to include
+ * @param cacheTtlMs - Cache TTL in milliseconds (default: 60000). Set to 0 to disable.
  */
-declare function getBootstrapFlags(flagKeys: string[], environment?: string, extraContext?: Record<string, unknown>): Promise<Record<string, unknown>>;
+declare function getBootstrapFlags(flagKeys: string[], environment?: string, extraContext?: Record<string, unknown>, cacheTtlMs?: number): Promise<Record<string, unknown>>;
 
 /**
  * Next.js Middleware Helpers

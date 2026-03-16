@@ -2906,9 +2906,15 @@ function useFeatureFlags(options = {}) {
       setLoading(false);
     }
   }, [client, enabled, environment, keys, keysKey, publishableKey, gatewayUrl]);
+  const bootstrapCoversKeys = useMemo(() => {
+    if (!hasBootstrap || !keys || keys.length === 0) return false;
+    return keys.every((k) => k in initialFlags);
+  }, [hasBootstrap, keys, initialFlags]);
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (!bootstrapCoversKeys) {
+      void refresh();
+    }
+  }, [refresh, bootstrapCoversKeys]);
   const isEnabled = useCallback(
     (flagKey, fallback = false) => {
       const evaluation = flags[flagKey];

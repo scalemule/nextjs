@@ -131,9 +131,19 @@ export function useFeatureFlags(options: UseFeatureFlagsOptions = {}): UseFeatur
     }
   }, [client, enabled, environment, keys, keysKey, publishableKey, gatewayUrl])
 
+  // Skip the initial client-side fetch when server-bootstrapped flags already
+  // cover the requested keys — avoids a redundant evaluate/batch API call on
+  // every page load.
+  const bootstrapCoversKeys = useMemo(() => {
+    if (!hasBootstrap || !keys || keys.length === 0) return false
+    return keys.every((k) => k in initialFlags)
+  }, [hasBootstrap, keys, initialFlags])
+
   useEffect(() => {
-    void refresh()
-  }, [refresh])
+    if (!bootstrapCoversKeys) {
+      void refresh()
+    }
+  }, [refresh, bootstrapCoversKeys])
 
   const isEnabled = useCallback(
     (flagKey: string, fallback = false): boolean => {

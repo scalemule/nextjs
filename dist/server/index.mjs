@@ -1770,8 +1770,17 @@ function getClient() {
   }
   return _serverClient;
 }
-async function getBootstrapFlags(flagKeys, environment = "prod", extraContext = {}) {
+var _flagCache = /* @__PURE__ */ new Map();
+var DEFAULT_CACHE_TTL_MS = 6e4;
+async function getBootstrapFlags(flagKeys, environment = "prod", extraContext = {}, cacheTtlMs = DEFAULT_CACHE_TTL_MS) {
   try {
+    const cacheKey = [...flagKeys].sort().join("|") + ":" + environment;
+    if (cacheTtlMs > 0) {
+      const cached = _flagCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < cacheTtlMs) {
+        return cached.result;
+      }
+    }
     const hdrs = await headers();
     const forwardedFor = hdrs.get("x-forwarded-for");
     const realIp = hdrs.get("x-real-ip") || hdrs.get("x-real-client-ip");
@@ -1783,7 +1792,19 @@ async function getBootstrapFlags(flagKeys, environment = "prod", extraContext = 
       context.ip_address = clientIp;
     }
     const result = await getClient().flags.evaluateBatch(flagKeys, context, environment);
-    return result || {};
+    const flagResult = result || {};
+    if (cacheTtlMs > 0) {
+      _flagCache.set(cacheKey, { result: flagResult, timestamp: Date.now() });
+      if (_flagCache.size > 100) {
+        const now = Date.now();
+        for (const [key, entry] of _flagCache) {
+          if (now - entry.timestamp > cacheTtlMs) {
+            _flagCache.delete(key);
+          }
+        }
+      }
+    }
+    return flagResult;
   } catch {
     return {};
   }
@@ -1915,14 +1936,14 @@ function clearOAuthState(response) {
 }
 
 // src/server/secrets.ts
-var DEFAULT_CACHE_TTL_MS = 5 * 60 * 1e3;
+var DEFAULT_CACHE_TTL_MS2 = 5 * 60 * 1e3;
 var secretsCache = {};
 var globalConfig = {};
 function configureSecrets(config) {
   globalConfig = { ...globalConfig, ...config };
 }
 async function getAppSecret(key) {
-  const cacheTtl = globalConfig.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
+  const cacheTtl = globalConfig.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS2;
   const noCache = globalConfig.noCache ?? false;
   if (!noCache) {
     const cached = secretsCache[key];
@@ -1974,14 +1995,14 @@ async function prefetchSecrets(keys) {
 }
 
 // src/server/bundles.ts
-var DEFAULT_CACHE_TTL_MS2 = 5 * 60 * 1e3;
+var DEFAULT_CACHE_TTL_MS3 = 5 * 60 * 1e3;
 var bundlesCache = {};
 var globalConfig2 = {};
 function configureBundles(config) {
   globalConfig2 = { ...globalConfig2, ...config };
 }
 async function getBundle(key, resolve = true) {
-  const cacheTtl = globalConfig2.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS2;
+  const cacheTtl = globalConfig2.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS3;
   const noCache = globalConfig2.noCache ?? false;
   if (!noCache) {
     const cached = bundlesCache[key];
