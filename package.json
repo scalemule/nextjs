@@ -1,6 +1,6 @@
 {
   "name": "@scalemule/nextjs",
-  "version": "0.0.13",
+  "version": "0.0.17",
   "description": "ScaleMule SDK for Next.js applications - authentication, storage, and user management",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -50,6 +50,9 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
     "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@scalemule/sdk": "^0.0.16"
   },
   "peerDependencies": {
     "next": ">=14.0.0",

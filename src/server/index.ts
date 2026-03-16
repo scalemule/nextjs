@@ -25,7 +25,7 @@
  * ```
  */
 
-export { ScaleMuleServer, createServerClient } from './client'
+export { ScaleMuleServer, createServerClient, resolveGatewayUrl } from './client'
 export type { ServerConfig } from './client'
 
 export {

@@ -48,7 +48,7 @@ export interface ServerConfig {
   debug?: boolean
 }
 
-function resolveGatewayUrl(config: ServerConfig): string {
+export function resolveGatewayUrl(config: ServerConfig): string {
   if (config.gatewayUrl) return config.gatewayUrl
   if (process.env.SCALEMULE_API_URL) return process.env.SCALEMULE_API_URL
   return GATEWAY_URLS[config.environment || 'prod']

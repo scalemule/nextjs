@@ -1,13 +1,8 @@
 /**
  * Server-side flag bootstrapping for Next.js layouts.
  *
- * Evaluates feature flags on the server during SSR so the client
- * has correct values on first render -- no loading flash, no race condition.
- *
- * Results are cached in-memory with a configurable TTL (default: 60s) to
- * prevent excessive API calls. Since feature flags change infrequently,
- * a short cache window is fine and avoids hammering the flags service on
- * every page render.
+ * Uses @scalemule/sdk FlagClient for local evaluation — ZERO API calls per SSR render.
+ * Falls back to legacy evaluateBatch API call if FlagClient init fails.
  *
  * @example
  * ```ts
@@ -26,102 +21,145 @@
  */
 
 import { headers } from 'next/headers'
+import { FlagClient } from '@scalemule/sdk/flags/server'
 import { createServerClient } from './client'
 
-// Cache the server client across requests in the same process
+// ============================================================================
+// FlagClient pool — one per environment:gatewayUrl combo
+// ============================================================================
+
+const _clients = new Map<string, FlagClient>()
+const _initPromises = new Map<string, Promise<FlagClient>>()
+
+// Legacy server client for fallback
 let _serverClient: ReturnType<typeof createServerClient> | null = null
 
-function getClient() {
+function getServerClient() {
   if (!_serverClient) {
     _serverClient = createServerClient()
   }
   return _serverClient
 }
 
-// In-memory flag evaluation cache
-// Keyed by sorted flag keys + environment, stores result + timestamp
-interface CacheEntry {
-  result: Record<string, unknown>
-  timestamp: number
+type ScaleMuleEnvironment = 'dev' | 'prod'
+
+const GATEWAY_URLS: Record<ScaleMuleEnvironment, string> = {
+  dev: 'https://api-dev.scalemule.com',
+  prod: 'https://api.scalemule.com',
 }
 
-const _flagCache = new Map<string, CacheEntry>()
+function resolveGatewayUrl(): string {
+  if (process.env.SCALEMULE_API_URL) return process.env.SCALEMULE_API_URL
+  const env = (process.env.SCALEMULE_ENV || 'prod') as ScaleMuleEnvironment
+  return GATEWAY_URLS[env] || GATEWAY_URLS.prod
+}
 
-// Default cache TTL: 60 seconds. Flag values rarely change, and this prevents
-// the evaluate/batch endpoint from being called on every single SSR render.
-const DEFAULT_CACHE_TTL_MS = 60_000
+async function getFlagClient(environment: string): Promise<FlagClient> {
+  const apiKey = process.env.SCALEMULE_API_KEY!
+  const gatewayUrl = resolveGatewayUrl()
+  const key = `${environment}:${gatewayUrl}`
+
+  const existing = _clients.get(key)
+  if (existing) return existing
+
+  const pending = _initPromises.get(key)
+  if (pending) return pending
+
+  const promise = (async () => {
+    const client = new FlagClient({ apiKey, environment, gatewayUrl })
+    // Race init against a 3s timeout to avoid blocking SSR/liveness probes
+    await Promise.race([
+      client.init(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('FlagClient init timeout')), 3000)
+      ),
+    ])
+    _clients.set(key, client)
+    return client
+  })()
+  _initPromises.set(key, promise)
+
+  try {
+    return await promise
+  } catch (e) {
+    _initPromises.delete(key)
+    throw e
+  }
+}
+
+// ============================================================================
+// Graceful shutdown
+// ============================================================================
+
+let _shutdownRegistered = false
+
+function ensureShutdownHook(): void {
+  if (_shutdownRegistered) return
+  _shutdownRegistered = true
+  // Guard for Edge Runtime where process.once is unavailable
+  if (typeof process !== 'undefined' && typeof process.once === 'function') {
+    process.once('SIGTERM', async () => {
+      const shutdowns = Array.from(_clients.values()).map((c) => c.shutdown())
+      await Promise.allSettled(shutdowns)
+    })
+  }
+}
+
+// ============================================================================
+// IP extraction helper
+// ============================================================================
+
+function extractClientIp(hdrs: Awaited<ReturnType<typeof headers>>): string | undefined {
+  const realIp = hdrs.get('x-real-ip') || hdrs.get('x-real-client-ip')
+  const forwardedFor = hdrs.get('x-forwarded-for')
+  return realIp || (forwardedFor ? forwardedFor.split(',')[0].trim() : undefined)
+}
+
+// ============================================================================
+// Public API
+// ============================================================================
 
 /**
  * Evaluate feature flags server-side for bootstrapping the client provider.
  *
- * Extracts the client IP from request headers (x-forwarded-for, x-real-ip)
- * and passes it as ip_address in the evaluation context so IP-based targeting
- * rules work correctly.
- *
- * Results are cached in-memory for `cacheTtlMs` milliseconds (default: 60s).
- * Pass `cacheTtlMs: 0` to disable caching.
- *
- * Returns a Record that can be passed directly to ScaleMuleProvider's
- * bootstrapFlags prop.
+ * Uses local evaluation via FlagClient (zero network calls per render).
+ * Falls back to legacy API if FlagClient is unavailable.
  *
  * @param flagKeys - Array of flag keys to evaluate
  * @param environment - Environment name (default: 'prod')
  * @param extraContext - Additional context attributes to include
- * @param cacheTtlMs - Cache TTL in milliseconds (default: 60000). Set to 0 to disable.
+ * @param cacheTtlMs - Deprecated (ignored). FlagClient handles caching internally.
  */
 export async function getBootstrapFlags(
   flagKeys: string[],
   environment: string = 'prod',
   extraContext: Record<string, unknown> = {},
-  cacheTtlMs: number = DEFAULT_CACHE_TTL_MS,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  cacheTtlMs: number = 0,
 ): Promise<Record<string, unknown>> {
   try {
-    // Build cache key from sorted flag keys + environment
-    const cacheKey = [...flagKeys].sort().join('|') + ':' + environment
-
-    // Check cache first (skip if caching disabled)
-    if (cacheTtlMs > 0) {
-      const cached = _flagCache.get(cacheKey)
-      if (cached && Date.now() - cached.timestamp < cacheTtlMs) {
-        return cached.result
-      }
-    }
+    const client = await getFlagClient(environment)
+    ensureShutdownHook()
 
     const hdrs = await headers()
+    const clientIp = extractClientIp(hdrs)
+    const context = { ...extraContext } as Record<string, unknown>
+    if (clientIp) context.ip_address = clientIp
 
-    // Extract client IP from standard headers set by load balancers/proxies
-    const forwardedFor = hdrs.get('x-forwarded-for')
-    const realIp = hdrs.get('x-real-ip') || hdrs.get('x-real-client-ip')
-    const clientIp = realIp || (forwardedFor ? forwardedFor.split(',')[0].trim() : undefined)
-
-    const context: Record<string, unknown> = {
-      ...extraContext,
-    }
-    if (clientIp) {
-      context.ip_address = clientIp
-    }
-
-    const result = await getClient().flags.evaluateBatch(flagKeys, context, environment)
-    const flagResult = result || {}
-
-    // Store in cache
-    if (cacheTtlMs > 0) {
-      _flagCache.set(cacheKey, { result: flagResult, timestamp: Date.now() })
-
-      // Evict stale entries to prevent unbounded growth (keep at most 100)
-      if (_flagCache.size > 100) {
-        const now = Date.now()
-        for (const [key, entry] of _flagCache) {
-          if (now - entry.timestamp > cacheTtlMs) {
-            _flagCache.delete(key)
-          }
-        }
-      }
-    }
-
-    return flagResult
+    return client.evaluateBatch(flagKeys, context)
   } catch {
-    // Fail-open: return empty object so the client falls back to defaults
-    return {}
+    // FlagClient init failed — fall back to legacy API call
+    try {
+      const hdrs = await headers()
+      const clientIp = extractClientIp(hdrs)
+      const context: Record<string, unknown> = { ...extraContext }
+      if (clientIp) context.ip_address = clientIp
+
+      const result = await getServerClient().flags.evaluateBatch(flagKeys, context, environment)
+      return result || {}
+    } catch {
+      // Both paths failed — fail-open with empty object
+      return {}
+    }
   }
 }

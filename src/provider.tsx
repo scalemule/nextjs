@@ -64,6 +64,8 @@ interface ScaleMuleContextValue {
   publishableKey?: string
   /** Gateway URL for direct API calls */
   gatewayUrl?: string
+  /** Configured environment ('dev' or 'prod') */
+  environment?: string
   /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
   bootstrapFlags?: Record<string, unknown>
 }
@@ -255,6 +257,7 @@ export function ScaleMuleProvider({
       authProxyUrl,
       publishableKey,
       gatewayUrl: gatewayUrl || (environment === 'dev' ? 'https://api-dev.scalemule.com' : 'https://api.scalemule.com'),
+      environment: environment || undefined,
       bootstrapFlags,
     }),
     [client, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, bootstrapFlags]
