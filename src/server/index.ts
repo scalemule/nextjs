@@ -70,6 +70,8 @@ export type {
 
 export { createWebhookHandler } from './webhook-handler'
 
+export { getBootstrapFlags } from './bootstrap-flags'
+
 export { createAuthMiddleware, withAuth } from './middleware'
 export type { AuthMiddlewareConfig } from './middleware'
 

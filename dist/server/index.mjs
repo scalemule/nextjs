@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 
@@ -26,40 +26,40 @@ function validateIP(ip) {
   return void 0;
 }
 function extractClientContext(request) {
-  const headers = request.headers;
+  const headers2 = request.headers;
   let ip;
-  const cfConnectingIp = headers.get("cf-connecting-ip");
+  const cfConnectingIp = headers2.get("cf-connecting-ip");
   if (cfConnectingIp) {
     ip = validateIP(cfConnectingIp);
   }
   if (!ip) {
-    const doConnectingIp = headers.get("do-connecting-ip");
+    const doConnectingIp = headers2.get("do-connecting-ip");
     if (doConnectingIp) {
       ip = validateIP(doConnectingIp);
     }
   }
   if (!ip) {
-    const realIp = headers.get("x-real-ip");
+    const realIp = headers2.get("x-real-ip");
     if (realIp) {
       ip = validateIP(realIp);
     }
   }
   if (!ip) {
-    const forwardedFor = headers.get("x-forwarded-for");
+    const forwardedFor = headers2.get("x-forwarded-for");
     if (forwardedFor) {
       const firstIp = forwardedFor.split(",")[0]?.trim();
       ip = validateIP(firstIp);
     }
   }
   if (!ip) {
-    const vercelForwarded = headers.get("x-vercel-forwarded-for");
+    const vercelForwarded = headers2.get("x-vercel-forwarded-for");
     if (vercelForwarded) {
       const firstIp = vercelForwarded.split(",")[0]?.trim();
       ip = validateIP(firstIp);
     }
   }
   if (!ip) {
-    const trueClientIp = headers.get("true-client-ip");
+    const trueClientIp = headers2.get("true-client-ip");
     if (trueClientIp) {
       ip = validateIP(trueClientIp);
     }
@@ -67,9 +67,9 @@ function extractClientContext(request) {
   if (!ip && request.ip) {
     ip = validateIP(request.ip);
   }
-  const userAgent = headers.get("user-agent") || void 0;
-  const deviceFingerprint = headers.get("x-device-fingerprint") || void 0;
-  const referrer = headers.get("referer") || void 0;
+  const userAgent = headers2.get("user-agent") || void 0;
+  const deviceFingerprint = headers2.get("x-device-fingerprint") || void 0;
+  const referrer = headers2.get("referer") || void 0;
   return {
     ip,
     userAgent,
@@ -78,9 +78,9 @@ function extractClientContext(request) {
   };
 }
 function extractClientContextFromReq(req) {
-  const headers = req.headers;
+  const headers2 = req.headers;
   const getHeader = (name) => {
-    const value = headers[name.toLowerCase()];
+    const value = headers2[name.toLowerCase()];
     if (Array.isArray(value)) {
       return value[0];
     }
@@ -137,24 +137,24 @@ function extractClientContextFromReq(req) {
   };
 }
 function buildClientContextHeaders(context) {
-  const headers = {};
+  const headers2 = {};
   if (!context) {
-    return headers;
+    return headers2;
   }
   if (context.ip) {
-    headers["x-sm-forwarded-client-ip"] = context.ip;
-    headers["X-Client-IP"] = context.ip;
+    headers2["x-sm-forwarded-client-ip"] = context.ip;
+    headers2["X-Client-IP"] = context.ip;
   }
   if (context.userAgent) {
-    headers["X-Client-User-Agent"] = context.userAgent;
+    headers2["X-Client-User-Agent"] = context.userAgent;
   }
   if (context.deviceFingerprint) {
-    headers["X-Client-Device-Fingerprint"] = context.deviceFingerprint;
+    headers2["X-Client-Device-Fingerprint"] = context.deviceFingerprint;
   }
   if (context.referrer) {
-    headers["X-Client-Referrer"] = context.referrer;
+    headers2["X-Client-Referrer"] = context.referrer;
   }
-  return headers;
+  return headers2;
 }
 
 // src/server/client.ts
@@ -539,7 +539,7 @@ var ScaleMuleServer = class {
         formData.append("file", blob, file.filename);
         formData.append("sm_user_id", userId);
         const url = `${this.gatewayUrl}/v1/storage/upload`;
-        const headers = {
+        const headers2 = {
           "x-api-key": this.apiKey,
           "x-user-id": userId,
           ...buildClientContextHeaders(options?.clientContext)
@@ -550,7 +550,7 @@ var ScaleMuleServer = class {
         try {
           const response = await fetch(url, {
             method: "POST",
-            headers,
+            headers: headers2,
             body: formData
           });
           const text = await response.text();
@@ -713,6 +713,37 @@ var ScaleMuleServer = class {
         });
       }
     };
+    this.flags = {
+      evaluate: async (flagKey, context = {}, environment = "prod", options) => {
+        return this.request("POST", "/v1/flags/evaluate", {
+          body: {
+            flag_key: flagKey,
+            environment,
+            context
+          },
+          clientContext: options?.clientContext
+        });
+      },
+      evaluateBatch: async (flagKeys, context = {}, environment = "prod", options) => {
+        return this.request("POST", "/v1/flags/evaluate/batch", {
+          body: {
+            flag_keys: flagKeys,
+            environment,
+            context
+          },
+          clientContext: options?.clientContext
+        });
+      },
+      evaluateAll: async (context = {}, environment = "prod", options) => {
+        return this.request("POST", "/v1/flags/evaluate/all", {
+          body: {
+            environment,
+            context
+          },
+          clientContext: options?.clientContext
+        });
+      }
+    };
     this.apiKey = config.apiKey;
     this.gatewayUrl = resolveGatewayUrl(config);
     this.debug = config.debug || false;
@@ -730,14 +761,14 @@ var ScaleMuleServer = class {
    */
   async request(method, path, options = {}) {
     const url = `${this.gatewayUrl}${path}`;
-    const headers = {
+    const headers2 = {
       "x-api-key": this.apiKey,
       "Content-Type": "application/json",
       // Forward client context headers if provided
       ...buildClientContextHeaders(options.clientContext)
     };
     if (options.sessionToken) {
-      headers["Authorization"] = `Bearer ${options.sessionToken}`;
+      headers2["Authorization"] = `Bearer ${options.sessionToken}`;
     }
     if (this.debug) {
       console.log(`[ScaleMule Server] ${method} ${path}`);
@@ -748,7 +779,7 @@ var ScaleMuleServer = class {
     try {
       const response = await fetch(url, {
         method,
-        headers,
+        headers: headers2,
         body: options.body ? JSON.stringify(options.body) : void 0
       });
       const text = await response.text();
@@ -819,45 +850,45 @@ function createClearCookieHeader(name, options = {}) {
   return cookie;
 }
 function withSession(loginResponse, responseBody, options = {}) {
-  const headers = new Headers();
-  headers.set("Content-Type", "application/json");
-  headers.append(
+  const headers2 = new Headers();
+  headers2.set("Content-Type", "application/json");
+  headers2.append(
     "Set-Cookie",
     createCookieHeader(SESSION_COOKIE_NAME, loginResponse.session_token, options)
   );
-  headers.append(
+  headers2.append(
     "Set-Cookie",
     createCookieHeader(USER_ID_COOKIE_NAME, loginResponse.user.id, options)
   );
   return new Response(JSON.stringify({ success: true, data: responseBody }), {
     status: 200,
-    headers
+    headers: headers2
   });
 }
 function withRefreshedSession(sessionToken, userId, responseBody, options = {}) {
-  const headers = new Headers();
-  headers.set("Content-Type", "application/json");
-  headers.append(
+  const headers2 = new Headers();
+  headers2.set("Content-Type", "application/json");
+  headers2.append(
     "Set-Cookie",
     createCookieHeader(SESSION_COOKIE_NAME, sessionToken, options)
   );
-  headers.append(
+  headers2.append(
     "Set-Cookie",
     createCookieHeader(USER_ID_COOKIE_NAME, userId, options)
   );
   return new Response(JSON.stringify({ success: true, data: responseBody }), {
     status: 200,
-    headers
+    headers: headers2
   });
 }
 function clearSession(responseBody, options = {}, status = 200) {
-  const headers = new Headers();
-  headers.set("Content-Type", "application/json");
-  headers.append("Set-Cookie", createClearCookieHeader(SESSION_COOKIE_NAME, options));
-  headers.append("Set-Cookie", createClearCookieHeader(USER_ID_COOKIE_NAME, options));
+  const headers2 = new Headers();
+  headers2.set("Content-Type", "application/json");
+  headers2.append("Set-Cookie", createClearCookieHeader(SESSION_COOKIE_NAME, options));
+  headers2.append("Set-Cookie", createClearCookieHeader(USER_ID_COOKIE_NAME, options));
   return new Response(JSON.stringify({ success: status < 300, data: responseBody }), {
     status,
-    headers
+    headers: headers2
   });
 }
 async function getSession() {
@@ -1732,6 +1763,31 @@ function createWebhookHandler(config = {}) {
     }
   };
 }
+var _serverClient = null;
+function getClient() {
+  if (!_serverClient) {
+    _serverClient = createServerClient();
+  }
+  return _serverClient;
+}
+async function getBootstrapFlags(flagKeys, environment = "prod", extraContext = {}) {
+  try {
+    const hdrs = await headers();
+    const forwardedFor = hdrs.get("x-forwarded-for");
+    const realIp = hdrs.get("x-real-ip") || hdrs.get("x-real-client-ip");
+    const clientIp = realIp || (forwardedFor ? forwardedFor.split(",")[0].trim() : void 0);
+    const context = {
+      ...extraContext
+    };
+    if (clientIp) {
+      context.ip_address = clientIp;
+    }
+    const result = await getClient().flags.evaluateBatch(flagKeys, context, environment);
+    return result || {};
+  } catch {
+    return {};
+  }
+}
 function globToRegex(pattern) {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".");
   return new RegExp(`^${escaped}$`);
@@ -2019,4 +2075,4 @@ async function prefetchBundles(keys) {
   await Promise.all(keys.map((key) => getBundle(key)));
 }
 
-export { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, OAUTH_STATE_COOKIE_NAME, SESSION_COOKIE_NAME, ScaleMuleError, ScaleMuleServer, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createServerClient, createWebhookHandler, createWebhookRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, parseWebhookEvent, prefetchBundles, prefetchSecrets, registerVideoWebhook, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, verifyWebhookSignature, withAuth, withCSRFProtection, withCSRFToken, withSession };
+export { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, OAUTH_STATE_COOKIE_NAME, SESSION_COOKIE_NAME, ScaleMuleError, ScaleMuleServer, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createServerClient, createWebhookHandler, createWebhookRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, parseWebhookEvent, prefetchBundles, prefetchSecrets, registerVideoWebhook, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, verifyWebhookSignature, withAuth, withCSRFProtection, withCSRFToken, withSession };

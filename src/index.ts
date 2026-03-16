@@ -46,6 +46,7 @@ export { useContent } from './hooks/useContent'
 export { useUser } from './hooks/useUser'
 export { useRealtime } from './hooks/useRealtime'
 export { useAnalytics } from './hooks/useAnalytics'
+export { useFeatureFlags } from './hooks/useFeatureFlags'
 export type {
   RealtimeEvent,
   RealtimeMessage,
@@ -53,6 +54,14 @@ export type {
   UseRealtimeOptions,
   UseRealtimeReturn,
 } from './hooks/useRealtime'
+export type {
+  FeatureFlagEvaluation,
+  FeatureFlagEvaluation as FeatureFlagResult,
+  UseFeatureFlagsOptions,
+  UseFeatureFlagsOptions as UseFlagsOptions,
+  UseFeatureFlagsReturn,
+  UseFeatureFlagsReturn as UseFlagsReturn,
+} from './hooks/useFeatureFlags'
 
 // Error class
 export { ScaleMuleApiError } from './types'

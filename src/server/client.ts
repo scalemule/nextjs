@@ -919,6 +919,81 @@ export class ScaleMuleServer {
       })
     },
   }
+
+  flags = {
+    evaluate: async <T = unknown>(
+      flagKey: string,
+      context: Record<string, unknown> = {},
+      environment: string = 'prod',
+      options?: { clientContext?: ClientContext }
+    ): Promise<{
+      flag_id: string
+      flag_key: string
+      environment: string
+      value: T
+      reason: string
+      matched_rule_id?: string | null
+      variant_key?: string | null
+      bucket?: number | null
+    }> => {
+      return this.request('POST', '/v1/flags/evaluate', {
+        body: {
+          flag_key: flagKey,
+          environment,
+          context,
+        },
+        clientContext: options?.clientContext,
+      })
+    },
+
+    evaluateBatch: async (
+      flagKeys: string[],
+      context: Record<string, unknown> = {},
+      environment: string = 'prod',
+      options?: { clientContext?: ClientContext }
+    ): Promise<Record<string, {
+      flag_id: string
+      flag_key: string
+      environment: string
+      value: unknown
+      reason: string
+      matched_rule_id?: string | null
+      variant_key?: string | null
+      bucket?: number | null
+    }>> => {
+      return this.request('POST', '/v1/flags/evaluate/batch', {
+        body: {
+          flag_keys: flagKeys,
+          environment,
+          context,
+        },
+        clientContext: options?.clientContext,
+      })
+    },
+
+    evaluateAll: async (
+      context: Record<string, unknown> = {},
+      environment: string = 'prod',
+      options?: { clientContext?: ClientContext }
+    ): Promise<Record<string, {
+      flag_id: string
+      flag_key: string
+      environment: string
+      value: unknown
+      reason: string
+      matched_rule_id?: string | null
+      variant_key?: string | null
+      bucket?: number | null
+    }>> => {
+      return this.request('POST', '/v1/flags/evaluate/all', {
+        body: {
+          environment,
+          context,
+        },
+        clientContext: options?.clientContext,
+      })
+    },
+  }
 }
 
 /**

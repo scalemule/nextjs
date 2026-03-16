@@ -655,6 +655,37 @@ var ScaleMuleServer = class {
         });
       }
     };
+    this.flags = {
+      evaluate: async (flagKey, context = {}, environment = "prod", options) => {
+        return this.request("POST", "/v1/flags/evaluate", {
+          body: {
+            flag_key: flagKey,
+            environment,
+            context
+          },
+          clientContext: options?.clientContext
+        });
+      },
+      evaluateBatch: async (flagKeys, context = {}, environment = "prod", options) => {
+        return this.request("POST", "/v1/flags/evaluate/batch", {
+          body: {
+            flag_keys: flagKeys,
+            environment,
+            context
+          },
+          clientContext: options?.clientContext
+        });
+      },
+      evaluateAll: async (context = {}, environment = "prod", options) => {
+        return this.request("POST", "/v1/flags/evaluate/all", {
+          body: {
+            environment,
+            context
+          },
+          clientContext: options?.clientContext
+        });
+      }
+    };
     this.apiKey = config.apiKey;
     this.gatewayUrl = resolveGatewayUrl(config);
     this.debug = config.debug || false;

@@ -26,6 +26,8 @@ interface ScaleMuleContextValue {
     publishableKey?: string;
     /** Gateway URL for direct API calls */
     gatewayUrl?: string;
+    /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
+    bootstrapFlags?: Record<string, unknown>;
 }
 interface ScaleMuleProviderProps extends ScaleMuleConfig {
     children: ReactNode;
@@ -35,8 +37,10 @@ interface ScaleMuleProviderProps extends ScaleMuleConfig {
     onLogout?: () => void;
     /** Called on authentication error */
     onAuthError?: (error: ApiError) => void;
+    /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
+    bootstrapFlags?: Record<string, unknown>;
 }
-declare function ScaleMuleProvider({ apiKey, applicationId, environment, gatewayUrl, debug, storage, analyticsProxyUrl, authProxyUrl, publishableKey, children, onLogin, onLogout, onAuthError, }: ScaleMuleProviderProps): react_jsx_runtime.JSX.Element;
+declare function ScaleMuleProvider({ apiKey, applicationId, environment, gatewayUrl, debug, storage, analyticsProxyUrl, authProxyUrl, publishableKey, children, onLogin, onLogout, onAuthError, bootstrapFlags, }: ScaleMuleProviderProps): react_jsx_runtime.JSX.Element;
 declare function useScaleMule(): ScaleMuleContextValue;
 declare function useScaleMuleClient(): ScaleMuleClient;
 
@@ -257,6 +261,32 @@ declare function useRealtime(options?: UseRealtimeOptions): UseRealtimeReturn;
  */
 declare function useAnalytics(options?: UseAnalyticsOptions): UseAnalyticsReturn;
 
+interface FeatureFlagEvaluation<T = unknown> {
+    flag_id: string;
+    flag_key: string;
+    environment: string;
+    value: T;
+    reason: string;
+    matched_rule_id?: string | null;
+    variant_key?: string | null;
+    bucket?: number | null;
+}
+interface UseFeatureFlagsOptions {
+    environment?: string;
+    context?: Record<string, unknown>;
+    keys?: string[];
+    enabled?: boolean;
+}
+interface UseFeatureFlagsReturn {
+    flags: Record<string, FeatureFlagEvaluation>;
+    loading: boolean;
+    error: ApiError | null;
+    refresh: () => Promise<void>;
+    isEnabled: (flagKey: string, fallback?: boolean) => boolean;
+    getFlag: <T = unknown>(flagKey: string, fallback?: T) => T;
+}
+declare function useFeatureFlags(options?: UseFeatureFlagsOptions): UseFeatureFlagsReturn;
+
 /**
  * Client-side validation helpers
  *
@@ -415,4 +445,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError, ListFilesParams, LoginResponse, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseRealtimeOptions, type UseRealtimeReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useRealtime, useScaleMule, useScaleMuleClient, useUser, validateForm, validators };
+export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, ListFilesParams, LoginResponse, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseRealtimeOptions, type UseRealtimeReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useRealtime, useScaleMule, useScaleMuleClient, useUser, validateForm, validators };

@@ -1,5 +1,5 @@
-import { S as ServerConfig } from '../webhook-handler-BzBvYbZU.mjs';
-export { a as ScaleMuleServer, d as VideoFailedEvent, V as VideoReadyEvent, f as VideoTranscodedEvent, e as VideoUploadedEvent, W as WebhookEvent, g as WebhookRoutesConfig, c as createServerClient, h as createWebhookHandler, b as createWebhookRoutes, p as parseWebhookEvent, r as registerVideoWebhook, v as verifyWebhookSignature } from '../webhook-handler-BzBvYbZU.mjs';
+import { S as ServerConfig } from '../webhook-handler-CweF_nT3.mjs';
+export { a as ScaleMuleServer, d as VideoFailedEvent, V as VideoReadyEvent, f as VideoTranscodedEvent, e as VideoUploadedEvent, W as WebhookEvent, g as WebhookRoutesConfig, c as createServerClient, h as createWebhookHandler, b as createWebhookRoutes, p as parseWebhookEvent, r as registerVideoWebhook, v as verifyWebhookSignature } from '../webhook-handler-CweF_nT3.mjs';
 import { $ as ClientContext, L as LoginResponse, A as ApiError } from '../index-jomBa89d.mjs';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -432,6 +432,43 @@ type HandlerOptions = {
 declare function apiHandler(handler: HandlerFn, options?: HandlerOptions): (request: NextRequest, routeContext?: {
     params: Promise<Record<string, string | string[]>>;
 }) => Promise<Response>;
+
+/**
+ * Server-side flag bootstrapping for Next.js layouts.
+ *
+ * Evaluates feature flags on the server during SSR so the client
+ * has correct values on first render -- no loading flash, no race condition.
+ *
+ * @example
+ * ```ts
+ * // app/layout.tsx
+ * import { getBootstrapFlags } from '@scalemule/nextjs/server'
+ *
+ * export default async function RootLayout({ children }) {
+ *   const bootstrapFlags = await getBootstrapFlags(['analytics.tracking_enabled'])
+ *   return (
+ *     <Providers bootstrapFlags={bootstrapFlags}>
+ *       {children}
+ *     </Providers>
+ *   )
+ * }
+ * ```
+ */
+/**
+ * Evaluate feature flags server-side for bootstrapping the client provider.
+ *
+ * Extracts the client IP from request headers (x-forwarded-for, x-real-ip)
+ * and passes it as ip_address in the evaluation context so IP-based targeting
+ * rules work correctly.
+ *
+ * Returns a Record that can be passed directly to ScaleMuleProvider's
+ * bootstrapFlags prop.
+ *
+ * @param flagKeys - Array of flag keys to evaluate
+ * @param environment - Environment name (default: 'prod')
+ * @param extraContext - Additional context attributes to include
+ */
+declare function getBootstrapFlags(flagKeys: string[], environment?: string, extraContext?: Record<string, unknown>): Promise<Record<string, unknown>>;
 
 /**
  * Next.js Middleware Helpers
@@ -868,4 +905,4 @@ declare function invalidateBundleCache(key?: string): void;
  */
 declare function prefetchBundles(keys: string[]): Promise<void>;
 
-export { type AnalyticsRoutesConfig, type AuthMiddlewareConfig, type AuthRoutesConfig, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, type HandlerContext, type HandlerOptions, type MySqlBundle, OAUTH_STATE_COOKIE_NAME, type OAuthBundle, type PostgresBundle, type RedisBundle, type S3Bundle, SESSION_COOKIE_NAME, ScaleMuleError, ServerConfig, type SessionCookieOptions, type SessionData, type SmtpBundle, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, prefetchBundles, prefetchSecrets, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, withAuth, withCSRFProtection, withCSRFToken, withSession };
+export { type AnalyticsRoutesConfig, type AuthMiddlewareConfig, type AuthRoutesConfig, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, type HandlerContext, type HandlerOptions, type MySqlBundle, OAUTH_STATE_COOKIE_NAME, type OAuthBundle, type PostgresBundle, type RedisBundle, type S3Bundle, SESSION_COOKIE_NAME, ScaleMuleError, ServerConfig, type SessionCookieOptions, type SessionData, type SmtpBundle, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, prefetchBundles, prefetchSecrets, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, withAuth, withCSRFProtection, withCSRFToken, withSession };

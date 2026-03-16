@@ -64,6 +64,8 @@ interface ScaleMuleContextValue {
   publishableKey?: string
   /** Gateway URL for direct API calls */
   gatewayUrl?: string
+  /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
+  bootstrapFlags?: Record<string, unknown>
 }
 
 // ============================================================================
@@ -84,6 +86,8 @@ export interface ScaleMuleProviderProps extends ScaleMuleConfig {
   onLogout?: () => void
   /** Called on authentication error */
   onAuthError?: (error: ApiError) => void
+  /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
+  bootstrapFlags?: Record<string, unknown>
 }
 
 // ============================================================================
@@ -104,6 +108,7 @@ export function ScaleMuleProvider({
   onLogin,
   onLogout,
   onAuthError,
+  bootstrapFlags,
 }: ScaleMuleProviderProps) {
   const [user, setUser] = useState<User | null>(null)
   const [initializing, setInitializing] = useState(true)
@@ -250,8 +255,9 @@ export function ScaleMuleProvider({
       authProxyUrl,
       publishableKey,
       gatewayUrl: gatewayUrl || (environment === 'dev' ? 'https://api-dev.scalemule.com' : 'https://api.scalemule.com'),
+      bootstrapFlags,
     }),
-    [client, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment]
+    [client, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, bootstrapFlags]
   )
 
   return (

@@ -815,7 +815,8 @@ function ScaleMuleProvider({
   children,
   onLogin,
   onLogout,
-  onAuthError
+  onAuthError,
+  bootstrapFlags
 }) {
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
@@ -927,9 +928,10 @@ function ScaleMuleProvider({
       analyticsProxyUrl,
       authProxyUrl,
       publishableKey,
-      gatewayUrl: gatewayUrl || (environment === "dev" ? "https://api-dev.scalemule.com" : "https://api.scalemule.com")
+      gatewayUrl: gatewayUrl || (environment === "dev" ? "https://api-dev.scalemule.com" : "https://api.scalemule.com"),
+      bootstrapFlags
     }),
-    [client, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment]
+    [client, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, bootstrapFlags]
   );
   return /* @__PURE__ */ jsx(ScaleMuleContext.Provider, { value, children });
 }
@@ -2829,6 +2831,109 @@ function useAnalytics(options = {}) {
     ]
   );
 }
+function toApiError(error) {
+  if (error instanceof ScaleMuleApiError) {
+    return {
+      code: error.code,
+      message: error.message,
+      field: error.field
+    };
+  }
+  return {
+    code: "UNKNOWN",
+    message: error instanceof Error ? error.message : "Failed to load feature flags"
+  };
+}
+function useFeatureFlags(options = {}) {
+  const {
+    environment = "prod",
+    context = {},
+    keys,
+    enabled = true
+  } = options;
+  const { client, publishableKey, gatewayUrl, bootstrapFlags } = useScaleMule();
+  const initialFlags = useMemo(() => {
+    if (!bootstrapFlags) return {};
+    const result = {};
+    for (const [key, value] of Object.entries(bootstrapFlags)) {
+      if (value && typeof value === "object" && "flag_key" in value) {
+        result[key] = value;
+      }
+    }
+    return result;
+  }, [bootstrapFlags]);
+  const hasBootstrap = Object.keys(initialFlags).length > 0;
+  const [flags, setFlags] = useState(initialFlags);
+  const [loading, setLoading] = useState(enabled && !hasBootstrap);
+  const [error, setError] = useState(null);
+  const contextRef = useRef(context);
+  const keysKey = useMemo(() => keys && keys.length > 0 ? [...keys].sort().join("|") : "", [keys]);
+  useEffect(() => {
+    contextRef.current = context;
+  }, [context]);
+  const refresh = useCallback(async () => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const payload = keys && keys.length > 0 ? { flag_keys: keys, environment, context: contextRef.current } : { environment, context: contextRef.current };
+      const endpoint = keys && keys.length > 0 ? "/v1/flags/evaluate/batch" : "/v1/flags/evaluate/all";
+      let result;
+      if (publishableKey && gatewayUrl) {
+        const response = await fetch(`${gatewayUrl}${endpoint}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": publishableKey
+          },
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+          throw new Error(`Flag evaluation failed: ${response.status}`);
+        }
+        const json = await response.json();
+        result = json.data || json || {};
+      } else {
+        result = await client.post(endpoint, payload);
+      }
+      setFlags(result || {});
+      setError(null);
+    } catch (err) {
+      setError(toApiError(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [client, enabled, environment, keys, keysKey, publishableKey, gatewayUrl]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  const isEnabled = useCallback(
+    (flagKey, fallback = false) => {
+      const evaluation = flags[flagKey];
+      if (!evaluation) return fallback;
+      return typeof evaluation.value === "boolean" ? evaluation.value : fallback;
+    },
+    [flags]
+  );
+  const getFlag = useCallback(
+    (flagKey, fallback) => {
+      const evaluation = flags[flagKey];
+      if (!evaluation) return fallback;
+      return evaluation.value ?? fallback;
+    },
+    [flags]
+  );
+  return {
+    flags,
+    loading,
+    error,
+    refresh,
+    isEnabled,
+    getFlag
+  };
+}
 
 // src/validation.ts
 var phoneCountries = [
@@ -3121,4 +3226,4 @@ function createSafeLogger(prefix) {
   };
 }
 
-export { ScaleMuleApiError, ScaleMuleClient, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useRealtime, useScaleMule, useScaleMuleClient, useUser, validateForm, validators };
+export { ScaleMuleApiError, ScaleMuleClient, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useRealtime, useScaleMule, useScaleMuleClient, useUser, validateForm, validators };
