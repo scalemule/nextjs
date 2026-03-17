@@ -137,6 +137,12 @@ function parseUtmParams(): UTMParams | null {
     }
   }
 
+  // Facebook Ads auto-tagging: infer UTM values from Facebook click identifier
+  if (!utm.utm_source && params.get('fbclid')) {
+    utm.utm_source = 'facebook'
+    utm.utm_medium = utm.utm_medium || 'cpc'
+  }
+
   return Object.keys(utm).length > 0 ? utm : null
 }
 
