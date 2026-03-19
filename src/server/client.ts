@@ -219,7 +219,13 @@ export class ScaleMuleServer {
     /**
      * Verify email with token
      */
-    verifyEmail: async (token: string): Promise<{ message: string }> => {
+    verifyEmail: async (token: string): Promise<{
+      message?: string;
+      verified?: boolean;
+      session_token?: string;
+      user?: User;
+      expires_at?: string;
+    }> => {
       return this.request('POST', '/v1/auth/verify-email', { body: { token } })
     },
 

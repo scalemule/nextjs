@@ -262,14 +262,25 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('VALIDATION_ERROR', 'Token required', 400)
           }
 
+          let verifyData
           try {
-            await sm.auth.verifyEmail(token)
+            verifyData = await sm.auth.verifyEmail(token)
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
               apiErr?.code || 'VERIFY_FAILED',
               apiErr?.message || 'Email verification failed',
               400
+            )
+          }
+
+          // If backend returned a session (auto_session_after_verification=true),
+          // set session cookies so the user doesn't need to login again
+          if (verifyData?.session_token && verifyData?.user) {
+            return withSession(
+              { session_token: verifyData.session_token, user: verifyData.user },
+              { message: 'Email verified successfully', verified: true, user: verifyData.user, sessionToken: verifyData.session_token, userId: verifyData.user.id },
+              cookieOptions
             )
           }
 

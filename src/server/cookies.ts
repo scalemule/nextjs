@@ -6,7 +6,6 @@
  */
 
 import { cookies } from 'next/headers'
-import type { LoginResponse, User } from '../types'
 
 // ============================================================================
 // Constants
@@ -109,7 +108,7 @@ function createClearCookieHeader(name: string, options: SessionCookieOptions = {
  * ```
  */
 export function withSession<T extends Record<string, unknown>>(
-  loginResponse: LoginResponse,
+  loginResponse: { session_token: string; user: { id: string } },
   responseBody: T,
   options: SessionCookieOptions = {}
 ): Response {
