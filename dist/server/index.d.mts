@@ -1,6 +1,6 @@
-import { S as ServerConfig } from '../webhook-handler-CN_N2XlA.mjs';
-export { a as ScaleMuleServer, e as VideoFailedEvent, V as VideoReadyEvent, g as VideoTranscodedEvent, f as VideoUploadedEvent, W as WebhookEvent, h as WebhookRoutesConfig, c as createServerClient, i as createWebhookHandler, d as createWebhookRoutes, p as parseWebhookEvent, b as registerVideoWebhook, r as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-CN_N2XlA.mjs';
-import { $ as ClientContext, L as LoginResponse, A as ApiError } from '../index-jomBa89d.mjs';
+import { S as ServerConfig } from '../webhook-handler-aT2C5z2y.mjs';
+export { a as ScaleMuleServer, e as VideoFailedEvent, V as VideoReadyEvent, g as VideoTranscodedEvent, f as VideoUploadedEvent, W as WebhookEvent, h as WebhookRoutesConfig, c as createServerClient, i as createWebhookHandler, d as createWebhookRoutes, p as parseWebhookEvent, b as registerVideoWebhook, r as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-aT2C5z2y.mjs';
+import { $ as ClientContext, A as ApiError } from '../index-jomBa89d.mjs';
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
@@ -101,7 +101,6 @@ declare function buildClientContextHeaders(context: ClientContext | undefined): 
  * Handles HTTP-only secure cookies for authentication.
  * Tokens are never exposed to the browser.
  */
-
 declare const SESSION_COOKIE_NAME = "sm_session";
 declare const USER_ID_COOKIE_NAME = "sm_user_id";
 interface SessionCookieOptions {
@@ -135,7 +134,12 @@ interface SessionData {
  * }
  * ```
  */
-declare function withSession<T extends Record<string, unknown>>(loginResponse: LoginResponse, responseBody: T, options?: SessionCookieOptions): Response;
+declare function withSession<T extends Record<string, unknown>>(loginResponse: {
+    session_token: string;
+    user: {
+        id: string;
+    };
+}, responseBody: T, options?: SessionCookieOptions): Response;
 /**
  * Create a Response that clears session cookies
  *

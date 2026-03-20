@@ -14,6 +14,25 @@ import type {
   ApiError,
 } from '../types'
 
+// ---------------------------------------------------------------------------
+// Client-side event dedup — prevents rapid-fire duplicates from event
+// bubbling, double-bound listeners, IntersectionObserver re-fires, etc.
+// Shared across all hook instances on the page (module-level singleton).
+// ---------------------------------------------------------------------------
+const DEFAULT_EVENT_DEDUP_MS = 300
+
+const _eventLastFired: Map<string, number> | null =
+  typeof window !== 'undefined' ? new Map<string, number>() : null
+
+function shouldDedup(eventName: string, cooldownMs: number): boolean {
+  if (!_eventLastFired || cooldownMs <= 0) return false
+  const now = Date.now()
+  const last = _eventLastFired.get(eventName)
+  if (last !== undefined && now - last < cooldownMs) return true
+  _eventLastFired.set(eventName, now)
+  return false
+}
+
 // Generate a UUID v4
 function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -278,6 +297,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
     sessionStorageKey = 'sm_session_id',
     anonymousStorageKey = 'sm_anonymous_id',
     useV2 = true,
+    eventDedupMs = DEFAULT_EVENT_DEDUP_MS,
   } = options
   const shouldAutoCaptureUtmParams = autoCaptureUtmParams ?? autoCapturUtmParams ?? true
 
@@ -510,6 +530,12 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
    */
   const trackEvent = useCallback(
     async (event: AnalyticsEvent): Promise<TrackEventResponse> => {
+      // Dedup: suppress rapid-fire identical events (e.g., from event bubbling,
+      // double-bound click handlers, or IntersectionObserver re-fires).
+      if (shouldDedup(event.event_name, eventDedupMs)) {
+        return { tracked: 0, session_id: sessionIdRef.current || undefined }
+      }
+
       setError(null)
       setLoading(true)
 
@@ -533,7 +559,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       }
     },
     // Note: idsReady removed - we use ref to keep callback stable
-    [sendEvent]
+    [sendEvent, eventDedupMs]
   )
 
   /**

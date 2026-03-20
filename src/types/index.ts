@@ -743,6 +743,13 @@ export interface UseAnalyticsOptions {
   anonymousStorageKey?: string
   /** Use v2 enhanced tracking (default: true) */
   useV2?: boolean
+  /**
+   * Minimum milliseconds between duplicate events with the same event_name.
+   * Prevents inflated analytics from event bubbling, double-bound listeners,
+   * or rapid-fire IntersectionObserver callbacks.
+   * Set to 0 to disable dedup. Default: 300ms.
+   */
+  eventDedupMs?: number
 }
 
 /**

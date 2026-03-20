@@ -998,6 +998,9 @@ function useAuth() {
         if (response.data.sessionToken) {
           await client.setSession(response.data.sessionToken, response.data.userId || response.data.user?.id || "");
         }
+        if (response.data.user) {
+          setUser(response.data.user);
+        }
         return response.data.user;
       }
       try {
@@ -1009,7 +1012,7 @@ function useAuth() {
         throw err;
       }
     },
-    [client, setError, authProxyUrl]
+    [client, setUser, setError, authProxyUrl]
   );
   const login = useCallback(
     async (data) => {
@@ -1149,7 +1152,11 @@ function useAuth() {
         }
       } else {
         try {
-          await client.post("/v1/auth/verify-email", { token });
+          const result = await client.post("/v1/auth/verify-email", { token });
+          if (result?.session_token && result?.user) {
+            await client.setSession(result.session_token, result.user.id);
+            setUser(result.user);
+          }
         } catch (err) {
           if (err instanceof ScaleMuleApiError) {
             setError(err);
@@ -1157,22 +1164,27 @@ function useAuth() {
           throw err;
         }
       }
-      if (user) {
-        if (authProxyUrl) {
-          const userResponse = await proxyFetch(authProxyUrl, "me", { method: "GET" });
-          if (userResponse.success && userResponse.data?.user) {
-            setUser(userResponse.data.user);
+      if (authProxyUrl) {
+        const userResponse = await proxyFetch(
+          authProxyUrl,
+          "me",
+          { method: "GET" }
+        );
+        if (userResponse.success && userResponse.data?.user) {
+          setUser(userResponse.data.user);
+          if (userResponse.data.sessionToken) {
+            await client.setSession(userResponse.data.sessionToken, userResponse.data.userId || userResponse.data.user.id);
           }
-        } else {
-          try {
-            const userData = await client.get("/v1/auth/me");
-            setUser(userData);
-          } catch {
-          }
+        }
+      } else {
+        try {
+          const userData = await client.get("/v1/auth/me");
+          setUser(userData);
+        } catch {
         }
       }
     },
-    [client, user, setUser, setError, authProxyUrl]
+    [client, setUser, setError, authProxyUrl]
   );
   const resendVerification = useCallback(async (email) => {
     setError(null);
@@ -2471,6 +2483,10 @@ function parseUtmParams() {
     if (gadCampaign && !utm.utm_campaign) {
       utm.utm_campaign = gadCampaign;
     }
+  }
+  if (!utm.utm_source && params.get("fbclid")) {
+    utm.utm_source = "facebook";
+    utm.utm_medium = utm.utm_medium || "cpc";
   }
   return Object.keys(utm).length > 0 ? utm : null;
 }

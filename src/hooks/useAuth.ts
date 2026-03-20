@@ -141,6 +141,11 @@ export function useAuth(): UseAuthReturn {
           await client.setSession(response.data.sessionToken, response.data.userId || response.data.user?.id || '')
         }
 
+        // Hydrate user in context so route guards see isAuthenticated immediately
+        if (response.data.user) {
+          setUser(response.data.user)
+        }
+
         return response.data.user
       }
 
@@ -153,7 +158,7 @@ export function useAuth(): UseAuthReturn {
         throw err
       }
     },
-    [client, setError, authProxyUrl]
+    [client, setUser, setError, authProxyUrl]
   )
 
   /**
@@ -339,7 +344,15 @@ export function useAuth(): UseAuthReturn {
         }
       } else {
         try {
-          await client.post('/v1/auth/verify-email', { token })
+          const result = await client.post<{
+            verified?: boolean;
+            session_token?: string;
+            user?: User;
+          }>('/v1/auth/verify-email', { token })
+          if (result?.session_token && result?.user) {
+            await client.setSession(result.session_token, result.user.id)
+            setUser(result.user)
+          }
         } catch (err) {
           if (err instanceof ScaleMuleApiError) {
             setError(err)
@@ -348,24 +361,30 @@ export function useAuth(): UseAuthReturn {
         }
       }
 
-      // Refresh user to get updated email_verified status
-      if (user) {
-        if (authProxyUrl) {
-          const userResponse = await proxyFetch<{ user: User }>(authProxyUrl, 'me', { method: 'GET' })
-          if (userResponse.success && userResponse.data?.user) {
-            setUser(userResponse.data.user)
+      // Always hydrate user after successful verification (regardless of prior auth state).
+      // This ensures isAuthenticated becomes true for both:
+      // - Logged-in users verifying from banner (user was already set)
+      // - Logged-out users recovering via EMAIL_NOT_VERIFIED (user was null)
+      if (authProxyUrl) {
+        const userResponse = await proxyFetch<{ user: User; sessionToken?: string; userId?: string }>(
+          authProxyUrl, 'me', { method: 'GET' }
+        )
+        if (userResponse.success && userResponse.data?.user) {
+          setUser(userResponse.data.user)
+          if (userResponse.data.sessionToken) {
+            await client.setSession(userResponse.data.sessionToken, userResponse.data.userId || userResponse.data.user.id)
           }
-        } else {
-          try {
-            const userData = await client.get<User>('/v1/auth/me')
-            setUser(userData)
-          } catch {
-            // Ignore refresh errors
-          }
+        }
+      } else {
+        try {
+          const userData = await client.get<User>('/v1/auth/me')
+          setUser(userData)
+        } catch {
+          // Ignore refresh errors
         }
       }
     },
-    [client, user, setUser, setError, authProxyUrl]
+    [client, setUser, setError, authProxyUrl]
   )
 
   /**
