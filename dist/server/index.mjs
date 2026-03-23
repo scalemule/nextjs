@@ -157,6 +157,13 @@ function buildClientContextHeaders(context) {
   }
   return headers2;
 }
+function buildFlagContext(clientContext, extraContext = {}) {
+  const context = { ...extraContext };
+  if (clientContext?.ip && context.ip_address === void 0) {
+    context.ip_address = clientContext.ip;
+  }
+  return context;
+}
 
 // src/server/client.ts
 var GATEWAY_URLS = {
@@ -1383,8 +1390,50 @@ function createAuthRoutes(config = {}) {
   };
   return { GET, POST, DELETE, PATCH };
 }
+function getPrimaryTrackingContextSource(body) {
+  if (Array.isArray(body.events)) {
+    const firstEvent = body.events.find((event) => event && typeof event === "object" && !Array.isArray(event));
+    if (firstEvent && typeof firstEvent === "object" && !Array.isArray(firstEvent)) {
+      return firstEvent;
+    }
+  }
+  return body;
+}
+function buildDefaultTrackingGateContext(args) {
+  const source = getPrimaryTrackingContextSource(args.body);
+  const extraContext = {};
+  for (const key of ["user_id", "anonymous_id", "session_id", "event_name", "page_url"]) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) {
+      extraContext[key] = value;
+    }
+  }
+  return buildFlagContext(args.clientContext, extraContext);
+}
 function createAnalyticsRoutes(config = {}) {
   const sm = createServerClient(config.client);
+  const shouldSuppressTracking = async (body, clientContext, request) => {
+    const gate = config.trackingGate;
+    if (!gate) {
+      return false;
+    }
+    try {
+      const contextBuilder = gate.buildContext || ((args) => buildDefaultTrackingGateContext(args));
+      const evaluation = await sm.flags.evaluate(
+        gate.flagKey,
+        contextBuilder({ body, clientContext, request }) || {},
+        gate.environment || "prod",
+        { clientContext }
+      );
+      return evaluation?.value === false;
+    } catch (err) {
+      if (gate.failOpen === false) {
+        console.warn(`[ScaleMule Analytics] Tracking gate blocked "${gate.flagKey}" after evaluation failure`, err);
+        return true;
+      }
+      return false;
+    }
+  };
   const handleTrackEvent = async (body, clientContext) => {
     const {
       event_name,
@@ -1467,8 +1516,12 @@ function createAnalyticsRoutes(config = {}) {
   };
   const POST = async (request, context) => {
     try {
-      const body = await request.json().catch(() => ({}));
+      const rawBody = await request.json().catch(() => ({}));
+      const body = rawBody && typeof rawBody === "object" && !Array.isArray(rawBody) ? rawBody : {};
       const clientContext = extractClientContext(request);
+      if (await shouldSuppressTracking(body, clientContext, request)) {
+        return successResponse({ tracked: 0, suppressed: true }, 202);
+      }
       if (config.simpleProxy) {
         return handleTrackEvent(body, clientContext);
       }
@@ -1513,7 +1566,13 @@ function createAnalyticsRoutes(config = {}) {
           let pageViewResult;
           try {
             pageViewResult = await sm.analytics.trackPageView(
-              { page_url, page_title, referrer, session_id, user_id },
+              {
+                page_url,
+                page_title,
+                referrer,
+                session_id,
+                user_id
+              },
               { clientContext }
             );
           } catch (err) {
@@ -2142,4 +2201,4 @@ async function prefetchBundles(keys) {
   await Promise.all(keys.map((key) => getBundle(key)));
 }
 
-export { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, OAUTH_STATE_COOKIE_NAME, SESSION_COOKIE_NAME, ScaleMuleError, ScaleMuleServer, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createServerClient, createWebhookHandler, createWebhookRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, parseWebhookEvent, prefetchBundles, prefetchSecrets, registerVideoWebhook, requireAppSecret, requireBundle, requireSession, resolveGatewayUrl, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, verifyWebhookSignature, withAuth, withCSRFProtection, withCSRFToken, withSession };
+export { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, OAUTH_STATE_COOKIE_NAME, SESSION_COOKIE_NAME, ScaleMuleError, ScaleMuleServer, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, buildFlagContext, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createServerClient, createWebhookHandler, createWebhookRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, parseWebhookEvent, prefetchBundles, prefetchSecrets, registerVideoWebhook, requireAppSecret, requireBundle, requireSession, resolveGatewayUrl, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, verifyWebhookSignature, withAuth, withCSRFProtection, withCSRFToken, withSession };

@@ -1,4 +1,4 @@
-import { j as StorageAdapter } from './index-jomBa89d.mjs';
+import { j as StorageAdapter } from './index-DewTyMF2.mjs';
 
 /**
  * ScaleMule API Client

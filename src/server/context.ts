@@ -317,3 +317,22 @@ export function buildClientContextHeaders(
 
   return headers
 }
+
+/**
+ * Build feature-flag evaluation context from forwarded client context.
+ *
+ * This keeps server-side flag evaluation aligned with targeting rules that use
+ * `ip_address`, while letting callers merge any additional attributes they need.
+ */
+export function buildFlagContext(
+  clientContext: Pick<ClientContext, 'ip'> | undefined,
+  extraContext: Record<string, unknown> = {}
+): Record<string, unknown> {
+  const context = { ...extraContext }
+
+  if (clientContext?.ip && context.ip_address === undefined) {
+    context.ip_address = clientContext.ip
+  }
+
+  return context
+}

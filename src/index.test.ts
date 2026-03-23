@@ -661,7 +661,7 @@ describe('getSessionFromRequest', () => {
 
 // ─── Client Context Extraction ────────────────────────────────────
 
-import { extractClientContext, extractClientContextFromReq, buildClientContextHeaders } from './server/context'
+import { extractClientContext, extractClientContextFromReq, buildClientContextHeaders, buildFlagContext } from './server/context'
 
 describe('extractClientContext', () => {
   function mockRequest(headers: Record<string, string>, ip?: string) {
@@ -808,6 +808,23 @@ describe('buildClientContextHeaders', () => {
   it('returns empty for undefined context', () => {
     const headers = buildClientContextHeaders(undefined)
     expect(Object.keys(headers)).toHaveLength(0)
+  })
+})
+
+describe('buildFlagContext', () => {
+  it('maps client IP to ip_address', () => {
+    const context = buildFlagContext({ ip: '73.170.229.202' }, { user_id: 'user-1' })
+
+    expect(context).toEqual({
+      ip_address: '73.170.229.202',
+      user_id: 'user-1',
+    })
+  })
+
+  it('preserves an explicit ip_address override', () => {
+    const context = buildFlagContext({ ip: '73.170.229.202' }, { ip_address: '1.1.1.1' })
+
+    expect(context).toEqual({ ip_address: '1.1.1.1' })
   })
 })
 

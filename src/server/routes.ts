@@ -15,9 +15,9 @@
  */
 
 import { type NextRequest } from 'next/server'
-import { ScaleMuleApiError } from '../types'
+import { ScaleMuleApiError, type ClientContext } from '../types'
 import { createServerClient, type ServerConfig } from './client'
-import { extractClientContext } from './context'
+import { extractClientContext, buildFlagContext } from './context'
 import {
   withSession,
   withRefreshedSession,
@@ -536,6 +536,28 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 // Analytics Route Factory
 // ============================================================================
 
+export interface AnalyticsTrackingGateConfig {
+  /** Feature flag key used to decide whether to forward analytics */
+  flagKey: string
+  /** Feature flag environment (default: 'prod') */
+  environment?: string
+  /**
+   * When true, analytics continues if flag evaluation fails.
+   * Default: true
+   */
+  failOpen?: boolean
+  /**
+   * Build feature-flag evaluation context from the inbound analytics request.
+   * Defaults to { ip_address, user_id, anonymous_id, session_id, event_name, page_url }
+   * when those values are present.
+   */
+  buildContext?: (args: {
+    body: Record<string, unknown>
+    clientContext: ClientContext
+    request: Request
+  }) => Record<string, unknown>
+}
+
 export interface AnalyticsRoutesConfig {
   /** Server client config (optional if using env vars) */
   client?: Partial<ServerConfig>
@@ -547,6 +569,40 @@ export interface AnalyticsRoutesConfig {
    * Default: false (uses catch-all route pattern)
    */
   simpleProxy?: boolean
+  /**
+   * Optional feature flag gate that suppresses analytics forwarding when the
+   * evaluated flag returns false. Useful for test users, internal IPs, or
+   * staged rollouts without adding app-specific proxy logic.
+   */
+  trackingGate?: AnalyticsTrackingGateConfig
+}
+
+function getPrimaryTrackingContextSource(body: Record<string, unknown>): Record<string, unknown> {
+  if (Array.isArray(body.events)) {
+    const firstEvent = body.events.find((event) => event && typeof event === 'object' && !Array.isArray(event))
+    if (firstEvent && typeof firstEvent === 'object' && !Array.isArray(firstEvent)) {
+      return firstEvent as Record<string, unknown>
+    }
+  }
+
+  return body
+}
+
+function buildDefaultTrackingGateContext(args: {
+  body: Record<string, unknown>
+  clientContext: ClientContext
+}): Record<string, unknown> {
+  const source = getPrimaryTrackingContextSource(args.body)
+  const extraContext: Record<string, unknown> = {}
+
+  for (const key of ['user_id', 'anonymous_id', 'session_id', 'event_name', 'page_url']) {
+    const value = source[key]
+    if (typeof value === 'string' && value.trim()) {
+      extraContext[key] = value
+    }
+  }
+
+  return buildFlagContext(args.clientContext, extraContext)
 }
 
 /**
@@ -588,13 +644,44 @@ export function createAnalyticsRoutes(config: AnalyticsRoutesConfig = {}): {
 } {
   const sm = createServerClient(config.client)
 
+  const shouldSuppressTracking = async (
+    body: Record<string, unknown>,
+    clientContext: ClientContext,
+    request: Request
+  ): Promise<boolean> => {
+    const gate = config.trackingGate
+    if (!gate) {
+      return false
+    }
+
+    try {
+      const contextBuilder = gate.buildContext || ((args: { body: Record<string, unknown>; clientContext: ClientContext }) =>
+        buildDefaultTrackingGateContext(args))
+
+      const evaluation = await sm.flags.evaluate<boolean>(
+        gate.flagKey,
+        contextBuilder({ body, clientContext, request }) || {},
+        gate.environment || 'prod',
+        { clientContext }
+      )
+
+      return evaluation?.value === false
+    } catch (err) {
+      if (gate.failOpen === false) {
+        console.warn(`[ScaleMule Analytics] Tracking gate blocked "${gate.flagKey}" after evaluation failure`, err)
+        return true
+      }
+      return false
+    }
+  }
+
   /**
    * Handle tracking a single event
    * Extracts all analytics fields and forwards to ScaleMule
    */
   const handleTrackEvent = async (
     body: Record<string, unknown>,
-    clientContext: { ip?: string; userAgent?: string }
+    clientContext: ClientContext
   ): Promise<Response> => {
     const {
       event_name,
@@ -681,11 +768,18 @@ export function createAnalyticsRoutes(config: AnalyticsRoutesConfig = {}): {
 
   const POST: RouteHandler = async (request, context) => {
     try {
-      const body = await request.json().catch(() => ({}))
+      const rawBody = await request.json().catch(() => ({}))
+      const body = rawBody && typeof rawBody === 'object' && !Array.isArray(rawBody)
+        ? rawBody as Record<string, unknown>
+        : {}
 
       // CRITICAL: Extract real client IP from request headers
       // This ensures ScaleMule records the actual end user's IP, not the server's IP
       const clientContext = extractClientContext(request as unknown as { headers: { get(name: string): string | null } })
+
+      if (await shouldSuppressTracking(body, clientContext, request)) {
+        return successResponse({ tracked: 0, suppressed: true }, 202)
+      }
 
       // For simple proxy mode (e.g., /api/t/e), always handle as single event
       // Skip params access — static routes in Next.js 16+ resolve params to undefined
@@ -744,7 +838,13 @@ export function createAnalyticsRoutes(config: AnalyticsRoutesConfig = {}): {
           let pageViewResult
           try {
             pageViewResult = await sm.analytics.trackPageView(
-              { page_url, page_title, referrer, session_id, user_id },
+              {
+                page_url: page_url as string,
+                page_title: page_title as string | undefined,
+                referrer: referrer as string | undefined,
+                session_id: session_id as string | undefined,
+                user_id: user_id as string | undefined,
+              },
               { clientContext }
             )
           } catch (err) {

@@ -114,33 +114,52 @@ function parseUtmParams(): UTMParams | null {
   const params = new URLSearchParams(window.location.search)
   const utm: UTMParams = {}
 
+  // Standard UTM params
   const source = params.get('utm_source')
   const medium = params.get('utm_medium')
   const campaign = params.get('utm_campaign')
   const term = params.get('utm_term')
   const content = params.get('utm_content')
+  const adgroup = params.get('utm_adgroup')
 
   if (source) utm.utm_source = source
   if (medium) utm.utm_medium = medium
   if (campaign) utm.utm_campaign = campaign
   if (term) utm.utm_term = term
   if (content) utm.utm_content = content
+  if (adgroup) utm.utm_adgroup = adgroup
+
+  // Click IDs (auto-appended by ad platforms)
+  const gclid = params.get('gclid')
+  const gbraid = params.get('gbraid')
+  const wbraid = params.get('wbraid')
+  const fbclid = params.get('fbclid')
+  if (gclid) utm.gclid = gclid
+  if (gbraid) utm.gbraid = gbraid
+  if (wbraid) utm.wbraid = wbraid
+  if (fbclid) utm.fbclid = fbclid
+
+  // Google Ads ValueTrack params (from Final URL suffix)
+  const gadFields = ['gad_source', 'gad_campaignid', 'gad_adgroupid', 'gad_network', 'gad_matchtype', 'gad_device', 'gad_placement'] as const
+  for (const field of gadFields) {
+    const val = params.get(field)
+    if (val) utm[field] = val
+  }
 
   // Google Ads auto-tagging: infer UTM values from Google click identifiers
   if (
     !utm.utm_source &&
-    (params.get('gclid') || params.get('gad_source') || params.get('wbraid') || params.get('gbraid'))
+    (gclid || utm.gad_source || wbraid || gbraid)
   ) {
     utm.utm_source = 'google'
     utm.utm_medium = utm.utm_medium || 'cpc'
-    const gadCampaign = params.get('gad_campaignid')
-    if (gadCampaign && !utm.utm_campaign) {
-      utm.utm_campaign = gadCampaign
+    if (utm.gad_campaignid && !utm.utm_campaign) {
+      utm.utm_campaign = utm.gad_campaignid
     }
   }
 
   // Facebook Ads auto-tagging: infer UTM values from Facebook click identifier
-  if (!utm.utm_source && params.get('fbclid')) {
+  if (!utm.utm_source && fbclid) {
     utm.utm_source = 'facebook'
     utm.utm_medium = utm.utm_medium || 'cpc'
   }

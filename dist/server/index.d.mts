@@ -1,6 +1,6 @@
-import { S as ServerConfig } from '../webhook-handler-aT2C5z2y.mjs';
-export { a as ScaleMuleServer, e as VideoFailedEvent, V as VideoReadyEvent, g as VideoTranscodedEvent, f as VideoUploadedEvent, W as WebhookEvent, h as WebhookRoutesConfig, c as createServerClient, i as createWebhookHandler, d as createWebhookRoutes, p as parseWebhookEvent, b as registerVideoWebhook, r as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-aT2C5z2y.mjs';
-import { $ as ClientContext, A as ApiError } from '../index-jomBa89d.mjs';
+import { S as ServerConfig } from '../webhook-handler-DS0r_w4M.mjs';
+export { a as ScaleMuleServer, e as VideoFailedEvent, V as VideoReadyEvent, g as VideoTranscodedEvent, f as VideoUploadedEvent, W as WebhookEvent, h as WebhookRoutesConfig, c as createServerClient, i as createWebhookHandler, d as createWebhookRoutes, p as parseWebhookEvent, b as registerVideoWebhook, r as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-DS0r_w4M.mjs';
+import { $ as ClientContext, A as ApiError } from '../index-DewTyMF2.mjs';
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
@@ -94,6 +94,13 @@ declare function extractClientContextFromReq(req: IncomingMessageLike): ClientCo
  * @internal
  */
 declare function buildClientContextHeaders(context: ClientContext | undefined): Record<string, string>;
+/**
+ * Build feature-flag evaluation context from forwarded client context.
+ *
+ * This keeps server-side flag evaluation aligned with targeting rules that use
+ * `ip_address`, while letting callers merge any additional attributes they need.
+ */
+declare function buildFlagContext(clientContext: Pick<ClientContext, 'ip'> | undefined, extraContext?: Record<string, unknown>): Record<string, unknown>;
 
 /**
  * Cookie Utilities for Secure Session Management
@@ -262,6 +269,27 @@ declare function createAuthRoutes(config?: AuthRoutesConfig): {
     DELETE: RouteHandler;
     PATCH: RouteHandler;
 };
+interface AnalyticsTrackingGateConfig {
+    /** Feature flag key used to decide whether to forward analytics */
+    flagKey: string;
+    /** Feature flag environment (default: 'prod') */
+    environment?: string;
+    /**
+     * When true, analytics continues if flag evaluation fails.
+     * Default: true
+     */
+    failOpen?: boolean;
+    /**
+     * Build feature-flag evaluation context from the inbound analytics request.
+     * Defaults to { ip_address, user_id, anonymous_id, session_id, event_name, page_url }
+     * when those values are present.
+     */
+    buildContext?: (args: {
+        body: Record<string, unknown>;
+        clientContext: ClientContext;
+        request: Request;
+    }) => Record<string, unknown>;
+}
 interface AnalyticsRoutesConfig {
     /** Server client config (optional if using env vars) */
     client?: Partial<ServerConfig>;
@@ -276,6 +304,12 @@ interface AnalyticsRoutesConfig {
      * Default: false (uses catch-all route pattern)
      */
     simpleProxy?: boolean;
+    /**
+     * Optional feature flag gate that suppresses analytics forwarding when the
+     * evaluated flag returns false. Useful for test users, internal IPs, or
+     * staged rollouts without adding app-specific proxy logic.
+     */
+    trackingGate?: AnalyticsTrackingGateConfig;
 }
 /**
  * Create analytics API route handlers
@@ -906,4 +940,4 @@ declare function invalidateBundleCache(key?: string): void;
  */
 declare function prefetchBundles(keys: string[]): Promise<void>;
 
-export { type AnalyticsRoutesConfig, type AuthMiddlewareConfig, type AuthRoutesConfig, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, type HandlerContext, type HandlerOptions, type MySqlBundle, OAUTH_STATE_COOKIE_NAME, type OAuthBundle, type PostgresBundle, type RedisBundle, type S3Bundle, SESSION_COOKIE_NAME, ScaleMuleError, ServerConfig, type SessionCookieOptions, type SessionData, type SmtpBundle, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, prefetchBundles, prefetchSecrets, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, withAuth, withCSRFProtection, withCSRFToken, withSession };
+export { type AnalyticsRoutesConfig, type AnalyticsTrackingGateConfig, type AuthMiddlewareConfig, type AuthRoutesConfig, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, type HandlerContext, type HandlerOptions, type MySqlBundle, OAUTH_STATE_COOKIE_NAME, type OAuthBundle, type PostgresBundle, type RedisBundle, type S3Bundle, SESSION_COOKIE_NAME, ScaleMuleError, ServerConfig, type SessionCookieOptions, type SessionData, type SmtpBundle, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, buildFlagContext, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, prefetchBundles, prefetchSecrets, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, withAuth, withCSRFProtection, withCSRFToken, withSession };

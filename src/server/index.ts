@@ -32,6 +32,7 @@ export {
   extractClientContext,
   extractClientContextFromReq,
   buildClientContextHeaders,
+  buildFlagContext,
 } from './context'
 
 export {
@@ -46,7 +47,7 @@ export {
 export type { SessionCookieOptions, SessionData } from './cookies'
 
 export { createAuthRoutes, createAnalyticsRoutes } from './routes'
-export type { AuthRoutesConfig, AnalyticsRoutesConfig } from './routes'
+export type { AuthRoutesConfig, AnalyticsRoutesConfig, AnalyticsTrackingGateConfig } from './routes'
 
 export { apiHandler } from './handler'
 export type { HandlerContext, HandlerOptions } from './handler'

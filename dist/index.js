@@ -2412,6 +2412,44 @@ function useRealtime(options = {}) {
     [status, error, connect, disconnect, subscribe, send, lastMessage]
   );
 }
+
+// src/hooks/event-dedup.ts
+var DEFAULT_EVENT_DEDUP_MS = 300;
+var DEDUP_MAP_MAX = 200;
+var _eventLastFired = typeof window !== "undefined" ? /* @__PURE__ */ new Map() : null;
+function dedupKey(eventName, properties) {
+  if (!properties) return eventName;
+  const keys = Object.keys(properties);
+  if (keys.length === 0) return eventName;
+  let parts = eventName;
+  for (let i = 0, len = keys.length; i < len; i++) {
+    const k = keys[i];
+    const v = properties[k];
+    if (v === null || v === void 0) {
+      parts += `|${k}=`;
+    } else if (typeof v === "object") {
+      parts += `|${k}=[obj]`;
+    } else {
+      parts += `|${k}=${String(v)}`;
+    }
+  }
+  return parts;
+}
+function shouldDedup(eventName, cooldownMs, properties) {
+  if (!_eventLastFired || cooldownMs <= 0) return false;
+  const now = Date.now();
+  const key = dedupKey(eventName, properties);
+  const last = _eventLastFired.get(key);
+  if (last !== void 0 && now - last < cooldownMs) return true;
+  if (_eventLastFired.size >= DEDUP_MAP_MAX) {
+    const oldest = _eventLastFired.keys().next().value;
+    if (oldest !== void 0) _eventLastFired.delete(oldest);
+  }
+  _eventLastFired.set(key, now);
+  return false;
+}
+
+// src/hooks/useAnalytics.ts
 function generateUUID() {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = Math.random() * 16 | 0;
@@ -2473,20 +2511,34 @@ function parseUtmParams() {
   const campaign = params.get("utm_campaign");
   const term = params.get("utm_term");
   const content = params.get("utm_content");
+  const adgroup = params.get("utm_adgroup");
   if (source) utm.utm_source = source;
   if (medium) utm.utm_medium = medium;
   if (campaign) utm.utm_campaign = campaign;
   if (term) utm.utm_term = term;
   if (content) utm.utm_content = content;
-  if (!utm.utm_source && (params.get("gclid") || params.get("gad_source") || params.get("wbraid") || params.get("gbraid"))) {
+  if (adgroup) utm.utm_adgroup = adgroup;
+  const gclid = params.get("gclid");
+  const gbraid = params.get("gbraid");
+  const wbraid = params.get("wbraid");
+  const fbclid = params.get("fbclid");
+  if (gclid) utm.gclid = gclid;
+  if (gbraid) utm.gbraid = gbraid;
+  if (wbraid) utm.wbraid = wbraid;
+  if (fbclid) utm.fbclid = fbclid;
+  const gadFields = ["gad_source", "gad_campaignid", "gad_adgroupid", "gad_network", "gad_matchtype", "gad_device", "gad_placement"];
+  for (const field of gadFields) {
+    const val = params.get(field);
+    if (val) utm[field] = val;
+  }
+  if (!utm.utm_source && (gclid || utm.gad_source || wbraid || gbraid)) {
     utm.utm_source = "google";
     utm.utm_medium = utm.utm_medium || "cpc";
-    const gadCampaign = params.get("gad_campaignid");
-    if (gadCampaign && !utm.utm_campaign) {
-      utm.utm_campaign = gadCampaign;
+    if (utm.gad_campaignid && !utm.utm_campaign) {
+      utm.utm_campaign = utm.gad_campaignid;
     }
   }
-  if (!utm.utm_source && params.get("fbclid")) {
+  if (!utm.utm_source && fbclid) {
     utm.utm_source = "facebook";
     utm.utm_medium = utm.utm_medium || "cpc";
   }
@@ -2560,7 +2612,8 @@ function useAnalytics(options = {}) {
     autoGenerateSessionId = true,
     sessionStorageKey = "sm_session_id",
     anonymousStorageKey = "sm_anonymous_id",
-    useV2 = true
+    useV2 = true,
+    eventDedupMs = DEFAULT_EVENT_DEDUP_MS
   } = options;
   const shouldAutoCaptureUtmParams = autoCaptureUtmParams ?? autoCapturUtmParams ?? true;
   const { client, user, analyticsProxyUrl, publishableKey, gatewayUrl } = useScaleMule();
@@ -2706,6 +2759,9 @@ function useAnalytics(options = {}) {
   sendEventRef.current = sendEvent;
   const trackEvent = react.useCallback(
     async (event) => {
+      if (shouldDedup(event.event_name, eventDedupMs, event.properties)) {
+        return { tracked: 0, session_id: sessionIdRef.current || void 0 };
+      }
       setError(null);
       setLoading(true);
       try {
@@ -2725,7 +2781,7 @@ function useAnalytics(options = {}) {
       }
     },
     // Note: idsReady removed - we use ref to keep callback stable
-    [sendEvent]
+    [sendEvent, eventDedupMs]
   );
   const trackPageView = react.useCallback(
     async (data) => {

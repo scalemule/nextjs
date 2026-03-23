@@ -657,12 +657,36 @@ export interface UTMParams {
   utm_source?: string
   /** Marketing medium (e.g., 'cpc', 'email', 'social') */
   utm_medium?: string
-  /** Campaign name */
+  /** Campaign name or ID */
   utm_campaign?: string
   /** Search term for paid search */
   utm_term?: string
   /** Content identifier for A/B testing */
   utm_content?: string
+  /** Ad group name or ID */
+  utm_adgroup?: string
+  /** Google Ads click ID (auto-appended by Google) */
+  gclid?: string
+  /** Google Ads click ID for iOS (app attribution) */
+  gbraid?: string
+  /** Google Ads click ID for web (cross-domain) */
+  wbraid?: string
+  /** Facebook/Meta click ID (auto-appended by Meta) */
+  fbclid?: string
+  /** Google Ads campaign ID (via ValueTrack {campaignid}) */
+  gad_campaignid?: string
+  /** Google Ads ad group ID (via ValueTrack {adgroupid}) */
+  gad_adgroupid?: string
+  /** Google Ads network: g=search, d=display, y=youtube */
+  gad_network?: string
+  /** Google Ads match type: b=broad, p=phrase, e=exact */
+  gad_matchtype?: string
+  /** Google Ads device: m=mobile, c=desktop, t=tablet */
+  gad_device?: string
+  /** Google Ads placement (display/youtube site) */
+  gad_placement?: string
+  /** Google Ads source identifier */
+  gad_source?: string
 }
 
 /**
