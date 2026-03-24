@@ -49,6 +49,9 @@ export type { SessionCookieOptions, SessionData } from './cookies'
 export { createAuthRoutes, createAnalyticsRoutes } from './routes'
 export type { AuthRoutesConfig, AnalyticsRoutesConfig, AnalyticsTrackingGateConfig } from './routes'
 
+export { createPushRoutes } from './push'
+export type { PushRoutesConfig } from './push'
+
 export { apiHandler } from './handler'
 export type { HandlerContext, HandlerOptions } from './handler'
 

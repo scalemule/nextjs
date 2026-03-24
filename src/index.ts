@@ -47,6 +47,7 @@ export { useUser } from './hooks/useUser'
 export { useRealtime } from './hooks/useRealtime'
 export { useAnalytics } from './hooks/useAnalytics'
 export { useFeatureFlags } from './hooks/useFeatureFlags'
+export { usePushNotifications } from './hooks/usePushNotifications'
 export type {
   RealtimeEvent,
   RealtimeMessage,
@@ -62,6 +63,10 @@ export type {
   UseFeatureFlagsReturn,
   UseFeatureFlagsReturn as UseFlagsReturn,
 } from './hooks/useFeatureFlags'
+export type {
+  UsePushNotificationsOptions,
+  UsePushNotificationsReturn,
+} from './hooks/usePushNotifications'
 
 // Error class
 export { ScaleMuleApiError } from './types'
