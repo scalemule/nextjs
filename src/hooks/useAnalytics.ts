@@ -470,18 +470,30 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
   const sendEvent = useCallback(
     async (event: AnalyticsEvent): Promise<TrackEventResponse> => {
       const fullEvent = buildFullEvent(event)
+      const payload = JSON.stringify(fullEvent)
 
       // If proxy URL is configured, send events there instead of ScaleMule directly
       if (analyticsProxyUrl) {
-        // Fire and forget for proxy - analytics should never block UI
-        fetch(analyticsProxyUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(fullEvent),
-        }).catch((err) => {
-          // Silent fail - analytics should never break the app
-          console.debug('[ScaleMule Analytics] Proxy tracking failed:', err)
-        })
+        // Use sendBeacon for same-origin proxy — survives page navigation,
+        // tab close, and mobile app backgrounding. Falls back to keepalive fetch.
+        const sent =
+          typeof navigator !== 'undefined' &&
+          typeof navigator.sendBeacon === 'function' &&
+          navigator.sendBeacon(
+            analyticsProxyUrl,
+            new Blob([payload], { type: 'application/json' })
+          )
+
+        if (!sent) {
+          fetch(analyticsProxyUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true,
+          }).catch((err) => {
+            console.debug('[ScaleMule Analytics] Proxy tracking failed:', err)
+          })
+        }
 
         return { tracked: 1, session_id: sessionIdRef.current || undefined }
       }
@@ -491,14 +503,15 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       if (publishableKey && gatewayUrl) {
         const endpoint = useV2 ? '/v1/analytics/v2/events' : '/v1/analytics/events'
 
-        // Fire and forget - analytics should never block UI
+        // keepalive ensures the request survives page navigation/tab close
         fetch(`${gatewayUrl}${endpoint}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'x-api-key': publishableKey,
           },
-          body: JSON.stringify(fullEvent),
+          body: payload,
+          keepalive: true,
         }).catch((err) => {
           console.debug('[ScaleMule Analytics] Direct tracking failed:', err)
         })
@@ -603,15 +616,26 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
         // If proxy URL is configured, send events there
         if (analyticsProxyUrl) {
-          // Fire and forget for proxy
           for (const event of fullEvents) {
-            fetch(analyticsProxyUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(event),
-            }).catch((err) => {
-              console.debug('[ScaleMule Analytics] Proxy batch tracking failed:', err)
-            })
+            const payload = JSON.stringify(event)
+            const sent =
+              typeof navigator !== 'undefined' &&
+              typeof navigator.sendBeacon === 'function' &&
+              navigator.sendBeacon(
+                analyticsProxyUrl,
+                new Blob([payload], { type: 'application/json' })
+              )
+
+            if (!sent) {
+              fetch(analyticsProxyUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload,
+                keepalive: true,
+              }).catch((err) => {
+                console.debug('[ScaleMule Analytics] Proxy batch tracking failed:', err)
+              })
+            }
           }
 
           setLoading(false)
@@ -629,6 +653,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
               'x-api-key': publishableKey,
             },
             body: JSON.stringify({ events: fullEvents }),
+            keepalive: true,
           }).catch((err) => {
             console.debug('[ScaleMule Analytics] Direct batch tracking failed:', err)
           })
