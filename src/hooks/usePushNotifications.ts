@@ -248,6 +248,24 @@ export function usePushNotifications(
     }
   }, [manager])
 
+  /**
+   * Clear user association from push token. Must be called BEFORE logout clears
+   * the session — the request needs a valid session to prove token ownership.
+   *
+   * Note: automatic beforeLogout lifecycle is not yet implemented in the provider.
+   * Call this explicitly in your logout handler:
+   *
+   * @example
+   * ```tsx
+   * const { disassociateUser } = usePushNotifications()
+   * const { logout } = useAuth()
+   *
+   * async function handleLogout() {
+   *   await disassociateUser()  // clear push token association first
+   *   await logout()            // then clear session
+   * }
+   * ```
+   */
   const disassociateUser = useCallback(async () => {
     if (!manager) return
     try {
