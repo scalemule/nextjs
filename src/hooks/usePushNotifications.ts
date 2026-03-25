@@ -34,6 +34,8 @@ export interface UsePushNotificationsOptions {
   serviceWorkerUrl?: string
   /** Push proxy URL (default: '/api/push') */
   pushProxyUrl?: string
+  /** Where the user subscribed (e.g., 'landing_prompt', 'post_signup', 'settings') */
+  registrationSource?: string
   /** Called when a push notification is received while app is in foreground */
   onNotification?: (data: unknown) => void
 }
@@ -76,7 +78,7 @@ function getCsrfToken(): string {
 export function usePushNotifications(
   options: UsePushNotificationsOptions = {}
 ): UsePushNotificationsReturn {
-  const { serviceWorkerUrl = '/sw.js', pushProxyUrl = '/api/push', onNotification } = options
+  const { serviceWorkerUrl = '/sw.js', pushProxyUrl = '/api/push', registrationSource, onNotification } = options
   const { user } = useScaleMule()
 
   const [isSupported, setIsSupported] = useState(false)
@@ -154,7 +156,7 @@ export function usePushNotifications(
   const manager = useMemo(() => {
     if (typeof window === 'undefined') return null
     try {
-      return new WebPushManager({ fetcher, serviceWorkerUrl })
+      return new WebPushManager({ fetcher, serviceWorkerUrl, registrationSource })
     } catch {
       return null
     }
