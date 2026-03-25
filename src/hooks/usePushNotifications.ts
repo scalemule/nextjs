@@ -160,7 +160,7 @@ export function usePushNotifications(
     }
   }, [fetcher, serviceWorkerUrl])
 
-  // Check initial state on mount
+  // Check initial state on mount — detect stale subscriptions
   useEffect(() => {
     if (!manager) return
     const supported = manager.isSupported()
@@ -168,14 +168,26 @@ export function usePushNotifications(
     setPermission(manager.getPermissionState())
 
     if (supported) {
+      // Check if we think we're subscribed but the browser subscription is gone
+      // (user revoked permission, cleared site data, etc.)
+      const storedTokenId = manager.getTokenId()
       manager.isSubscribed().then((sub) => {
-        setIsSubscribed(sub)
-        setTokenId(manager.getTokenId())
+        if (!sub && storedTokenId) {
+          // Stale token — browser subscription gone but backend still has our token
+          // Deregister from backend to prevent sending to dead subscription
+          manager.unsubscribe().catch(() => {})
+          setIsSubscribed(false)
+          setTokenId(null)
+          setPermission(manager.getPermissionState())
+        } else {
+          setIsSubscribed(sub)
+          setTokenId(manager.getTokenId())
+        }
       })
     }
   }, [manager])
 
-  // Listen for service worker messages (foreground notifications)
+  // Listen for service worker messages (foreground notifications + subscription changes)
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
 
@@ -183,11 +195,21 @@ export function usePushNotifications(
       if (event.data?.type === 'push-received') {
         onNotificationRef.current?.(event.data.payload)
       }
+      if (event.data?.type === 'push-subscription-expired') {
+        // Browser invalidated the push subscription (permission revoked, key change, etc.)
+        // Clean up: deregister stale token from backend
+        if (manager) {
+          manager.unsubscribe().catch(() => {})
+        }
+        setIsSubscribed(false)
+        setTokenId(null)
+        setPermission(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
+      }
     }
 
     navigator.serviceWorker.addEventListener('message', handleMessage)
     return () => navigator.serviceWorker.removeEventListener('message', handleMessage)
-  }, [])
+  }, [manager])
 
   // Auto-associate when user logs in (anonymous token → user)
   useEffect(() => {
