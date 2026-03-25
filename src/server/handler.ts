@@ -136,8 +136,16 @@ export function apiHandler(handler: HandlerFn, options?: HandlerOptions) {
           const custom = options.onError(error)
           if (custom) return custom
         }
+        // Never expose internal/server error details to end users — only
+        // log them server-side. Client errors (4xx) keep their messages.
+        const safeMessage = error.status >= 500
+          ? 'An unexpected error occurred'
+          : error.message
+        if (error.status >= 500) {
+          console.error('Internal API error:', error.message)
+        }
         return Response.json(
-          { success: false, error: { code: error.code, message: error.message } },
+          { success: false, error: { code: error.code, message: safeMessage } },
           { status: error.status }
         )
       }
