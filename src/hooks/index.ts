@@ -9,3 +9,5 @@ export type { FeatureFlagEvaluation, UseFeatureFlagsOptions, UseFeatureFlagsRetu
 export type { RealtimeEvent, RealtimeMessage, RealtimeStatus, UseRealtimeOptions, UseRealtimeReturn } from './useRealtime'
 export { usePushNotifications } from './usePushNotifications'
 export type { UsePushNotificationsOptions, UsePushNotificationsReturn } from './usePushNotifications'
+export { useShare } from './useShare'
+export type { UseShareOptions, UseShareReturn } from './useShare'

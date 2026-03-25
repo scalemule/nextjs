@@ -1,6 +1,6 @@
-import { S as ServerConfig } from '../webhook-handler-DS0r_w4M.mjs';
-export { a as ScaleMuleServer, e as VideoFailedEvent, V as VideoReadyEvent, g as VideoTranscodedEvent, f as VideoUploadedEvent, W as WebhookEvent, h as WebhookRoutesConfig, c as createServerClient, i as createWebhookHandler, d as createWebhookRoutes, p as parseWebhookEvent, b as registerVideoWebhook, r as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-DS0r_w4M.mjs';
-import { $ as ClientContext, A as ApiError } from '../index-DewTyMF2.mjs';
+import { S as ServerConfig } from '../webhook-handler-Cz9jtet2.mjs';
+export { a as ScaleMuleServer, V as VideoFailedEvent, b as VideoReadyEvent, c as VideoTranscodedEvent, d as VideoUploadedEvent, W as WebhookEvent, e as WebhookRoutesConfig, f as createServerClient, g as createWebhookHandler, h as createWebhookRoutes, p as parseWebhookEvent, r as registerVideoWebhook, i as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-Cz9jtet2.mjs';
+import { p as ClientContext, A as ApiError } from '../index-BoENfro3.mjs';
 import { NextRequest, NextResponse } from 'next/server';
 
 /**
@@ -231,7 +231,7 @@ interface AuthRoutesConfig {
         email: string;
     }) => void | Promise<void>;
 }
-type RouteHandler = (request: Request, context: {
+type RouteHandler$1 = (request: Request, context: {
     params: Promise<{
         scalemule?: string[];
     }>;
@@ -264,10 +264,10 @@ type RouteHandler = (request: Request, context: {
  * - POST /api/auth/verify-email - Verify email
  */
 declare function createAuthRoutes(config?: AuthRoutesConfig): {
-    GET: RouteHandler;
-    POST: RouteHandler;
-    DELETE: RouteHandler;
-    PATCH: RouteHandler;
+    GET: RouteHandler$1;
+    POST: RouteHandler$1;
+    DELETE: RouteHandler$1;
+    PATCH: RouteHandler$1;
 };
 interface AnalyticsTrackingGateConfig {
     /** Feature flag key used to decide whether to forward analytics */
@@ -346,7 +346,44 @@ interface AnalyticsRoutesConfig {
  * ```
  */
 declare function createAnalyticsRoutes(config?: AnalyticsRoutesConfig): {
+    POST: RouteHandler$1;
+};
+
+/**
+ * Push Notification Proxy Routes
+ *
+ * Drop-in route handlers for Next.js App Router that proxy push notification
+ * requests to the ScaleMule gateway. Follows the same pattern as createAuthRoutes().
+ *
+ * @example
+ * ```ts
+ * // app/api/push/[...action]/route.ts
+ * import { createPushRoutes } from '@scalemule/nextjs/server'
+ *
+ * export const { GET, POST, PUT, DELETE } = createPushRoutes({
+ *   apiKey: process.env.SCALEMULE_API_KEY!,
+ *   gatewayUrl: process.env.SCALEMULE_API_URL!,
+ * })
+ * ```
+ */
+interface PushRoutesConfig {
+    /** Server-side secret API key */
+    apiKey: string;
+    /** Gateway URL (e.g., https://api.scalemule.com) */
+    gatewayUrl: string;
+    /** Enable CSRF validation on POST/PUT/DELETE (default: true) */
+    csrf?: boolean;
+}
+type RouteHandler = (request: Request, context: {
+    params: Promise<{
+        action?: string[];
+    }>;
+}) => Promise<Response>;
+declare function createPushRoutes(config: PushRoutesConfig): {
+    GET: RouteHandler;
     POST: RouteHandler;
+    PUT: RouteHandler;
+    DELETE: RouteHandler;
 };
 
 /**
@@ -940,4 +977,4 @@ declare function invalidateBundleCache(key?: string): void;
  */
 declare function prefetchBundles(keys: string[]): Promise<void>;
 
-export { type AnalyticsRoutesConfig, type AnalyticsTrackingGateConfig, type AuthMiddlewareConfig, type AuthRoutesConfig, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, type HandlerContext, type HandlerOptions, type MySqlBundle, OAUTH_STATE_COOKIE_NAME, type OAuthBundle, type PostgresBundle, type RedisBundle, type S3Bundle, SESSION_COOKIE_NAME, ScaleMuleError, ServerConfig, type SessionCookieOptions, type SessionData, type SmtpBundle, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, buildFlagContext, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, prefetchBundles, prefetchSecrets, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, withAuth, withCSRFProtection, withCSRFToken, withSession };
+export { type AnalyticsRoutesConfig, type AnalyticsTrackingGateConfig, type AuthMiddlewareConfig, type AuthRoutesConfig, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, type HandlerContext, type HandlerOptions, type MySqlBundle, OAUTH_STATE_COOKIE_NAME, type OAuthBundle, type PostgresBundle, type PushRoutesConfig, type RedisBundle, type S3Bundle, SESSION_COOKIE_NAME, ScaleMuleError, ServerConfig, type SessionCookieOptions, type SessionData, type SmtpBundle, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, buildFlagContext, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createPushRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, prefetchBundles, prefetchSecrets, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, withAuth, withCSRFProtection, withCSRFToken, withSession };

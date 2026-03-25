@@ -48,6 +48,7 @@ export { useRealtime } from './hooks/useRealtime'
 export { useAnalytics } from './hooks/useAnalytics'
 export { useFeatureFlags } from './hooks/useFeatureFlags'
 export { usePushNotifications } from './hooks/usePushNotifications'
+export { useShare } from './hooks/useShare'
 export type {
   RealtimeEvent,
   RealtimeMessage,
@@ -67,6 +68,10 @@ export type {
   UsePushNotificationsOptions,
   UsePushNotificationsReturn,
 } from './hooks/usePushNotifications'
+export type {
+  UseShareOptions,
+  UseShareReturn,
+} from './hooks/useShare'
 
 // Error class
 export { ScaleMuleApiError } from './types'

@@ -2,8 +2,8 @@ import * as react_jsx_runtime from 'react/jsx-runtime';
 import { ReactNode } from 'react';
 import { ScaleMuleClient } from './client.js';
 export { ClientConfig, RequestOptions, createClient } from './client.js';
-import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-DewTyMF2.js';
-export { a2 as AccountBalance, a9 as AnalyticsEvent, k as ApiResponse, af as BatchTrackRequest, a3 as BillingPayment, a5 as BillingPayout, a4 as BillingRefund, a7 as BillingTransaction, r as ChangeEmailRequest, C as ChangePasswordRequest, $ as ClientContext, a1 as ConnectedAccount, D as DeviceFingerprint, ac as DeviceInfo, ad as EnhancedAnalyticsEvent, F as ForgotPasswordRequest, x as LinkedAccount, T as ListFilesResponse, n as LoginDeviceInfo, l as LoginRequest, m as LoginResponseWithMFA, o as LoginRiskInfo, G as MFAChallengeResponse, M as MFAMethod, B as MFASMSSetupResponse, y as MFASetupRequest, H as MFAStatus, z as MFATOTPSetupResponse, E as MFAVerifyRequest, v as OAuthCallbackRequest, w as OAuthCallbackResponse, t as OAuthConfig, O as OAuthProvider, u as OAuthStartResponse, aa as PageViewData, a6 as PayoutSchedule, K as PhoneLoginRequest, I as PhoneSendCodeRequest, J as PhoneVerifyRequest, P as Profile, p as RefreshResponse, R as RegisterRequest, q as ResetPasswordRequest, h as ScaleMuleApiError, i as ScaleMuleEnvironment, s as Session, _ as SignedUploadCompleteRequest, Y as SignedUploadRequest, Z as SignedUploadResponse, X as SignedUploadUrl, j as StorageAdapter, N as StorageFile, ae as TrackEventResponse, a8 as TransactionSummary, ab as UTMParams, a0 as UpdateProfileRequest, Q as UploadOptions, W as UploadResponse, V as VerifyEmailRequest } from './index-DewTyMF2.js';
+import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-BoENfro3.js';
+export { h as AccountBalance, i as AnalyticsEvent, j as ApiResponse, B as BatchTrackRequest, k as BillingPayment, l as BillingPayout, m as BillingRefund, n as BillingTransaction, C as ChangeEmailRequest, o as ChangePasswordRequest, p as ClientContext, q as ConnectedAccount, D as DeviceFingerprint, r as DeviceInfo, E as EnhancedAnalyticsEvent, F as ForgotPasswordRequest, s as LinkedAccount, t as ListFilesResponse, u as LoginDeviceInfo, v as LoginRequest, w as LoginResponseWithMFA, x as LoginRiskInfo, M as MFAChallengeResponse, y as MFAMethod, z as MFASMSSetupResponse, G as MFASetupRequest, H as MFAStatus, I as MFATOTPSetupResponse, J as MFAVerifyRequest, O as OAuthCallbackRequest, K as OAuthCallbackResponse, N as OAuthConfig, P as OAuthProvider, Q as OAuthStartResponse, R as PageViewData, T as PayoutSchedule, V as PhoneLoginRequest, W as PhoneSendCodeRequest, X as PhoneVerifyRequest, Y as Profile, Z as RefreshResponse, _ as RegisterRequest, $ as ResetPasswordRequest, a0 as ScaleMuleApiError, a1 as ScaleMuleEnvironment, a2 as Session, a3 as SignedUploadCompleteRequest, a4 as SignedUploadRequest, a5 as SignedUploadResponse, a6 as SignedUploadUrl, a7 as StorageAdapter, a8 as StorageFile, a9 as TrackEventResponse, aa as TransactionSummary, ab as UTMParams, ac as UpdateProfileRequest, ad as UploadOptions, ae as UploadResponse, af as VerifyEmailRequest } from './index-BoENfro3.js';
 
 interface ScaleMuleContextValue {
     /** The API client instance */
@@ -289,6 +289,60 @@ interface UseFeatureFlagsReturn {
 }
 declare function useFeatureFlags(options?: UseFeatureFlagsOptions): UseFeatureFlagsReturn;
 
+interface UsePushNotificationsOptions {
+    /** Service worker URL (default: '/sw.js') */
+    serviceWorkerUrl?: string;
+    /** Push proxy URL (default: '/api/push') */
+    pushProxyUrl?: string;
+    /** Called when a push notification is received while app is in foreground */
+    onNotification?: (data: unknown) => void;
+}
+interface UsePushNotificationsReturn {
+    /** Whether the browser supports Web Push */
+    isSupported: boolean;
+    /** Current notification permission state */
+    permission: NotificationPermission | 'unsupported';
+    /** Whether push is currently subscribed */
+    isSubscribed: boolean;
+    /** Whether an operation is in progress */
+    isLoading: boolean;
+    /** Last error */
+    error: ApiError | null;
+    /** Request permission and subscribe to push notifications */
+    subscribe: () => Promise<void>;
+    /** Unsubscribe from push notifications */
+    unsubscribe: () => Promise<void>;
+    /** Clear user association (call before logout) */
+    disassociateUser: () => Promise<void>;
+    /** The push token ID from backend registration */
+    tokenId: string | null;
+}
+declare function usePushNotifications(options?: UsePushNotificationsOptions): UsePushNotificationsReturn;
+
+interface UseShareOptions {
+    /** The canonical URL to share. Defaults to current page URL.
+     *  IMPORTANT: Pass the content's canonical URL, not window.location.href,
+     *  to avoid re-sharing someone else's referral code. */
+    url?: string;
+    /** Manual referral code override (skips fetch) */
+    referralCode?: string;
+    /** Auto-fetch referral code from /v1/referrals/me when authenticated */
+    autoFetchReferral?: boolean;
+}
+interface UseShareReturn {
+    /** Share URL — absolute, with ?rc= appended if referral code available */
+    shareUrl: string;
+    /** User's referral code, or null if unauthenticated/not fetched */
+    referralCode: string | null;
+    /** Copy shareUrl to clipboard. Returns true on success. */
+    copyLink: () => Promise<boolean>;
+    /** Whether link was recently copied (auto-resets after 2s) */
+    copied: boolean;
+    /** Loading state for referral code fetch */
+    loading: boolean;
+}
+declare function useShare(options?: UseShareOptions): UseShareReturn;
+
 /**
  * Client-side validation helpers
  *
@@ -447,4 +501,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, ListFilesParams, LoginResponse, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseRealtimeOptions, type UseRealtimeReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useRealtime, useScaleMule, useScaleMuleClient, useUser, validateForm, validators };
+export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, ListFilesParams, LoginResponse, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };

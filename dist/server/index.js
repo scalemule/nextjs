@@ -1601,6 +1601,137 @@ function createAnalyticsRoutes(config = {}) {
   return { POST };
 }
 
+// src/server/push.ts
+function errorResponse2(code, message, status) {
+  return new Response(
+    JSON.stringify({ success: false, error: { code, message } }),
+    { status, headers: { "Content-Type": "application/json" } }
+  );
+}
+function successResponse2(data, status = 200) {
+  return new Response(
+    JSON.stringify({ success: true, data }),
+    { status, headers: { "Content-Type": "application/json" } }
+  );
+}
+function createPushRoutes(config) {
+  const { apiKey, gatewayUrl, csrf = true } = config;
+  async function proxyToGateway(request, method, subPath) {
+    const targetUrl = `${gatewayUrl}/v1/communication/push/${subPath}`;
+    const headers2 = {
+      "x-api-key": apiKey
+    };
+    const session = getSessionFromRequest(request);
+    if (session?.sessionToken) {
+      headers2["Authorization"] = `Bearer ${session.sessionToken}`;
+    }
+    const clientContext = extractClientContext(
+      request
+    );
+    const contextHeaders = buildClientContextHeaders(clientContext);
+    Object.assign(headers2, contextHeaders);
+    const workspaceId = request.headers.get("x-sm-workspace-id");
+    if (workspaceId) {
+      headers2["x-sm-workspace-id"] = workspaceId;
+    }
+    const fetchOptions = {
+      method,
+      headers: headers2
+    };
+    if (method !== "GET" && method !== "DELETE") {
+      try {
+        const body = await request.text();
+        if (body) {
+          headers2["Content-Type"] = "application/json";
+          fetchOptions.body = body;
+        }
+      } catch {
+      }
+    }
+    const response = await fetch(targetUrl, fetchOptions);
+    if (response.status === 204) {
+      return successResponse2(null);
+    }
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const json = await response.json();
+      if (response.ok) {
+        return new Response(JSON.stringify(json), {
+          status: response.status,
+          headers: { "Content-Type": "application/json" }
+        });
+      } else {
+        const errMsg = json?.error?.message || json?.message || "Request failed";
+        const errCode = json?.error?.code || json?.code || "PUSH_ERROR";
+        return errorResponse2(errCode, errMsg, response.status);
+      }
+    }
+    const text = await response.text();
+    if (response.ok) {
+      return successResponse2(text);
+    }
+    return errorResponse2("PUSH_ERROR", text || "Request failed", response.status);
+  }
+  function extractSubPath(params) {
+    return (params.action || []).join("/");
+  }
+  const GET = async (request, context) => {
+    try {
+      const params = await context?.params;
+      const subPath = extractSubPath(params || {});
+      return proxyToGateway(request, "GET", subPath);
+    } catch (e) {
+      return errorResponse2("INTERNAL_ERROR", String(e), 500);
+    }
+  };
+  const POST = async (request, context) => {
+    if (csrf) {
+      const csrfError = validateCSRFToken(request);
+      if (csrfError) {
+        return errorResponse2("CSRF_ERROR", "CSRF validation failed", 403);
+      }
+    }
+    try {
+      const params = await context?.params;
+      const subPath = extractSubPath(params || {});
+      return proxyToGateway(request, "POST", subPath);
+    } catch (e) {
+      return errorResponse2("INTERNAL_ERROR", String(e), 500);
+    }
+  };
+  const PUT = async (request, context) => {
+    if (csrf) {
+      const csrfError = validateCSRFToken(request);
+      if (csrfError) {
+        return errorResponse2("CSRF_ERROR", "CSRF validation failed", 403);
+      }
+    }
+    try {
+      const params = await context?.params;
+      const subPath = extractSubPath(params || {});
+      return proxyToGateway(request, "PUT", subPath);
+    } catch (e) {
+      return errorResponse2("INTERNAL_ERROR", String(e), 500);
+    }
+  };
+  const DELETE = async (request, context) => {
+    if (csrf) {
+      const csrfError = validateCSRFToken(request);
+      if (csrfError) {
+        return errorResponse2("CSRF_ERROR", "CSRF validation failed", 403);
+      }
+    }
+    try {
+      const params = await context?.params;
+      const subPath = extractSubPath(params || {});
+      return proxyToGateway(request, "DELETE", subPath);
+    } catch (e) {
+      return errorResponse2("INTERNAL_ERROR", String(e), 500);
+    }
+  };
+  return { GET, POST, PUT, DELETE };
+}
+
 // src/server/errors.ts
 var ScaleMuleError = class extends Error {
   constructor(code, message, status = 400, details) {
@@ -1705,8 +1836,12 @@ function apiHandler(handler, options) {
           const custom = options.onError(error);
           if (custom) return custom;
         }
+        const safeMessage = error.status >= 500 ? "An unexpected error occurred" : error.message;
+        if (error.status >= 500) {
+          console.error("Internal API error:", error.message);
+        }
         return Response.json(
-          { success: false, error: { code: error.code, message: error.message } },
+          { success: false, error: { code: error.code, message: safeMessage } },
           { status: error.status }
         );
       }
@@ -2220,6 +2355,7 @@ exports.configureSecrets = configureSecrets;
 exports.createAnalyticsRoutes = createAnalyticsRoutes;
 exports.createAuthMiddleware = createAuthMiddleware;
 exports.createAuthRoutes = createAuthRoutes;
+exports.createPushRoutes = createPushRoutes;
 exports.createServerClient = createServerClient;
 exports.createWebhookHandler = createWebhookHandler;
 exports.createWebhookRoutes = createWebhookRoutes;

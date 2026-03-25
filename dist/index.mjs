@@ -1,5 +1,6 @@
 import { createContext, useState, useMemo, useEffect, useCallback, useContext, useRef } from 'react';
 import { jsx } from 'react/jsx-runtime';
+import { WebPushManager } from '@scalemule/sdk';
 
 // src/provider.tsx
 
@@ -2724,14 +2725,22 @@ function useAnalytics(options = {}) {
   const sendEvent = useCallback(
     async (event) => {
       const fullEvent = buildFullEvent(event);
+      const payload = JSON.stringify(fullEvent);
       if (analyticsProxyUrl) {
-        fetch(analyticsProxyUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(fullEvent)
-        }).catch((err) => {
-          console.debug("[ScaleMule Analytics] Proxy tracking failed:", err);
-        });
+        const sent = typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function" && navigator.sendBeacon(
+          analyticsProxyUrl,
+          new Blob([payload], { type: "application/json" })
+        );
+        if (!sent) {
+          fetch(analyticsProxyUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: payload,
+            keepalive: true
+          }).catch((err) => {
+            console.debug("[ScaleMule Analytics] Proxy tracking failed:", err);
+          });
+        }
         return { tracked: 1, session_id: sessionIdRef.current || void 0 };
       }
       if (publishableKey && gatewayUrl) {
@@ -2742,7 +2751,8 @@ function useAnalytics(options = {}) {
             "Content-Type": "application/json",
             "x-api-key": publishableKey
           },
-          body: JSON.stringify(fullEvent)
+          body: payload,
+          keepalive: true
         }).catch((err) => {
           console.debug("[ScaleMule Analytics] Direct tracking failed:", err);
         });
@@ -2805,13 +2815,21 @@ function useAnalytics(options = {}) {
         const fullEvents = events.map((event) => buildFullEvent(event));
         if (analyticsProxyUrl) {
           for (const event of fullEvents) {
-            fetch(analyticsProxyUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(event)
-            }).catch((err) => {
-              console.debug("[ScaleMule Analytics] Proxy batch tracking failed:", err);
-            });
+            const payload = JSON.stringify(event);
+            const sent = typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function" && navigator.sendBeacon(
+              analyticsProxyUrl,
+              new Blob([payload], { type: "application/json" })
+            );
+            if (!sent) {
+              fetch(analyticsProxyUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: payload,
+                keepalive: true
+              }).catch((err) => {
+                console.debug("[ScaleMule Analytics] Proxy batch tracking failed:", err);
+              });
+            }
           }
           setLoading(false);
           return { tracked: events.length, session_id: sessionIdRef.current || void 0 };
@@ -2824,7 +2842,8 @@ function useAnalytics(options = {}) {
               "Content-Type": "application/json",
               "x-api-key": publishableKey
             },
-            body: JSON.stringify({ events: fullEvents })
+            body: JSON.stringify({ events: fullEvents }),
+            keepalive: true
           }).catch((err) => {
             console.debug("[ScaleMule Analytics] Direct batch tracking failed:", err);
           });
@@ -3032,6 +3051,265 @@ function useFeatureFlags(options = {}) {
     isEnabled,
     getFlag
   };
+}
+function getCsrfToken() {
+  if (typeof document === "undefined") return "";
+  const match = document.cookie.match(/(?:^|;\s*)sm_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+function usePushNotifications(options = {}) {
+  const { serviceWorkerUrl = "/sw.js", pushProxyUrl = "/api/push", onNotification } = options;
+  const { user } = useScaleMule();
+  const [isSupported, setIsSupported] = useState(false);
+  const [permission, setPermission] = useState("unsupported");
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [tokenId, setTokenId] = useState(null);
+  const onNotificationRef = useRef(onNotification);
+  useEffect(() => {
+    onNotificationRef.current = onNotification;
+  }, [onNotification]);
+  const prevUserRef = useRef(null);
+  const fetcher = useMemo(() => {
+    async function proxyGet(path) {
+      const res = await fetch(`${pushProxyUrl}/${path}`);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message || "Request failed");
+      return json.data;
+    }
+    async function proxyPost(path, body) {
+      const res = await fetch(`${pushProxyUrl}/${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": getCsrfToken()
+        },
+        body: body ? JSON.stringify(body) : void 0
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message || "Request failed");
+      return json.data;
+    }
+    async function proxyPut(path, body) {
+      const res = await fetch(`${pushProxyUrl}/${path}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-csrf-token": getCsrfToken()
+        },
+        body: body ? JSON.stringify(body) : void 0
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message || "Request failed");
+      return json.data;
+    }
+    async function proxyDelete(path) {
+      const res = await fetch(`${pushProxyUrl}/${path}`, {
+        method: "DELETE",
+        headers: {
+          "x-csrf-token": getCsrfToken()
+        }
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error?.message || "Request failed");
+    }
+    return {
+      getSettings: () => proxyGet("settings/me"),
+      registerToken: (data) => proxyPost("register", data),
+      unregisterToken: (id) => proxyDelete(`tokens/by-id/${id}`),
+      associateUser: (id) => proxyPut(`tokens/by-id/${id}/user`, {}),
+      disassociateUser: (id) => proxyDelete(`tokens/by-id/${id}/user`)
+    };
+  }, [pushProxyUrl]);
+  const manager = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return new WebPushManager({ fetcher, serviceWorkerUrl });
+    } catch {
+      return null;
+    }
+  }, [fetcher, serviceWorkerUrl]);
+  useEffect(() => {
+    if (!manager) return;
+    const supported = manager.isSupported();
+    setIsSupported(supported);
+    setPermission(manager.getPermissionState());
+    if (supported) {
+      const storedTokenId = manager.getTokenId();
+      manager.isSubscribed().then((sub) => {
+        if (!sub && storedTokenId) {
+          manager.unsubscribe().catch(() => {
+          });
+          setIsSubscribed(false);
+          setTokenId(null);
+          setPermission(manager.getPermissionState());
+        } else {
+          setIsSubscribed(sub);
+          setTokenId(manager.getTokenId());
+        }
+      });
+    }
+  }, [manager]);
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    function handleMessage(event) {
+      if (event.data?.type === "push-received") {
+        onNotificationRef.current?.(event.data.payload);
+      }
+      if (event.data?.type === "push-subscription-expired") {
+        if (manager) {
+          manager.unsubscribe().catch(() => {
+          });
+        }
+        setIsSubscribed(false);
+        setTokenId(null);
+        setPermission(typeof Notification !== "undefined" ? Notification.permission : "unsupported");
+      }
+    }
+    navigator.serviceWorker.addEventListener("message", handleMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", handleMessage);
+  }, [manager]);
+  useEffect(() => {
+    if (!manager) return;
+    const currentUserId = user?.id || null;
+    const prevUserId = prevUserRef.current;
+    if (currentUserId && !prevUserId && isSubscribed) {
+      manager.associateUser().catch(() => {
+      });
+    }
+    prevUserRef.current = currentUserId;
+  }, [user?.id, manager, isSubscribed]);
+  const subscribe = useCallback(async () => {
+    if (!manager) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await manager.subscribe();
+      if (result) {
+        setIsSubscribed(true);
+        setTokenId(result.tokenId);
+        setPermission("granted");
+      } else {
+        setPermission(manager.getPermissionState());
+      }
+    } catch (e) {
+      setError({
+        code: "PUSH_SUBSCRIBE_ERROR",
+        message: e instanceof Error ? e.message : "Failed to subscribe"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [manager]);
+  const unsubscribe = useCallback(async () => {
+    if (!manager) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      await manager.unsubscribe();
+      setIsSubscribed(false);
+      setTokenId(null);
+    } catch (e) {
+      setError({
+        code: "PUSH_UNSUBSCRIBE_ERROR",
+        message: e instanceof Error ? e.message : "Failed to unsubscribe"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [manager]);
+  const disassociateUser = useCallback(async () => {
+    if (!manager) return;
+    try {
+      await manager.disassociateUser();
+    } catch {
+    }
+  }, [manager]);
+  return {
+    isSupported,
+    permission,
+    isSubscribed,
+    isLoading,
+    error,
+    subscribe,
+    unsubscribe,
+    disassociateUser,
+    tokenId
+  };
+}
+function useShare(options) {
+  const { client, user } = useScaleMule();
+  const [referralCode, setReferralCode] = useState(
+    options?.referralCode ?? null
+  );
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!user) {
+      setReferralCode(options?.referralCode ?? null);
+      setLoading(false);
+      return;
+    }
+    if (!options?.autoFetchReferral) {
+      setLoading(false);
+      return;
+    }
+    if (options?.referralCode) {
+      setReferralCode(options.referralCode);
+      setLoading(false);
+      return;
+    }
+    setReferralCode(null);
+    let cancelled = false;
+    setLoading(true);
+    client.get("/v1/referrals/me").then((data) => {
+      if (!cancelled) setReferralCode(data.referral_code);
+    }).catch(() => {
+      if (!cancelled) setReferralCode(null);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, options?.url, options?.referralCode, options?.autoFetchReferral, client]);
+  const shareUrl = useMemo(() => {
+    const raw = options?.url || (typeof window !== "undefined" ? window.location.href : "");
+    if (!raw) return raw;
+    try {
+      const base = typeof window !== "undefined" ? window.location.origin : void 0;
+      const u = new URL(raw, base);
+      if (referralCode) {
+        u.searchParams.set("rc", referralCode);
+      }
+      return u.toString();
+    } catch {
+      return raw;
+    }
+  }, [options?.url, referralCode]);
+  const copyLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = shareUrl;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      } catch {
+        return false;
+      }
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2e3);
+    return true;
+  }, [shareUrl]);
+  return { shareUrl, referralCode, copyLink, copied, loading };
 }
 
 // src/validation.ts
@@ -3325,4 +3603,4 @@ function createSafeLogger(prefix) {
   };
 }
 
-export { ScaleMuleApiError, ScaleMuleClient, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useRealtime, useScaleMule, useScaleMuleClient, useUser, validateForm, validators };
+export { ScaleMuleApiError, ScaleMuleClient, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
