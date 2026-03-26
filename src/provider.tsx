@@ -9,6 +9,7 @@ import {
   useMemo,
   type ReactNode,
 } from 'react'
+import { ScaleMule, type RealtimeService } from '@scalemule/sdk'
 import { ScaleMuleClient, createClient } from './client'
 import type { User, ScaleMuleConfig, ApiError, LoginResponse } from './types'
 
@@ -46,6 +47,8 @@ function setCachedUser(user: User | null): void {
 interface ScaleMuleContextValue {
   /** The API client instance */
   client: ScaleMuleClient
+  /** Base SDK realtime service — shared singleton for WebSocket connections */
+  realtime: RealtimeService
   /** Current authenticated user */
   user: User | null
   /** Set the current user */
@@ -132,6 +135,31 @@ export function ScaleMuleProvider({
       }),
     [apiKey, applicationId, environment, gatewayUrl, debug, storage, authProxyUrl]
   )
+
+  // Create a base SDK ScaleMule instance for realtime WebSocket support.
+  // The NextJS ScaleMuleClient is a separate class that can't be used with
+  // ServiceModule (which requires the base SDK client type). This base instance
+  // provides the RealtimeService with correct protocol handling.
+  const baseClient = useMemo(() => {
+    const resolvedGatewayUrl = gatewayUrl || (environment === 'dev' ? 'https://api-dev.scalemule.com' : 'https://api.scalemule.com')
+    return new ScaleMule({
+      apiKey,
+      applicationId,
+      baseUrl: resolvedGatewayUrl,
+      environment,
+      debug,
+    })
+  }, [apiKey, applicationId, environment, gatewayUrl, debug])
+
+  // Keep base SDK session token in sync with the NextJS client's token
+  useEffect(() => {
+    const token = client.getSessionToken()
+    if (token) {
+      baseClient.setAccessToken(token)
+    } else {
+      baseClient.clearAccessToken()
+    }
+  }, [client, baseClient, user]) // re-sync when user changes (login/logout)
 
   // Initialize client and restore session on mount
   // Uses stale-while-revalidate: if a cached user exists, render immediately
@@ -248,6 +276,7 @@ export function ScaleMuleProvider({
   const value = useMemo(
     () => ({
       client,
+      realtime: baseClient.realtime,
       user,
       setUser: handleSetUser,
       initializing,
@@ -260,7 +289,7 @@ export function ScaleMuleProvider({
       environment: environment || undefined,
       bootstrapFlags,
     }),
-    [client, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, bootstrapFlags]
+    [client, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, bootstrapFlags]
   )
 
   return (

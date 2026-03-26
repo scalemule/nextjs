@@ -52,6 +52,9 @@ export type { AuthRoutesConfig, AnalyticsRoutesConfig, AnalyticsTrackingGateConf
 export { createPushRoutes } from './push'
 export type { PushRoutesConfig } from './push'
 
+export { createNotificationRoutes } from './notifications'
+export type { NotificationRoutesConfig } from './notifications'
+
 export { apiHandler } from './handler'
 export type { HandlerContext, HandlerOptions } from './handler'
 
