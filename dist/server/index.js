@@ -1732,6 +1732,73 @@ function createPushRoutes(config) {
   return { GET, POST, PUT, DELETE };
 }
 
+// src/server/notifications.ts
+function createNotificationRoutes(config) {
+  const { apiKey, gatewayUrl } = config;
+  async function proxyToGateway(request, method, subPath) {
+    const targetUrl = `${gatewayUrl}/v1/notifications/${subPath}`;
+    const headers2 = {
+      "x-api-key": apiKey,
+      "Content-Type": "application/json"
+    };
+    const session = getSessionFromRequest(request);
+    if (session?.sessionToken) {
+      headers2["Authorization"] = `Bearer ${session.sessionToken}`;
+    }
+    const clientContext = extractClientContext(
+      request
+    );
+    const contextHeaders = buildClientContextHeaders(clientContext);
+    Object.assign(headers2, contextHeaders);
+    const workspaceId = request.headers.get("x-sm-workspace-id");
+    if (workspaceId) {
+      headers2["x-sm-workspace-id"] = workspaceId;
+    }
+    const fetchOptions = {
+      method,
+      headers: headers2
+    };
+    if (method === "PATCH") {
+      try {
+        const body = await request.text();
+        if (body) {
+          fetchOptions.body = body;
+        }
+      } catch {
+      }
+    }
+    let targetUrlWithQuery = targetUrl;
+    if (method === "GET") {
+      const url = new URL(request.url);
+      if (url.search) {
+        targetUrlWithQuery = `${targetUrl}${url.search}`;
+      }
+    }
+    const response = await fetch(targetUrlWithQuery, fetchOptions);
+    const responseBody = await response.text();
+    return new Response(responseBody, {
+      status: response.status,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+  const GET = async (request, context) => {
+    const params = await context.params;
+    const subPath = params.action?.join("/") || "";
+    return proxyToGateway(request, "GET", subPath);
+  };
+  const PATCH = async (request, context) => {
+    const params = await context.params;
+    const subPath = params.action?.join("/") || "";
+    return proxyToGateway(request, "PATCH", subPath);
+  };
+  const DELETE = async (request, context) => {
+    const params = await context.params;
+    const subPath = params.action?.join("/") || "";
+    return proxyToGateway(request, "DELETE", subPath);
+  };
+  return { GET, PATCH, DELETE };
+}
+
 // src/server/errors.ts
 var ScaleMuleError = class extends Error {
   constructor(code, message, status = 400, details) {
@@ -2355,6 +2422,7 @@ exports.configureSecrets = configureSecrets;
 exports.createAnalyticsRoutes = createAnalyticsRoutes;
 exports.createAuthMiddleware = createAuthMiddleware;
 exports.createAuthRoutes = createAuthRoutes;
+exports.createNotificationRoutes = createNotificationRoutes;
 exports.createPushRoutes = createPushRoutes;
 exports.createServerClient = createServerClient;
 exports.createWebhookHandler = createWebhookHandler;

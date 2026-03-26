@@ -1,5 +1,6 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import { ReactNode } from 'react';
+import { RealtimeService } from '@scalemule/sdk';
 import { ScaleMuleClient } from './client.js';
 export { ClientConfig, RequestOptions, createClient } from './client.js';
 import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-BoENfro3.js';
@@ -8,6 +9,8 @@ export { h as AccountBalance, i as AnalyticsEvent, j as ApiResponse, B as BatchT
 interface ScaleMuleContextValue {
     /** The API client instance */
     client: ScaleMuleClient;
+    /** Base SDK realtime service — shared singleton for WebSocket connections */
+    realtime: RealtimeService;
     /** Current authenticated user */
     user: User | null;
     /** Set the current user */
@@ -154,58 +157,45 @@ interface RealtimeMessage<T = unknown> {
 }
 type RealtimeStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 interface UseRealtimeOptions {
-    /** Auto-connect on mount (default: true) */
+    /** Channels to subscribe to */
+    channels?: string[];
+    /** Called when a message arrives on any subscribed channel */
+    onMessage?: (channel: string, data: unknown) => void;
+    /** Auto-connect on mount (default: true) — subscribing auto-connects */
     autoConnect?: boolean;
-    /** Events to subscribe to (default: all) */
-    events?: RealtimeEvent[];
-    /** Reconnect on disconnect (default: true) */
-    autoReconnect?: boolean;
-    /** Max reconnect attempts (default: 5) */
-    maxReconnectAttempts?: number;
-    /** Reconnect delay in ms (default: 1000, doubles each attempt) */
-    reconnectDelay?: number;
 }
 interface UseRealtimeReturn {
     /** Current connection status */
     status: RealtimeStatus;
-    /** Last error */
-    error: ApiError | null;
-    /** Connect to realtime */
-    connect: () => void;
-    /** Disconnect from realtime */
-    disconnect: () => void;
-    /** Subscribe to an event */
-    subscribe: <T>(event: RealtimeEvent, callback: (data: T) => void) => () => void;
-    /** Send a message (if supported) */
-    send: (event: string, data: unknown) => void;
     /** Last received message */
-    lastMessage: RealtimeMessage | null;
+    lastMessage: {
+        channel: string;
+        data: unknown;
+    } | null;
+    /** Manually disconnect */
+    disconnect: () => void;
+    /** Subscribe to an additional channel (auto-connects) */
+    subscribe: (channel: string, callback?: (data: unknown) => void) => () => void;
+    /** Publish data to a channel */
+    publish: (channel: string, data: unknown) => void;
 }
 /**
- * Real-time updates hook via WebSocket
+ * Real-time updates hook via WebSocket.
  *
- * Provides live updates for user state, files, and notifications.
+ * Uses the base SDK's RealtimeService (shared singleton created in the provider)
+ * to ensure correct protocol handling and single WebSocket connection per page.
  *
  * @example
  * ```tsx
- * function Dashboard() {
- *   const { status, subscribe } = useRealtime()
+ * function ChatNotifications() {
+ *   const { status, lastMessage } = useRealtime({
+ *     channels: ['chat:room-1', 'notifications'],
+ *     onMessage: (channel, data) => {
+ *       console.log(`${channel}:`, data)
+ *     },
+ *   })
  *
- *   useEffect(() => {
- *     // Subscribe to file uploads
- *     const unsubscribe = subscribe('file.uploaded', (data) => {
- *       console.log('New file uploaded:', data)
- *       refreshFiles()
- *     })
- *
- *     return () => unsubscribe()
- *   }, [subscribe])
- *
- *   return (
- *     <div>
- *       <span>Status: {status}</span>
- *     </div>
- *   )
+ *   return <div>Status: {status}</div>
  * }
  * ```
  */

@@ -1,8 +1,8 @@
 'use strict';
 
 var react = require('react');
-var jsxRuntime = require('react/jsx-runtime');
 var sdk = require('@scalemule/sdk');
+var jsxRuntime = require('react/jsx-runtime');
 
 // src/provider.tsx
 
@@ -836,6 +836,24 @@ function ScaleMuleProvider({
     }),
     [apiKey, applicationId, environment, gatewayUrl, debug, storage, authProxyUrl]
   );
+  const baseClient = react.useMemo(() => {
+    const resolvedGatewayUrl = gatewayUrl || (environment === "dev" ? "https://api-dev.scalemule.com" : "https://api.scalemule.com");
+    return new sdk.ScaleMule({
+      apiKey,
+      applicationId,
+      baseUrl: resolvedGatewayUrl,
+      environment,
+      debug
+    });
+  }, [apiKey, applicationId, environment, gatewayUrl, debug]);
+  react.useEffect(() => {
+    const token = client.getSessionToken();
+    if (token) {
+      baseClient.setAccessToken(token);
+    } else {
+      baseClient.clearAccessToken();
+    }
+  }, [client, baseClient, user]);
   react.useEffect(() => {
     let mounted = true;
     async function initialize() {
@@ -923,6 +941,7 @@ function ScaleMuleProvider({
   const value = react.useMemo(
     () => ({
       client,
+      realtime: baseClient.realtime,
       user,
       setUser: handleSetUser,
       initializing,
@@ -935,7 +954,7 @@ function ScaleMuleProvider({
       environment: environment || void 0,
       bootstrapFlags
     }),
-    [client, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, bootstrapFlags]
+    [client, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, bootstrapFlags]
   );
   return /* @__PURE__ */ jsxRuntime.jsx(ScaleMuleContext.Provider, { value, children });
 }
@@ -2231,187 +2250,79 @@ function useUser() {
     [user, loading, localError, update, changePassword, changeEmail, deleteAccount, exportData]
   );
 }
-function useRealtime(options = {}) {
-  const {
-    autoConnect = true,
-    events,
-    autoReconnect = true,
-    maxReconnectAttempts = 5,
-    reconnectDelay = 1e3
-  } = options;
-  const { client, user, setUser } = useScaleMule();
+function useRealtime(options) {
+  const { realtime } = useScaleMule();
   const [status, setStatus] = react.useState("disconnected");
-  const [error, setError] = react.useState(null);
   const [lastMessage, setLastMessage] = react.useState(null);
-  const wsRef = react.useRef(null);
-  const reconnectAttempts = react.useRef(0);
-  const reconnectTimeout = react.useRef(null);
-  const subscribersRef = react.useRef(/* @__PURE__ */ new Map());
-  const getWebSocketUrl = react.useCallback(() => {
-    const gatewayUrl = client.getGatewayUrl();
-    const wsUrl = gatewayUrl.replace(/^https?:\/\//, "wss://").replace(/^http:\/\//, "ws://");
-    return `${wsUrl}/v1/realtime`;
-  }, [client]);
-  const handleMessage = react.useCallback(
-    (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        setLastMessage(message);
-        switch (message.event) {
-          case "user.updated":
-            if (user && message.data.id === user.id) {
-              setUser(message.data);
-            }
-            break;
-          case "session.expired":
-            client.clearSession();
-            setUser(null);
-            break;
-        }
-        const subscribers = subscribersRef.current.get(message.event);
-        if (subscribers) {
-          subscribers.forEach((callback) => callback(message.data));
-        }
-        const wildcardSubscribers = subscribersRef.current.get("*");
-        if (wildcardSubscribers) {
-          wildcardSubscribers.forEach((callback) => callback(message));
-        }
-      } catch (err) {
-        console.error("[ScaleMule Realtime] Failed to parse message:", err);
-      }
-    },
-    [client, user, setUser]
-  );
-  const connect = react.useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      return;
-    }
-    if (!user) {
-      setError({ code: "NOT_AUTHENTICATED", message: "Must be logged in to connect" });
-      return;
-    }
-    const applicationId = client.getApplicationId();
-    if (!applicationId) {
-      setError({ code: "MISSING_APP_ID", message: "applicationId is required for realtime features. Add it to your ScaleMuleProvider config." });
-      return;
-    }
-    setStatus("connecting");
-    setError(null);
-    const url = getWebSocketUrl();
-    try {
-      const ws = new WebSocket(url);
-      ws.onopen = () => {
-        const sessionToken = client.getSessionToken();
-        ws.send(JSON.stringify({
-          type: "auth",
-          token: sessionToken,
-          app_id: applicationId
-        }));
-      };
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          if (message.type === "auth_success") {
-            setStatus("connected");
-            reconnectAttempts.current = 0;
-            if (events && events.length > 0) {
-              ws.send(JSON.stringify({ type: "subscribe", events }));
-            }
-            return;
-          }
-          if (message.type === "error") {
-            setError({ code: "AUTH_ERROR", message: message.message || "Authentication failed" });
-            setStatus("disconnected");
-            ws.close(1e3);
-            return;
-          }
-          handleMessage(event);
-        } catch (err) {
-          console.error("[ScaleMule Realtime] Failed to parse message:", err);
-        }
-      };
-      ws.onerror = () => {
-        setError({ code: "WEBSOCKET_ERROR", message: "Connection error" });
-      };
-      ws.onclose = (event) => {
-        setStatus("disconnected");
-        wsRef.current = null;
-        if (autoReconnect && event.code !== 1e3 && reconnectAttempts.current < maxReconnectAttempts) {
-          setStatus("reconnecting");
-          const delay = reconnectDelay * Math.pow(2, reconnectAttempts.current);
-          reconnectAttempts.current++;
-          reconnectTimeout.current = setTimeout(() => {
-            connect();
-          }, delay);
-        }
-      };
-      wsRef.current = ws;
-    } catch (err) {
-      setError({
-        code: "WEBSOCKET_CONNECT_FAILED",
-        message: err instanceof Error ? err.message : "Failed to connect"
-      });
-      setStatus("disconnected");
-    }
-  }, [user, client, getWebSocketUrl, events, handleMessage, autoReconnect, maxReconnectAttempts, reconnectDelay]);
-  const disconnect = react.useCallback(() => {
-    if (reconnectTimeout.current) {
-      clearTimeout(reconnectTimeout.current);
-      reconnectTimeout.current = null;
-    }
-    if (wsRef.current) {
-      wsRef.current.close(1e3, "Client disconnect");
-      wsRef.current = null;
-    }
-    setStatus("disconnected");
-    reconnectAttempts.current = 0;
-  }, []);
-  const subscribe = react.useCallback(
-    (event, callback) => {
-      if (!subscribersRef.current.has(event)) {
-        subscribersRef.current.set(event, /* @__PURE__ */ new Set());
-      }
-      const typedCallback = callback;
-      subscribersRef.current.get(event).add(typedCallback);
-      return () => {
-        const subscribers = subscribersRef.current.get(event);
-        if (subscribers) {
-          subscribers.delete(typedCallback);
-          if (subscribers.size === 0) {
-            subscribersRef.current.delete(event);
-          }
-        }
-      };
-    },
-    []
-  );
-  const send = react.useCallback((event, data) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ event, data }));
-    } else {
-      console.warn("[ScaleMule Realtime] Cannot send - not connected");
-    }
-  }, []);
+  const manualUnsubscribesRef = react.useRef([]);
+  const autoUnsubscribesRef = react.useRef([]);
+  const onMessageRef = react.useRef(void 0);
+  const channelSignature = (options?.channels ?? []).join("");
   react.useEffect(() => {
-    if (autoConnect && user) {
-      connect();
+    onMessageRef.current = options?.onMessage;
+  }, [options?.onMessage]);
+  const disconnect = react.useCallback(() => {
+    realtime.disconnect();
+  }, [realtime]);
+  const subscribe = react.useCallback(
+    (channel, callback) => {
+      const unsub = realtime.subscribe(channel, (data) => {
+        setLastMessage({ channel, data });
+        callback?.(data);
+        onMessageRef.current?.(channel, data);
+      });
+      manualUnsubscribesRef.current.push(unsub);
+      return () => {
+        manualUnsubscribesRef.current = manualUnsubscribesRef.current.filter((fn) => fn !== unsub);
+        unsub();
+      };
+    },
+    [realtime]
+  );
+  const publish = react.useCallback(
+    (channel, data) => {
+      realtime.publish(channel, data);
+    },
+    [realtime]
+  );
+  react.useEffect(() => {
+    const unsub = realtime.onStatusChange((newStatus) => {
+      setStatus(newStatus);
+    });
+    return unsub;
+  }, [realtime]);
+  react.useEffect(() => {
+    for (const unsub of autoUnsubscribesRef.current) {
+      unsub();
+    }
+    autoUnsubscribesRef.current = [];
+    for (const channel of options?.channels ?? []) {
+      const unsub = realtime.subscribe(channel, (data) => {
+        setLastMessage({ channel, data });
+        onMessageRef.current?.(channel, data);
+      });
+      autoUnsubscribesRef.current.push(unsub);
     }
     return () => {
-      disconnect();
+      for (const unsub of autoUnsubscribesRef.current) {
+        unsub();
+      }
+      autoUnsubscribesRef.current = [];
     };
-  }, [autoConnect, user, connect, disconnect]);
-  return react.useMemo(
-    () => ({
-      status,
-      error,
-      connect,
-      disconnect,
-      subscribe,
-      send,
-      lastMessage
-    }),
-    [status, error, connect, disconnect, subscribe, send, lastMessage]
-  );
+  }, [realtime, channelSignature]);
+  react.useEffect(() => {
+    return () => {
+      for (const unsub of manualUnsubscribesRef.current) {
+        unsub();
+      }
+      manualUnsubscribesRef.current = [];
+      for (const unsub of autoUnsubscribesRef.current) {
+        unsub();
+      }
+      autoUnsubscribesRef.current = [];
+    };
+  }, []);
+  return { status, lastMessage, disconnect, subscribe, publish };
 }
 
 // src/hooks/event-dedup.ts

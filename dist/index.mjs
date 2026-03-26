@@ -1,6 +1,6 @@
 import { createContext, useState, useMemo, useEffect, useCallback, useContext, useRef } from 'react';
+import { ScaleMule, WebPushManager } from '@scalemule/sdk';
 import { jsx } from 'react/jsx-runtime';
-import { WebPushManager } from '@scalemule/sdk';
 
 // src/provider.tsx
 
@@ -834,6 +834,24 @@ function ScaleMuleProvider({
     }),
     [apiKey, applicationId, environment, gatewayUrl, debug, storage, authProxyUrl]
   );
+  const baseClient = useMemo(() => {
+    const resolvedGatewayUrl = gatewayUrl || (environment === "dev" ? "https://api-dev.scalemule.com" : "https://api.scalemule.com");
+    return new ScaleMule({
+      apiKey,
+      applicationId,
+      baseUrl: resolvedGatewayUrl,
+      environment,
+      debug
+    });
+  }, [apiKey, applicationId, environment, gatewayUrl, debug]);
+  useEffect(() => {
+    const token = client.getSessionToken();
+    if (token) {
+      baseClient.setAccessToken(token);
+    } else {
+      baseClient.clearAccessToken();
+    }
+  }, [client, baseClient, user]);
   useEffect(() => {
     let mounted = true;
     async function initialize() {
@@ -921,6 +939,7 @@ function ScaleMuleProvider({
   const value = useMemo(
     () => ({
       client,
+      realtime: baseClient.realtime,
       user,
       setUser: handleSetUser,
       initializing,
@@ -933,7 +952,7 @@ function ScaleMuleProvider({
       environment: environment || void 0,
       bootstrapFlags
     }),
-    [client, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, bootstrapFlags]
+    [client, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, bootstrapFlags]
   );
   return /* @__PURE__ */ jsx(ScaleMuleContext.Provider, { value, children });
 }
@@ -2229,187 +2248,79 @@ function useUser() {
     [user, loading, localError, update, changePassword, changeEmail, deleteAccount, exportData]
   );
 }
-function useRealtime(options = {}) {
-  const {
-    autoConnect = true,
-    events,
-    autoReconnect = true,
-    maxReconnectAttempts = 5,
-    reconnectDelay = 1e3
-  } = options;
-  const { client, user, setUser } = useScaleMule();
+function useRealtime(options) {
+  const { realtime } = useScaleMule();
   const [status, setStatus] = useState("disconnected");
-  const [error, setError] = useState(null);
   const [lastMessage, setLastMessage] = useState(null);
-  const wsRef = useRef(null);
-  const reconnectAttempts = useRef(0);
-  const reconnectTimeout = useRef(null);
-  const subscribersRef = useRef(/* @__PURE__ */ new Map());
-  const getWebSocketUrl = useCallback(() => {
-    const gatewayUrl = client.getGatewayUrl();
-    const wsUrl = gatewayUrl.replace(/^https?:\/\//, "wss://").replace(/^http:\/\//, "ws://");
-    return `${wsUrl}/v1/realtime`;
-  }, [client]);
-  const handleMessage = useCallback(
-    (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        setLastMessage(message);
-        switch (message.event) {
-          case "user.updated":
-            if (user && message.data.id === user.id) {
-              setUser(message.data);
-            }
-            break;
-          case "session.expired":
-            client.clearSession();
-            setUser(null);
-            break;
-        }
-        const subscribers = subscribersRef.current.get(message.event);
-        if (subscribers) {
-          subscribers.forEach((callback) => callback(message.data));
-        }
-        const wildcardSubscribers = subscribersRef.current.get("*");
-        if (wildcardSubscribers) {
-          wildcardSubscribers.forEach((callback) => callback(message));
-        }
-      } catch (err) {
-        console.error("[ScaleMule Realtime] Failed to parse message:", err);
-      }
-    },
-    [client, user, setUser]
-  );
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      return;
-    }
-    if (!user) {
-      setError({ code: "NOT_AUTHENTICATED", message: "Must be logged in to connect" });
-      return;
-    }
-    const applicationId = client.getApplicationId();
-    if (!applicationId) {
-      setError({ code: "MISSING_APP_ID", message: "applicationId is required for realtime features. Add it to your ScaleMuleProvider config." });
-      return;
-    }
-    setStatus("connecting");
-    setError(null);
-    const url = getWebSocketUrl();
-    try {
-      const ws = new WebSocket(url);
-      ws.onopen = () => {
-        const sessionToken = client.getSessionToken();
-        ws.send(JSON.stringify({
-          type: "auth",
-          token: sessionToken,
-          app_id: applicationId
-        }));
-      };
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          if (message.type === "auth_success") {
-            setStatus("connected");
-            reconnectAttempts.current = 0;
-            if (events && events.length > 0) {
-              ws.send(JSON.stringify({ type: "subscribe", events }));
-            }
-            return;
-          }
-          if (message.type === "error") {
-            setError({ code: "AUTH_ERROR", message: message.message || "Authentication failed" });
-            setStatus("disconnected");
-            ws.close(1e3);
-            return;
-          }
-          handleMessage(event);
-        } catch (err) {
-          console.error("[ScaleMule Realtime] Failed to parse message:", err);
-        }
-      };
-      ws.onerror = () => {
-        setError({ code: "WEBSOCKET_ERROR", message: "Connection error" });
-      };
-      ws.onclose = (event) => {
-        setStatus("disconnected");
-        wsRef.current = null;
-        if (autoReconnect && event.code !== 1e3 && reconnectAttempts.current < maxReconnectAttempts) {
-          setStatus("reconnecting");
-          const delay = reconnectDelay * Math.pow(2, reconnectAttempts.current);
-          reconnectAttempts.current++;
-          reconnectTimeout.current = setTimeout(() => {
-            connect();
-          }, delay);
-        }
-      };
-      wsRef.current = ws;
-    } catch (err) {
-      setError({
-        code: "WEBSOCKET_CONNECT_FAILED",
-        message: err instanceof Error ? err.message : "Failed to connect"
-      });
-      setStatus("disconnected");
-    }
-  }, [user, client, getWebSocketUrl, events, handleMessage, autoReconnect, maxReconnectAttempts, reconnectDelay]);
-  const disconnect = useCallback(() => {
-    if (reconnectTimeout.current) {
-      clearTimeout(reconnectTimeout.current);
-      reconnectTimeout.current = null;
-    }
-    if (wsRef.current) {
-      wsRef.current.close(1e3, "Client disconnect");
-      wsRef.current = null;
-    }
-    setStatus("disconnected");
-    reconnectAttempts.current = 0;
-  }, []);
-  const subscribe = useCallback(
-    (event, callback) => {
-      if (!subscribersRef.current.has(event)) {
-        subscribersRef.current.set(event, /* @__PURE__ */ new Set());
-      }
-      const typedCallback = callback;
-      subscribersRef.current.get(event).add(typedCallback);
-      return () => {
-        const subscribers = subscribersRef.current.get(event);
-        if (subscribers) {
-          subscribers.delete(typedCallback);
-          if (subscribers.size === 0) {
-            subscribersRef.current.delete(event);
-          }
-        }
-      };
-    },
-    []
-  );
-  const send = useCallback((event, data) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ event, data }));
-    } else {
-      console.warn("[ScaleMule Realtime] Cannot send - not connected");
-    }
-  }, []);
+  const manualUnsubscribesRef = useRef([]);
+  const autoUnsubscribesRef = useRef([]);
+  const onMessageRef = useRef(void 0);
+  const channelSignature = (options?.channels ?? []).join("");
   useEffect(() => {
-    if (autoConnect && user) {
-      connect();
+    onMessageRef.current = options?.onMessage;
+  }, [options?.onMessage]);
+  const disconnect = useCallback(() => {
+    realtime.disconnect();
+  }, [realtime]);
+  const subscribe = useCallback(
+    (channel, callback) => {
+      const unsub = realtime.subscribe(channel, (data) => {
+        setLastMessage({ channel, data });
+        callback?.(data);
+        onMessageRef.current?.(channel, data);
+      });
+      manualUnsubscribesRef.current.push(unsub);
+      return () => {
+        manualUnsubscribesRef.current = manualUnsubscribesRef.current.filter((fn) => fn !== unsub);
+        unsub();
+      };
+    },
+    [realtime]
+  );
+  const publish = useCallback(
+    (channel, data) => {
+      realtime.publish(channel, data);
+    },
+    [realtime]
+  );
+  useEffect(() => {
+    const unsub = realtime.onStatusChange((newStatus) => {
+      setStatus(newStatus);
+    });
+    return unsub;
+  }, [realtime]);
+  useEffect(() => {
+    for (const unsub of autoUnsubscribesRef.current) {
+      unsub();
+    }
+    autoUnsubscribesRef.current = [];
+    for (const channel of options?.channels ?? []) {
+      const unsub = realtime.subscribe(channel, (data) => {
+        setLastMessage({ channel, data });
+        onMessageRef.current?.(channel, data);
+      });
+      autoUnsubscribesRef.current.push(unsub);
     }
     return () => {
-      disconnect();
+      for (const unsub of autoUnsubscribesRef.current) {
+        unsub();
+      }
+      autoUnsubscribesRef.current = [];
     };
-  }, [autoConnect, user, connect, disconnect]);
-  return useMemo(
-    () => ({
-      status,
-      error,
-      connect,
-      disconnect,
-      subscribe,
-      send,
-      lastMessage
-    }),
-    [status, error, connect, disconnect, subscribe, send, lastMessage]
-  );
+  }, [realtime, channelSignature]);
+  useEffect(() => {
+    return () => {
+      for (const unsub of manualUnsubscribesRef.current) {
+        unsub();
+      }
+      manualUnsubscribesRef.current = [];
+      for (const unsub of autoUnsubscribesRef.current) {
+        unsub();
+      }
+      autoUnsubscribesRef.current = [];
+    };
+  }, []);
+  return { status, lastMessage, disconnect, subscribe, publish };
 }
 
 // src/hooks/event-dedup.ts
