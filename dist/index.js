@@ -3060,7 +3060,7 @@ function getCsrfToken() {
   return match ? decodeURIComponent(match[1]) : "";
 }
 function usePushNotifications(options = {}) {
-  const { serviceWorkerUrl = "/sw.js", pushProxyUrl = "/api/push", onNotification } = options;
+  const { serviceWorkerUrl = "/sw.js", pushProxyUrl = "/api/push", registrationSource, onNotification } = options;
   const { user } = useScaleMule();
   const [isSupported, setIsSupported] = react.useState(false);
   const [permission, setPermission] = react.useState("unsupported");
@@ -3127,7 +3127,7 @@ function usePushNotifications(options = {}) {
   const manager = react.useMemo(() => {
     if (typeof window === "undefined") return null;
     try {
-      return new sdk.WebPushManager({ fetcher, serviceWorkerUrl });
+      return new sdk.WebPushManager({ fetcher, serviceWorkerUrl, registrationSource });
     } catch {
       return null;
     }

@@ -3058,7 +3058,7 @@ function getCsrfToken() {
   return match ? decodeURIComponent(match[1]) : "";
 }
 function usePushNotifications(options = {}) {
-  const { serviceWorkerUrl = "/sw.js", pushProxyUrl = "/api/push", onNotification } = options;
+  const { serviceWorkerUrl = "/sw.js", pushProxyUrl = "/api/push", registrationSource, onNotification } = options;
   const { user } = useScaleMule();
   const [isSupported, setIsSupported] = useState(false);
   const [permission, setPermission] = useState("unsupported");
@@ -3125,7 +3125,7 @@ function usePushNotifications(options = {}) {
   const manager = useMemo(() => {
     if (typeof window === "undefined") return null;
     try {
-      return new WebPushManager({ fetcher, serviceWorkerUrl });
+      return new WebPushManager({ fetcher, serviceWorkerUrl, registrationSource });
     } catch {
       return null;
     }

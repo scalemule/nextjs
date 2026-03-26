@@ -52,7 +52,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@scalemule/sdk": ">=0.0.23"
+    "@scalemule/sdk": "^0.0.26"
   },
   "peerDependencies": {
     "next": ">=14.0.0",

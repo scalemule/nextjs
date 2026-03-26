@@ -294,6 +294,8 @@ interface UsePushNotificationsOptions {
     serviceWorkerUrl?: string;
     /** Push proxy URL (default: '/api/push') */
     pushProxyUrl?: string;
+    /** Where the user subscribed (e.g., 'landing_prompt', 'post_signup', 'settings') */
+    registrationSource?: string;
     /** Called when a push notification is received while app is in foreground */
     onNotification?: (data: unknown) => void;
 }
