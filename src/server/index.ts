@@ -43,8 +43,16 @@ export {
   requireSession,
   SESSION_COOKIE_NAME,
   USER_ID_COOKIE_NAME,
+  // Account switcher
+  KNOWN_ACCOUNTS_COOKIE_NAME,
+  appendKnownAccountCookie,
+  removeKnownAccountFromCookie,
+  clearKnownAccountsCookie,
+  getKnownAccountsFromRequest,
+  getKnownAccountsCookieRaw,
+  normalizeKnownAccountsCookie,
 } from './cookies'
-export type { SessionCookieOptions, SessionData } from './cookies'
+export type { SessionCookieOptions, SessionData, KnownAccountEntry } from './cookies'
 
 export { createAuthRoutes, createAnalyticsRoutes } from './routes'
 export type { AuthRoutesConfig, AnalyticsRoutesConfig, AnalyticsTrackingGateConfig } from './routes'

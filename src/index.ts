@@ -154,6 +154,9 @@ export type {
   UseAnalyticsReturn,
   UseAnalyticsOptions,
 
+  // Account switcher
+  KnownAccountInfo,
+
   // Billing / Marketplace
   ConnectedAccount,
   AccountBalance,

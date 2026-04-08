@@ -367,6 +367,10 @@ export interface ClientConfig {
    * preventing race conditions where requests fire before the auth token is available.
    */
   pendingSessionInit?: boolean
+  /** Enable the account switcher */
+  enableAccountSwitcher?: boolean
+  /** Privacy level for account switcher */
+  accountSwitcherPrivacy?: 'full' | 'masked' | 'minimal'
 }
 
 /**

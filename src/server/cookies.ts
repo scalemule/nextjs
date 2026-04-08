@@ -13,6 +13,12 @@ import { cookies } from 'next/headers'
 
 export const SESSION_COOKIE_NAME = 'sm_session'
 export const USER_ID_COOKIE_NAME = 'sm_user_id'
+/**
+ * Known accounts cookie — stores display metadata (email, name, avatar) for
+ * accounts that have logged in on this device. NOT httpOnly so client JS can
+ * read it to render the account switcher UI. Contains NO tokens or secrets.
+ */
+export const KNOWN_ACCOUNTS_COOKIE_NAME = 'sm_known_accounts'
 
 // Default cookie options (secure by default)
 const DEFAULT_COOKIE_OPTIONS = {
@@ -253,6 +259,268 @@ export function getSessionFromRequest(request: Request): SessionData | null {
     userId,
     expiresAt: new Date(),
   }
+}
+
+// ============================================================================
+// Known Accounts (Account Switcher) — metadata only, NO tokens
+// ============================================================================
+
+/**
+ * Known account entry stored in cookie.
+ * Contains display metadata ONLY — no tokens, no secrets.
+ */
+export interface KnownAccountEntry {
+  userId: string
+  email?: string
+  fullName?: string
+  avatarUrl?: string
+  provider?: string
+  lastActiveAt: string
+  displayLabel?: string
+  colorIndex?: number
+}
+
+/** Max known accounts to store */
+const MAX_KNOWN_ACCOUNTS = 10;
+
+type AccountSwitcherPrivacy = 'full' | 'masked' | 'minimal';
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) return '***@***.***';
+  const tldDot = domain.lastIndexOf('.');
+  const tld = tldDot > 0 ? domain.slice(tldDot) : '';
+  const domainBase = tldDot > 0 ? domain.slice(0, tldDot) : domain;
+  return `${local[0] || '*'}***@${domainBase[0] || '*'}***${tld}`;
+}
+
+function stableColorIndex(userId: string): number {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = ((hash << 5) - hash + userId.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % 8;
+}
+
+function applyPrivacyToEntry(entry: KnownAccountEntry, privacy: AccountSwitcherPrivacy): KnownAccountEntry {
+  switch (privacy) {
+    case 'full':
+      return entry;
+    case 'masked':
+      return {
+        userId: entry.userId,
+        email: entry.email ? maskEmail(entry.email) : undefined,
+        fullName: entry.fullName ? `${entry.fullName[0].toUpperCase()}.` : undefined,
+        provider: entry.provider,
+        lastActiveAt: entry.lastActiveAt,
+        colorIndex: stableColorIndex(entry.userId),
+      };
+    case 'minimal':
+      return {
+        userId: entry.userId,
+        provider: entry.provider,
+        lastActiveAt: entry.lastActiveAt,
+        displayLabel: 'Account',
+        colorIndex: stableColorIndex(entry.userId),
+      };
+  }
+}
+
+/**
+ * Add an account to the known accounts cookie.
+ * Called after successful login. The cookie is NOT httpOnly so client JS
+ * can read it to render the account switcher UI.
+ *
+ * Appends Set-Cookie headers to an existing Headers object.
+ */
+export function appendKnownAccountCookie(
+  headers: Headers,
+  account: KnownAccountEntry,
+  existingCookie: string | null,
+  options: SessionCookieOptions = {},
+  privacy?: AccountSwitcherPrivacy
+): void {
+  let accounts: Record<string, KnownAccountEntry> = {}
+
+  if (existingCookie) {
+    try {
+      accounts = JSON.parse(decodeURIComponent(existingCookie))
+    } catch {
+      /* ignore corrupt cookie */
+    }
+  }
+
+  // Normalize ALL existing entries through privacy filter (migrates legacy PII)
+  const effectivePrivacy = privacy || 'full'
+  for (const [userId, entry] of Object.entries(accounts)) {
+    accounts[userId] = applyPrivacyToEntry(entry, effectivePrivacy)
+  }
+
+  // Apply privacy to the new account before adding
+  accounts[account.userId] = applyPrivacyToEntry(account, effectivePrivacy)
+
+  // Evict oldest entries if over MAX_KNOWN_ACCOUNTS
+  const entries = Object.entries(accounts)
+  if (entries.length > MAX_KNOWN_ACCOUNTS) {
+    entries.sort((a, b) => new Date(b[1].lastActiveAt).getTime() - new Date(a[1].lastActiveAt).getTime())
+    accounts = Object.fromEntries(entries.slice(0, MAX_KNOWN_ACCOUNTS))
+  }
+
+  const maxAge = 365 * 24 * 60 * 60 // 1 year — long-lived, just metadata
+  const secure = options.secure ?? process.env.NODE_ENV === 'production'
+  const sameSite = options.sameSite ?? 'lax'
+  const path = options.path ?? '/'
+
+  // NOT httpOnly — client JS needs to read this for the account switcher UI
+  let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(accounts))}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`
+
+  if (secure) {
+    cookie += '; Secure'
+  }
+  if (options.domain) {
+    cookie += `; Domain=${options.domain}`
+  }
+
+  headers.append('Set-Cookie', cookie)
+}
+
+/**
+ * Remove a specific account from the known accounts cookie.
+ */
+export function removeKnownAccountFromCookie(
+  headers: Headers,
+  userId: string,
+  existingCookie: string | null,
+  options: SessionCookieOptions = {}
+): void {
+  let accounts: Record<string, KnownAccountEntry> = {}
+
+  if (existingCookie) {
+    try {
+      accounts = JSON.parse(decodeURIComponent(existingCookie))
+    } catch {
+      /* ignore */
+    }
+  }
+
+  delete accounts[userId]
+
+  const maxAge = 365 * 24 * 60 * 60
+  const secure = options.secure ?? process.env.NODE_ENV === 'production'
+  const sameSite = options.sameSite ?? 'lax'
+  const path = options.path ?? '/'
+
+  let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(accounts))}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`
+
+  if (secure) {
+    cookie += '; Secure'
+  }
+  if (options.domain) {
+    cookie += `; Domain=${options.domain}`
+  }
+
+  headers.append('Set-Cookie', cookie)
+}
+
+/**
+ * Clear the known accounts cookie entirely.
+ */
+export function clearKnownAccountsCookie(
+  headers: Headers,
+  options: SessionCookieOptions = {}
+): void {
+  const path = options.path ?? '/'
+  let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=; Path=${path}; Max-Age=0`
+
+  if (options.domain) {
+    cookie += `; Domain=${options.domain}`
+  }
+
+  headers.append('Set-Cookie', cookie)
+}
+
+/**
+ * Read known accounts from a Request's cookies.
+ */
+export function getKnownAccountsFromRequest(request: Request): KnownAccountEntry[] {
+  const cookieHeader = request.headers.get('cookie')
+  if (!cookieHeader) return []
+
+  const cookies = Object.fromEntries(
+    cookieHeader.split(';').map((c) => {
+      const [key, ...rest] = c.trim().split('=')
+      return [key, decodeURIComponent(rest.join('='))]
+    })
+  )
+
+  const raw = cookies[KNOWN_ACCOUNTS_COOKIE_NAME]
+  if (!raw) return []
+
+  try {
+    const accounts = JSON.parse(raw) as Record<string, KnownAccountEntry>
+    return Object.values(accounts)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Read the raw known accounts cookie value from a Request.
+ */
+export function getKnownAccountsCookieRaw(request: Request): string | null {
+  const cookieHeader = request.headers.get('cookie')
+  if (!cookieHeader) return null
+
+  const cookies = Object.fromEntries(
+    cookieHeader.split(';').map((c) => {
+      const [key, ...rest] = c.trim().split('=')
+      return [key, decodeURIComponent(rest.join('='))]
+    })
+  )
+
+  return cookies[KNOWN_ACCOUNTS_COOKIE_NAME] || null
+}
+
+/**
+ * Normalize all entries in the known accounts cookie to the given privacy level.
+ * Returns a Set-Cookie header string if any entries changed, or null if nothing changed.
+ * Used on /me requests to migrate legacy full-PII cookies to the configured privacy level.
+ */
+export function normalizeKnownAccountsCookie(
+  request: Request,
+  privacy: AccountSwitcherPrivacy | undefined,
+  options: SessionCookieOptions = {}
+): string | null {
+  if (!privacy || privacy === 'full') return null;
+
+  const raw = getKnownAccountsCookieRaw(request);
+  if (!raw) return null;
+
+  let accounts: Record<string, KnownAccountEntry> = {};
+  try { accounts = JSON.parse(raw); } catch { return null; }
+
+  let changed = false;
+  for (const [userId, entry] of Object.entries(accounts)) {
+    const normalized = applyPrivacyToEntry(entry, privacy);
+    if (JSON.stringify(normalized) !== JSON.stringify(entry)) {
+      accounts[userId] = normalized;
+      changed = true;
+    }
+  }
+
+  if (!changed) return null;
+
+  // Build cookie header
+  const maxAge = 365 * 24 * 60 * 60;
+  const secure = options.secure ?? process.env.NODE_ENV === 'production';
+  const sameSite = options.sameSite ?? 'lax';
+  const path = options.path ?? '/';
+
+  let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(accounts))}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`;
+  if (secure) cookie += '; Secure';
+  if (options.domain) cookie += `; Domain=${options.domain}`;
+
+  return cookie;
 }
 
 /**

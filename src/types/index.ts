@@ -72,6 +72,29 @@ export interface ScaleMuleConfig {
    * publishableKey: 'sm_pb_production_a1b2c3d4...'
    */
   publishableKey?: string
+  /**
+   * Enable the account switcher — remembers which accounts have logged in on
+   * this device so users can pick an account and re-authenticate.
+   *
+   * Stores only display metadata (email, name, avatar) — no tokens.
+   * Switching accounts always requires re-authentication.
+   *
+   * When using auth proxy mode, this works via a non-httpOnly cookie.
+   * The server route config must also have `enableAccountSwitcher: true`.
+   *
+   * Default: false
+   */
+  enableAccountSwitcher?: boolean
+  /**
+   * Privacy level for account switcher display metadata.
+   *
+   * - 'full': Store email, name, avatar as-is (default)
+   * - 'masked': Mask email (j***@g***.com), truncate name to initial
+   * - 'minimal': No PII at all — just a colored "Account" label
+   *
+   * Applies to both server-side cookie writes and client-side reads.
+   */
+  accountSwitcherPrivacy?: 'full' | 'masked' | 'minimal'
 }
 
 export interface StorageAdapter {
@@ -559,6 +582,39 @@ export interface UseAuthReturn {
   verifyPhone: (request: PhoneVerifyRequest) => Promise<void>
   /** Login with phone number */
   loginWithPhone: (request: PhoneLoginRequest) => Promise<LoginResponse>
+
+  // Account switcher methods
+  /**
+   * All accounts that have previously logged in on this device.
+   * Contains display metadata only — no tokens.
+   * Requires `enableAccountSwitcher: true` in config.
+   */
+  knownAccounts: KnownAccountInfo[]
+  /**
+   * Switch to a different known account.
+   * Logs out the current session and returns the target account's info
+   * so the login form can be pre-filled. User must re-authenticate.
+   */
+  switchAccount: (userId: string) => Promise<KnownAccountInfo | null>
+  /** Remove a specific account from the known accounts list */
+  removeKnownAccount: (userId: string) => Promise<void>
+  /** Clear all known accounts from this device */
+  clearKnownAccounts: () => Promise<void>
+}
+
+/**
+ * Known account info — display metadata only, no tokens.
+ * Used by the account switcher to show previously logged-in accounts.
+ */
+export interface KnownAccountInfo {
+  userId: string
+  email?: string
+  fullName?: string
+  avatarUrl?: string
+  provider?: string
+  lastActiveAt: string
+  displayLabel?: string
+  colorIndex?: number
 }
 
 export interface UseContentReturn {

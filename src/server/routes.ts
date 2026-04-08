@@ -24,6 +24,12 @@ import {
   clearSession,
   getSession,
   requireSession,
+  appendKnownAccountCookie,
+  removeKnownAccountFromCookie,
+  clearKnownAccountsCookie,
+  getKnownAccountsCookieRaw,
+  getKnownAccountsFromRequest,
+  normalizeKnownAccountsCookie,
   type SessionCookieOptions,
 } from './cookies'
 import { validateCSRFToken } from './csrf'
@@ -39,6 +45,19 @@ export interface AuthRoutesConfig {
   cookies?: SessionCookieOptions
   /** Enable CSRF validation on state-changing requests (POST/DELETE/PATCH) */
   csrf?: boolean
+  /**
+   * Enable the account switcher — remembers which accounts have logged in on
+   * this device (metadata only, no tokens). Switching requires re-authentication.
+   * Adds routes: switch-account, forget-account, forget-all-accounts, known-accounts.
+   */
+  enableAccountSwitcher?: boolean
+  /**
+   * Privacy level for account switcher display metadata.
+   * - 'full': Store email, name, avatar as-is (default)
+   * - 'masked': Mask email, truncate name to initial
+   * - 'minimal': No PII — just a colored "Account" label
+   */
+  accountSwitcherPrivacy?: 'full' | 'masked' | 'minimal'
   /** Callbacks */
   onLogin?: (user: { id: string; email: string }) => void | Promise<void>
   onLogout?: () => void | Promise<void>
@@ -162,7 +181,27 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return successResponse({ user: registeredUser, message: 'Registration successful' }, 201)
           }
 
-          return withSession(loginData, { user: registeredUser, sessionToken: loginData.session_token, userId: registeredUser.id }, cookieOptions)
+          const registerResponse = withSession(loginData, { user: registeredUser, sessionToken: loginData.session_token, userId: registeredUser.id }, cookieOptions)
+
+          if (config.enableAccountSwitcher) {
+            const existingKnown = getKnownAccountsCookieRaw(request)
+            appendKnownAccountCookie(
+              registerResponse.headers,
+              {
+                userId: registeredUser.id,
+                email: registeredUser.email,
+                fullName: registeredUser.full_name,
+                avatarUrl: registeredUser.avatar_url,
+                provider: 'email',
+                lastActiveAt: new Date().toISOString(),
+              },
+              existingKnown,
+              cookieOptions,
+              config.accountSwitcherPrivacy
+            )
+          }
+
+          return registerResponse
         }
 
         // ==================== Login ====================
@@ -200,7 +239,28 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
           // Return user + session token with HTTP-only session cookie
           // Client needs the token to set Authorization headers on API requests
-          return withSession(loginData, { user: loginData.user, sessionToken: loginData.session_token, userId: loginData.user.id }, cookieOptions)
+          const loginResponse = withSession(loginData, { user: loginData.user, sessionToken: loginData.session_token, userId: loginData.user.id }, cookieOptions)
+
+          // Record this account in the known accounts cookie (account switcher)
+          if (config.enableAccountSwitcher) {
+            const existingKnown = getKnownAccountsCookieRaw(request)
+            appendKnownAccountCookie(
+              loginResponse.headers,
+              {
+                userId: loginData.user.id,
+                email: loginData.user.email,
+                fullName: loginData.user.full_name,
+                avatarUrl: loginData.user.avatar_url,
+                provider: 'email',
+                lastActiveAt: new Date().toISOString(),
+              },
+              existingKnown,
+              cookieOptions,
+              config.accountSwitcherPrivacy
+            )
+          }
+
+          return loginResponse
         }
 
         // ==================== Logout ====================
@@ -384,6 +444,73 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           return successResponse({ message: 'Password changed successfully' })
         }
 
+        // ==================== Switch Account ====================
+        // Clears the active session so the user can re-authenticate as a different account.
+        // The known accounts cookie is preserved — only the session cookie is cleared.
+        case 'switch-account': {
+          if (!config.enableAccountSwitcher) {
+            return errorResponse('NOT_FOUND', 'Account switcher not enabled', 404)
+          }
+
+          const session = await getSession()
+          if (session) {
+            try {
+              await sm.auth.logout(session.sessionToken)
+            } catch {
+              // Session may already be invalid — clear cookies regardless
+            }
+          }
+
+          // Clear session but keep known accounts
+          const switchResponse = clearSession({ message: 'Session cleared for account switch' }, cookieOptions)
+
+          // Return the known accounts list so the client can show the picker
+          const knownAccounts = getKnownAccountsFromRequest(request)
+          return new Response(
+            JSON.stringify({ success: true, data: { message: 'Session cleared for account switch', knownAccounts } }),
+            { status: 200, headers: switchResponse.headers }
+          )
+        }
+
+        // ==================== Forget Account ====================
+        // Remove a specific account from the known accounts cookie.
+        case 'forget-account': {
+          if (!config.enableAccountSwitcher) {
+            return errorResponse('NOT_FOUND', 'Account switcher not enabled', 404)
+          }
+
+          const { user_id } = body
+          if (!user_id) {
+            return errorResponse('VALIDATION_ERROR', 'user_id required', 400)
+          }
+
+          const headers = new Headers()
+          headers.set('Content-Type', 'application/json')
+          const existingKnown = getKnownAccountsCookieRaw(request)
+          removeKnownAccountFromCookie(headers, user_id, existingKnown, cookieOptions)
+
+          return new Response(
+            JSON.stringify({ success: true, data: { message: 'Account forgotten' } }),
+            { status: 200, headers }
+          )
+        }
+
+        // ==================== Forget All Accounts ====================
+        case 'forget-all-accounts': {
+          if (!config.enableAccountSwitcher) {
+            return errorResponse('NOT_FOUND', 'Account switcher not enabled', 404)
+          }
+
+          const headers = new Headers()
+          headers.set('Content-Type', 'application/json')
+          clearKnownAccountsCookie(headers, cookieOptions)
+
+          return new Response(
+            JSON.stringify({ success: true, data: { message: 'All accounts forgotten' } }),
+            { status: 200, headers }
+          )
+        }
+
         default:
           return errorResponse('NOT_FOUND', `Unknown endpoint: ${path}`, 404)
       }
@@ -402,10 +529,19 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
       switch (path) {
         // ==================== Get Current User ====================
         case 'me': {
+          // Normalize known accounts cookie on every /me call (cleans legacy PII)
+          const normCookie = config.enableAccountSwitcher
+            ? normalizeKnownAccountsCookie(request, config.accountSwitcherPrivacy, cookieOptions)
+            : null;
+          const withNorm = (resp: Response): Response => {
+            if (normCookie) resp.headers.append('Set-Cookie', normCookie);
+            return resp;
+          };
+
           const session = await getSession()
 
           if (!session) {
-            return errorResponse('UNAUTHORIZED', 'Authentication required', 401)
+            return withNorm(errorResponse('UNAUTHORIZED', 'Authentication required', 401))
           }
 
           let userData
@@ -413,13 +549,13 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             userData = await sm.auth.me(session.sessionToken)
           } catch {
             // Session invalid, clear cookies
-            return clearSession(
+            return withNorm(clearSession(
               { error: { code: 'SESSION_EXPIRED', message: 'Session expired' } },
               cookieOptions
-            )
+            ))
           }
 
-          return successResponse({ user: userData, sessionToken: session.sessionToken, userId: session.userId })
+          return withNorm(successResponse({ user: userData, sessionToken: session.sessionToken, userId: session.userId }))
         }
 
         // ==================== Get Session Status ====================
@@ -429,6 +565,16 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             authenticated: !!session,
             userId: session?.userId || null,
           })
+        }
+
+        // ==================== Get Known Accounts ====================
+        case 'known-accounts': {
+          if (!config.enableAccountSwitcher) {
+            return errorResponse('NOT_FOUND', 'Account switcher not enabled', 404)
+          }
+
+          const knownAccounts = getKnownAccountsFromRequest(request)
+          return successResponse({ knownAccounts })
         }
 
         default:
