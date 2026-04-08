@@ -69,6 +69,10 @@ interface ScaleMuleContextValue {
   gatewayUrl?: string
   /** Configured environment ('dev' or 'prod') */
   environment?: string
+  /** Whether the account switcher is enabled */
+  enableAccountSwitcher?: boolean
+  /** Privacy level for account switcher */
+  accountSwitcherPrivacy?: string
   /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
   bootstrapFlags?: Record<string, unknown>
 }
@@ -109,6 +113,8 @@ export function ScaleMuleProvider({
   analyticsProxyUrl,
   authProxyUrl,
   publishableKey,
+  enableAccountSwitcher,
+  accountSwitcherPrivacy,
   children,
   onLogin,
   onLogout,
@@ -287,9 +293,11 @@ export function ScaleMuleProvider({
       publishableKey,
       gatewayUrl: gatewayUrl || (environment === 'dev' ? 'https://api-dev.scalemule.com' : 'https://api.scalemule.com'),
       environment: environment || undefined,
+      enableAccountSwitcher,
+      accountSwitcherPrivacy,
       bootstrapFlags,
     }),
-    [client, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, bootstrapFlags]
+    [client, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags]
   )
 
   return (

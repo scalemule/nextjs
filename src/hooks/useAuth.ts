@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState, useEffect } from 'react'
 import { useScaleMule } from '../provider'
 import { ScaleMuleApiError } from '../types'
 import type {
@@ -26,6 +26,7 @@ import type {
   PhoneSendCodeRequest,
   PhoneVerifyRequest,
   PhoneLoginRequest,
+  KnownAccountInfo,
 } from '../types'
 
 /**
@@ -61,6 +62,52 @@ import type {
  * }
  * ```
  */
+// ============================================================================
+// Client-Side Privacy Helpers
+// ============================================================================
+
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!domain) return '***@***.***';
+  const tldDot = domain.lastIndexOf('.');
+  const tld = tldDot > 0 ? domain.slice(tldDot) : '';
+  const domainBase = tldDot > 0 ? domain.slice(0, tldDot) : domain;
+  return `${local[0] || '*'}***@${domainBase[0] || '*'}***${tld}`;
+}
+
+function stableColorIndex(userId: string): number {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = ((hash << 5) - hash + userId.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash) % 8;
+}
+
+function applyClientPrivacy(
+  entry: KnownAccountInfo,
+  privacy: string | undefined
+): KnownAccountInfo {
+  if (!privacy || privacy === 'full') return entry;
+  if (privacy === 'masked') {
+    return {
+      userId: entry.userId,
+      email: entry.email ? maskEmail(entry.email) : undefined,
+      fullName: entry.fullName ? `${entry.fullName[0].toUpperCase()}.` : undefined,
+      provider: entry.provider,
+      lastActiveAt: entry.lastActiveAt,
+      colorIndex: stableColorIndex(entry.userId),
+    };
+  }
+  // minimal
+  return {
+    userId: entry.userId,
+    provider: entry.provider,
+    lastActiveAt: entry.lastActiveAt,
+    displayLabel: 'Account',
+    colorIndex: stableColorIndex(entry.userId),
+  };
+}
+
 /**
  * Read a cookie value by name from document.cookie
  */
@@ -109,7 +156,7 @@ async function proxyFetch<T>(
 }
 
 export function useAuth(): UseAuthReturn {
-  const { client, user, setUser, initializing, error, setError, authProxyUrl } = useScaleMule()
+  const { client, user, setUser, initializing, error, setError, authProxyUrl, enableAccountSwitcher, accountSwitcherPrivacy } = useScaleMule()
 
   // ============================================================================
   // Basic Auth Methods
@@ -946,6 +993,86 @@ export function useAuth(): UseAuthReturn {
   )
 
   // ============================================================================
+  // Account Switcher
+  // ============================================================================
+
+  /**
+   * Read known accounts from the sm_known_accounts cookie.
+   * This cookie is NOT httpOnly, so it's readable from client JS.
+   */
+  const readKnownAccountsCookie = useCallback((): KnownAccountInfo[] => {
+    if (!enableAccountSwitcher) return []
+    if (typeof document === 'undefined') return []
+    const match = document.cookie.match(/(?:^|; )sm_known_accounts=([^;]*)/)
+    if (!match) return []
+    try {
+      const decoded = decodeURIComponent(match[1])
+      const accounts = JSON.parse(decoded) as Record<string, KnownAccountInfo>
+      let entries = Object.values(accounts)
+      if (accountSwitcherPrivacy && accountSwitcherPrivacy !== 'full') {
+        entries = entries.map(e => applyClientPrivacy(e, accountSwitcherPrivacy))
+      }
+      return entries
+    } catch {
+      return []
+    }
+  }, [enableAccountSwitcher, accountSwitcherPrivacy])
+
+  const [knownAccounts, setKnownAccounts] = useState<KnownAccountInfo[]>([])
+
+  // Load known accounts on mount and refresh after user changes (login adds new accounts)
+  useEffect(() => {
+    setKnownAccounts(readKnownAccountsCookie())
+  }, [readKnownAccountsCookie, user])
+
+  const switchAccount = useCallback(
+    async (userId: string): Promise<KnownAccountInfo | null> => {
+      const target = knownAccounts.find(a => a.userId === userId) || null
+      if (!target) return null
+
+      // Log out current session — session cookie cleared, known accounts cookie preserved
+      if (authProxyUrl) {
+        await proxyFetch(authProxyUrl, 'switch-account')
+      } else {
+        const sessionToken = client.getSessionToken()
+        if (sessionToken) {
+          try {
+            await client.post('/v1/auth/logout', { session_token: sessionToken })
+          } catch {
+            // Ignore — clearing local state regardless
+          }
+        }
+        await client.clearSession()
+      }
+
+      setUser(null)
+      return target
+    },
+    [client, setUser, knownAccounts, authProxyUrl]
+  )
+
+  const removeKnownAccount = useCallback(
+    async (userId: string) => {
+      if (authProxyUrl) {
+        await proxyFetch(authProxyUrl, 'forget-account', { body: { user_id: userId } })
+      } else {
+        // Direct mode: remove from localStorage cookie manually
+        // (In direct mode the known accounts are in the core SDK storage)
+        // The core SDK client handles this if enableAccountSwitcher is on
+      }
+      setKnownAccounts(prev => prev.filter(a => a.userId !== userId))
+    },
+    [authProxyUrl]
+  )
+
+  const clearKnownAccounts = useCallback(async () => {
+    if (authProxyUrl) {
+      await proxyFetch(authProxyUrl, 'forget-all-accounts')
+    }
+    setKnownAccounts([])
+  }, [authProxyUrl])
+
+  // ============================================================================
   // Return Hook Value
   // ============================================================================
 
@@ -981,6 +1108,11 @@ export function useAuth(): UseAuthReturn {
       sendPhoneCode,
       verifyPhone,
       loginWithPhone,
+      // Account switcher
+      knownAccounts,
+      switchAccount,
+      removeKnownAccount,
+      clearKnownAccounts,
     }),
     [
       user,
@@ -1008,6 +1140,10 @@ export function useAuth(): UseAuthReturn {
       sendPhoneCode,
       verifyPhone,
       loginWithPhone,
+      knownAccounts,
+      switchAccount,
+      removeKnownAccount,
+      clearKnownAccounts,
     ]
   )
 }
