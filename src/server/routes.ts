@@ -190,8 +190,8 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
               {
                 userId: registeredUser.id,
                 email: registeredUser.email,
-                fullName: registeredUser.full_name,
-                avatarUrl: registeredUser.avatar_url,
+                fullName: registeredUser.full_name ?? undefined,
+                avatarUrl: registeredUser.avatar_url ?? undefined,
                 provider: 'email',
                 lastActiveAt: new Date().toISOString(),
               },
@@ -249,8 +249,8 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
               {
                 userId: loginData.user.id,
                 email: loginData.user.email,
-                fullName: loginData.user.full_name,
-                avatarUrl: loginData.user.avatar_url,
+                fullName: loginData.user.full_name ?? undefined,
+                avatarUrl: loginData.user.avatar_url ?? undefined,
                 provider: 'email',
                 lastActiveAt: new Date().toISOString(),
               },
