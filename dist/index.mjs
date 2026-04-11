@@ -1,4 +1,6 @@
 import { createContext, useState, useMemo, useEffect, useCallback, useContext, useRef } from 'react';
+import { createMoneyClient } from '@scalemule/money';
+export { MoneyClient, createMoneyClient } from '@scalemule/money';
 import { jsx } from 'react/jsx-runtime';
 
 var __defProp = Object.defineProperty;
@@ -11,10 +13,10 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// node_modules/@scalemule/sdk/dist/chunk-3FTGBRLU.mjs
+// ../sdk/dist/chunk-3FTGBRLU.mjs
 var DB_NAME, STORE_NAME, DB_VERSION, MAX_AGE_MS, UploadResumeStore;
 var init_chunk_3FTGBRLU = __esm({
-  "node_modules/@scalemule/sdk/dist/chunk-3FTGBRLU.mjs"() {
+  "../sdk/dist/chunk-3FTGBRLU.mjs"() {
     DB_NAME = "sm_upload_sessions_v1";
     STORE_NAME = "sessions";
     DB_VERSION = 1;
@@ -171,18 +173,18 @@ var init_chunk_3FTGBRLU = __esm({
   }
 });
 
-// node_modules/@scalemule/sdk/dist/upload-resume-RXLHBH5E.mjs
+// ../sdk/dist/upload-resume-RXLHBH5E.mjs
 var upload_resume_RXLHBH5E_exports = {};
 __export(upload_resume_RXLHBH5E_exports, {
   UploadResumeStore: () => UploadResumeStore
 });
 var init_upload_resume_RXLHBH5E = __esm({
-  "node_modules/@scalemule/sdk/dist/upload-resume-RXLHBH5E.mjs"() {
+  "../sdk/dist/upload-resume-RXLHBH5E.mjs"() {
     init_chunk_3FTGBRLU();
   }
 });
 
-// node_modules/@scalemule/sdk/dist/upload-compression-VOUJRAIM.mjs
+// ../sdk/dist/upload-compression-VOUJRAIM.mjs
 var upload_compression_VOUJRAIM_exports = {};
 __export(upload_compression_VOUJRAIM_exports, {
   maybeCompressImage: () => maybeCompressImage
@@ -272,7 +274,7 @@ function getNetworkEffectiveType() {
 }
 var MIN_COMPRESS_SIZE, COMPRESSIBLE_TYPES, SKIP_TYPES, NETWORK_PROFILES, cachedImport;
 var init_upload_compression_VOUJRAIM = __esm({
-  "node_modules/@scalemule/sdk/dist/upload-compression-VOUJRAIM.mjs"() {
+  "../sdk/dist/upload-compression-VOUJRAIM.mjs"() {
     MIN_COMPRESS_SIZE = 100 * 1024;
     COMPRESSIBLE_TYPES = /* @__PURE__ */ new Set(["image/jpeg", "image/jpg", "image/png", "image/bmp", "image/tiff"]);
     SKIP_TYPES = /* @__PURE__ */ new Set(["image/gif", "image/svg+xml", "image/webp", "image/avif"]);
@@ -286,80 +288,8 @@ var init_upload_compression_VOUJRAIM = __esm({
   }
 });
 
-// node_modules/@scalemule/sdk/dist/index.mjs
+// ../sdk/dist/index.mjs
 init_chunk_3FTGBRLU();
-
-// node_modules/@scalemule/ui/dist/phone/index.mjs
-var PHONE_COUNTRIES = [
-  { code: "US", name: "United States", dialCode: "+1" },
-  { code: "CA", name: "Canada", dialCode: "+1" },
-  { code: "GB", name: "United Kingdom", dialCode: "+44" },
-  { code: "AU", name: "Australia", dialCode: "+61" },
-  { code: "DE", name: "Germany", dialCode: "+49" },
-  { code: "FR", name: "France", dialCode: "+33" },
-  { code: "IT", name: "Italy", dialCode: "+39" },
-  { code: "ES", name: "Spain", dialCode: "+34" },
-  { code: "NL", name: "Netherlands", dialCode: "+31" },
-  { code: "BE", name: "Belgium", dialCode: "+32" },
-  { code: "CH", name: "Switzerland", dialCode: "+41" },
-  { code: "AT", name: "Austria", dialCode: "+43" },
-  { code: "SE", name: "Sweden", dialCode: "+46" },
-  { code: "NO", name: "Norway", dialCode: "+47" },
-  { code: "DK", name: "Denmark", dialCode: "+45" },
-  { code: "FI", name: "Finland", dialCode: "+358" },
-  { code: "IE", name: "Ireland", dialCode: "+353" },
-  { code: "PT", name: "Portugal", dialCode: "+351" },
-  { code: "PL", name: "Poland", dialCode: "+48" },
-  { code: "CZ", name: "Czech Republic", dialCode: "+420" },
-  { code: "GR", name: "Greece", dialCode: "+30" },
-  { code: "RU", name: "Russia", dialCode: "+7" },
-  { code: "JP", name: "Japan", dialCode: "+81" },
-  { code: "KR", name: "South Korea", dialCode: "+82" },
-  { code: "CN", name: "China", dialCode: "+86" },
-  { code: "HK", name: "Hong Kong", dialCode: "+852" },
-  { code: "TW", name: "Taiwan", dialCode: "+886" },
-  { code: "SG", name: "Singapore", dialCode: "+65" },
-  { code: "MY", name: "Malaysia", dialCode: "+60" },
-  { code: "TH", name: "Thailand", dialCode: "+66" },
-  { code: "VN", name: "Vietnam", dialCode: "+84" },
-  { code: "PH", name: "Philippines", dialCode: "+63" },
-  { code: "ID", name: "Indonesia", dialCode: "+62" },
-  { code: "IN", name: "India", dialCode: "+91" },
-  { code: "PK", name: "Pakistan", dialCode: "+92" },
-  { code: "BD", name: "Bangladesh", dialCode: "+880" },
-  { code: "AE", name: "UAE", dialCode: "+971" },
-  { code: "SA", name: "Saudi Arabia", dialCode: "+966" },
-  { code: "IL", name: "Israel", dialCode: "+972" },
-  { code: "TR", name: "Turkey", dialCode: "+90" },
-  { code: "EG", name: "Egypt", dialCode: "+20" },
-  { code: "ZA", name: "South Africa", dialCode: "+27" },
-  { code: "NG", name: "Nigeria", dialCode: "+234" },
-  { code: "KE", name: "Kenya", dialCode: "+254" },
-  { code: "BR", name: "Brazil", dialCode: "+55" },
-  { code: "MX", name: "Mexico", dialCode: "+52" },
-  { code: "AR", name: "Argentina", dialCode: "+54" },
-  { code: "CL", name: "Chile", dialCode: "+56" },
-  { code: "CO", name: "Colombia", dialCode: "+57" },
-  { code: "PE", name: "Peru", dialCode: "+51" },
-  { code: "NZ", name: "New Zealand", dialCode: "+64" }
-];
-function normalizePhoneNumber(input) {
-  if (typeof input !== "string") return "";
-  const trimmed = input.trim();
-  if (!trimmed) return "";
-  const digitsOnly = trimmed.replace(/\D/g, "");
-  if (!digitsOnly) return "";
-  if (trimmed.startsWith("+")) {
-    return `+${digitsOnly}`;
-  }
-  if (trimmed.startsWith("00") && digitsOnly.length > 2) {
-    return `+${digitsOnly.slice(2)}`;
-  }
-  return `+${digitsOnly}`;
-}
-[...PHONE_COUNTRIES].sort((a, b) => b.dialCode.length - a.dialCode.length);
-
-// node_modules/@scalemule/sdk/dist/index.mjs
 function buildClientContextHeaders(context) {
   if (!context) return {};
   const headers = {};
@@ -384,6 +314,7 @@ var WORKSPACE_STORAGE_KEY = "scalemule_workspace_id";
 var ANONYMOUS_ID_STORAGE_KEY = "scalemule_anonymous_id";
 var SESSION_POOL_KEY = "scalemule_session_pool";
 var ACTIVE_ACCOUNT_KEY = "scalemule_active_account";
+var KNOWN_ACCOUNTS_KEY = "scalemule_known_accounts";
 var GATEWAY_URLS = {
   dev: "https://api-dev.scalemule.com",
   prod: "https://api.scalemule.com"
@@ -431,6 +362,54 @@ function statusToErrorCode(status) {
       return "rate_limited";
     default:
       return status >= 500 ? "internal_error" : `http_${status}`;
+  }
+}
+var MAX_KNOWN_ACCOUNTS = 10;
+function maskEmail(email) {
+  const parts = email.split("@");
+  const local = parts[0] ?? "";
+  const domain = parts[1];
+  if (!domain) return "***@***.***";
+  const tldDot = domain.lastIndexOf(".");
+  const tld = tldDot > 0 ? domain.slice(tldDot) : "";
+  const domainBase = tldDot > 0 ? domain.slice(0, tldDot) : domain;
+  return `${local[0] || "*"}***@${domainBase[0] || "*"}***${tld}`;
+}
+function stableColorIndex(userId) {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash << 5) - hash + userId.charCodeAt(i) | 0;
+  }
+  return Math.abs(hash) % 8;
+}
+function applyPrivacy(account, privacy) {
+  switch (privacy) {
+    case "full":
+      return {
+        userId: account.userId,
+        email: account.email,
+        fullName: account.fullName,
+        avatarUrl: account.avatarUrl,
+        provider: account.provider,
+        lastActiveAt: account.lastActiveAt
+      };
+    case "masked":
+      return {
+        userId: account.userId,
+        email: account.email ? maskEmail(account.email) : void 0,
+        fullName: account.fullName && account.fullName.length > 0 ? `${account.fullName[0].toUpperCase()}.` : void 0,
+        provider: account.provider,
+        lastActiveAt: account.lastActiveAt,
+        colorIndex: stableColorIndex(account.userId)
+      };
+    case "minimal":
+      return {
+        userId: account.userId,
+        provider: account.provider,
+        lastActiveAt: account.lastActiveAt,
+        displayLabel: "Account",
+        colorIndex: stableColorIndex(account.userId)
+      };
   }
 }
 function createDefaultStorage() {
@@ -579,6 +558,7 @@ var ScaleMuleClient = class {
     this.workspaceId = null;
     this.anonymousId = null;
     this.sessionPool = /* @__PURE__ */ new Map();
+    this.knownAccounts = /* @__PURE__ */ new Map();
     this.apiKey = config.apiKey;
     this.applicationId = config.applicationId || null;
     this.baseUrl = config.baseUrl || GATEWAY_URLS[config.environment || "prod"];
@@ -595,6 +575,8 @@ var ScaleMuleClient = class {
       this.offlineQueue.setOnlineCallback(() => this.syncOfflineQueue());
     }
     this.multiSessionEnabled = config.enableMultiSession || false;
+    this.accountSwitcherEnabled = config.enableAccountSwitcher || false;
+    this.accountSwitcherPrivacy = config.accountSwitcherPrivacy || "full";
   }
   // --------------------------------------------------------------------------
   // Session Management
@@ -637,6 +619,27 @@ var ScaleMuleClient = class {
         this.userId = activeId;
       }
     }
+    if (this.accountSwitcherEnabled) {
+      const knownJson = await this.storage.getItem(KNOWN_ACCOUNTS_KEY);
+      if (knownJson) {
+        try {
+          const entries = JSON.parse(knownJson);
+          this.knownAccounts = new Map(Object.entries(entries));
+          let changed = false;
+          for (const [userId2, entry] of this.knownAccounts) {
+            const normalized = applyPrivacy(entry, this.accountSwitcherPrivacy);
+            if (JSON.stringify(normalized) !== JSON.stringify(entry)) {
+              this.knownAccounts.set(userId2, normalized);
+              changed = true;
+            }
+          }
+          if (changed) {
+            await this.persistKnownAccounts();
+          }
+        } catch {
+        }
+      }
+    }
     if (this.debug)
       console.log(
         "[ScaleMule] Initialized, session:",
@@ -644,7 +647,9 @@ var ScaleMuleClient = class {
         "anonymousId:",
         anonId,
         "poolSize:",
-        this.sessionPool.size
+        this.sessionPool.size,
+        "knownAccounts:",
+        this.knownAccounts.size
       );
   }
   async setSession(token, userId) {
@@ -767,6 +772,57 @@ var ScaleMuleClient = class {
       obj[k] = v;
     }
     await this.storage.setItem(SESSION_POOL_KEY, JSON.stringify(obj));
+  }
+  // --------------------------------------------------------------------------
+  // Account Switcher (Secure — metadata only, no tokens)
+  // --------------------------------------------------------------------------
+  isAccountSwitcherEnabled() {
+    return this.accountSwitcherEnabled;
+  }
+  getAccountSwitcherPrivacy() {
+    return this.accountSwitcherPrivacy;
+  }
+  /** Get all known accounts that have logged in on this device (privacy-transformed) */
+  getKnownAccounts() {
+    return Array.from(this.knownAccounts.values());
+  }
+  /**
+   * Record an account as "known" on this device.
+   * Applies privacy transforms before storing — full email is never persisted
+   * in masked/minimal modes. Evicts oldest accounts if over the cap.
+   * Called automatically after successful login/register when account switcher is enabled.
+   */
+  async addKnownAccount(account) {
+    const display = applyPrivacy(account, this.accountSwitcherPrivacy);
+    this.knownAccounts.set(account.userId, display);
+    if (this.knownAccounts.size > MAX_KNOWN_ACCOUNTS) {
+      const sorted = Array.from(this.knownAccounts.entries()).sort(
+        (a, b) => (a[1].lastActiveAt || "").localeCompare(b[1].lastActiveAt || "")
+      );
+      while (this.knownAccounts.size > MAX_KNOWN_ACCOUNTS && sorted.length > 0) {
+        const oldest = sorted.shift();
+        this.knownAccounts.delete(oldest[0]);
+      }
+    }
+    await this.persistKnownAccounts();
+  }
+  /** Remove a specific account from the known accounts list ("forget this account") */
+  async removeKnownAccount(userId) {
+    this.knownAccounts.delete(userId);
+    await this.persistKnownAccounts();
+  }
+  /** Clear all known accounts ("forget all accounts on this device") */
+  async clearKnownAccounts() {
+    this.knownAccounts.clear();
+    await this.storage.removeItem(KNOWN_ACCOUNTS_KEY);
+  }
+  /** Persist known accounts to storage */
+  async persistKnownAccounts() {
+    const obj = {};
+    for (const [k, v] of this.knownAccounts) {
+      obj[k] = v;
+    }
+    await this.storage.setItem(KNOWN_ACCOUNTS_KEY, JSON.stringify(obj));
   }
   getBaseUrl() {
     return this.baseUrl;
@@ -1259,6 +1315,74 @@ function asString(parent, key) {
   const value = parent[key];
   return typeof value === "string" ? value : void 0;
 }
+var PHONE_COUNTRIES = [
+  { code: "US", name: "United States", dialCode: "+1" },
+  { code: "CA", name: "Canada", dialCode: "+1" },
+  { code: "GB", name: "United Kingdom", dialCode: "+44" },
+  { code: "AU", name: "Australia", dialCode: "+61" },
+  { code: "DE", name: "Germany", dialCode: "+49" },
+  { code: "FR", name: "France", dialCode: "+33" },
+  { code: "IT", name: "Italy", dialCode: "+39" },
+  { code: "ES", name: "Spain", dialCode: "+34" },
+  { code: "NL", name: "Netherlands", dialCode: "+31" },
+  { code: "BE", name: "Belgium", dialCode: "+32" },
+  { code: "CH", name: "Switzerland", dialCode: "+41" },
+  { code: "AT", name: "Austria", dialCode: "+43" },
+  { code: "SE", name: "Sweden", dialCode: "+46" },
+  { code: "NO", name: "Norway", dialCode: "+47" },
+  { code: "DK", name: "Denmark", dialCode: "+45" },
+  { code: "FI", name: "Finland", dialCode: "+358" },
+  { code: "IE", name: "Ireland", dialCode: "+353" },
+  { code: "PT", name: "Portugal", dialCode: "+351" },
+  { code: "PL", name: "Poland", dialCode: "+48" },
+  { code: "CZ", name: "Czech Republic", dialCode: "+420" },
+  { code: "GR", name: "Greece", dialCode: "+30" },
+  { code: "RU", name: "Russia", dialCode: "+7" },
+  { code: "JP", name: "Japan", dialCode: "+81" },
+  { code: "KR", name: "South Korea", dialCode: "+82" },
+  { code: "CN", name: "China", dialCode: "+86" },
+  { code: "HK", name: "Hong Kong", dialCode: "+852" },
+  { code: "TW", name: "Taiwan", dialCode: "+886" },
+  { code: "SG", name: "Singapore", dialCode: "+65" },
+  { code: "MY", name: "Malaysia", dialCode: "+60" },
+  { code: "TH", name: "Thailand", dialCode: "+66" },
+  { code: "VN", name: "Vietnam", dialCode: "+84" },
+  { code: "PH", name: "Philippines", dialCode: "+63" },
+  { code: "ID", name: "Indonesia", dialCode: "+62" },
+  { code: "IN", name: "India", dialCode: "+91" },
+  { code: "PK", name: "Pakistan", dialCode: "+92" },
+  { code: "BD", name: "Bangladesh", dialCode: "+880" },
+  { code: "AE", name: "UAE", dialCode: "+971" },
+  { code: "SA", name: "Saudi Arabia", dialCode: "+966" },
+  { code: "IL", name: "Israel", dialCode: "+972" },
+  { code: "TR", name: "Turkey", dialCode: "+90" },
+  { code: "EG", name: "Egypt", dialCode: "+20" },
+  { code: "ZA", name: "South Africa", dialCode: "+27" },
+  { code: "NG", name: "Nigeria", dialCode: "+234" },
+  { code: "KE", name: "Kenya", dialCode: "+254" },
+  { code: "BR", name: "Brazil", dialCode: "+55" },
+  { code: "MX", name: "Mexico", dialCode: "+52" },
+  { code: "AR", name: "Argentina", dialCode: "+54" },
+  { code: "CL", name: "Chile", dialCode: "+56" },
+  { code: "CO", name: "Colombia", dialCode: "+57" },
+  { code: "PE", name: "Peru", dialCode: "+51" },
+  { code: "NZ", name: "New Zealand", dialCode: "+64" }
+];
+function normalizePhoneNumber(input) {
+  if (typeof input !== "string") return "";
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  const digitsOnly = trimmed.replace(/\D/g, "");
+  if (!digitsOnly) return "";
+  if (trimmed.startsWith("+")) {
+    return `+${digitsOnly}`;
+  }
+  if (trimmed.startsWith("00") && digitsOnly.length > 2) {
+    return `+${digitsOnly.slice(2)}`;
+  }
+  return `+${digitsOnly}`;
+}
+[...PHONE_COUNTRIES].sort((a, b) => b.dialCode.length - a.dialCode.length);
 function collectDeviceFingerprint() {
   if (typeof window === "undefined" || typeof navigator === "undefined") return void 0;
   try {
@@ -1387,6 +1511,16 @@ var AuthService = class extends ServiceModule {
         addedAt: (/* @__PURE__ */ new Date()).toISOString()
       });
     }
+    if (result.data && this.client.isAccountSwitcherEnabled()) {
+      await this.client.addKnownAccount({
+        userId: result.data.user.id,
+        email: result.data.user.email,
+        fullName: result.data.user.full_name,
+        avatarUrl: result.data.user.avatar_url,
+        provider: "email",
+        lastActiveAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
     return result;
   }
   async login(data, options) {
@@ -1407,6 +1541,16 @@ var AuthService = class extends ServiceModule {
         addedAt: (/* @__PURE__ */ new Date()).toISOString()
       });
     }
+    if (result.data && this.client.isAccountSwitcherEnabled()) {
+      await this.client.addKnownAccount({
+        userId: result.data.user.id,
+        email: result.data.user.email,
+        fullName: result.data.user.full_name,
+        avatarUrl: result.data.user.avatar_url,
+        provider: "email",
+        lastActiveAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
     return result;
   }
   async logout(options) {
@@ -1414,6 +1558,52 @@ var AuthService = class extends ServiceModule {
   }
   async me(options) {
     return this._get("/me", options);
+  }
+  // --------------------------------------------------------------------------
+  // User directory (customer-scoped)
+  // --------------------------------------------------------------------------
+  //
+  // Search / fetch users within the caller's application. These endpoints are
+  // scoped by the gateway-injected x-app-id header, so when invoked with a
+  // customer API key + user session they will only return users belonging to
+  // the caller's application. They replace the prior pattern of customer apps
+  // reaching for platform admin credentials to hit admin-only user routes.
+  //
+  // DO NOT call these with platform admin credentials from customer-facing
+  // applications. Use the standard customer auth path (API key + user session)
+  // and let the gateway inject x-app-id on your behalf.
+  /**
+   * Search users within the caller's application.
+   *
+   * Results are automatically scoped to the caller's application via the
+   * x-app-id header injected by the gateway. Server-side page size is fixed
+   * at 50 (the `per_page` query param is not honored upstream).
+   *
+   * @example
+   *   const res = await sm.auth.searchUsers({ search: 'alice' });
+   *   res.data?.users.forEach(u => console.log(u.email));
+   */
+  async searchUsers(params, options) {
+    const query = {};
+    if (params?.search !== void 0) query.search = params.search;
+    if (params?.status !== void 0) query.status = params.status;
+    if (params?.email_verified !== void 0) {
+      query.email_verified = params.email_verified ? "true" : "false";
+    }
+    if (params?.phone_verified !== void 0) {
+      query.phone_verified = params.phone_verified ? "true" : "false";
+    }
+    if (params?.page !== void 0) query.page = params.page;
+    return this._get(this.withQuery("/users", query), options);
+  }
+  /**
+   * Fetch a single user by ID within the caller's application.
+   *
+   * Returns 404 if the user is not in the caller's application — cross-tenant
+   * reads are blocked at the gateway via the x-app-id header scope.
+   */
+  async getUser(userId, options) {
+    return this._get(`/users/${encodeURIComponent(userId)}`, options);
   }
   /** Refresh the session. Alias: refreshToken() */
   async refreshSession(data, options) {
@@ -1548,7 +1738,18 @@ var AuthService = class extends ServiceModule {
   }
   async handleOAuthCallback(data, options) {
     const { provider, ...rest } = data;
-    return this._get(this.withQuery(`/oauth/${provider}/callback`, rest), options);
+    const result = await this._get(this.withQuery(`/oauth/${provider}/callback`, rest), options);
+    if (result.data && this.client.isAccountSwitcherEnabled()) {
+      await this.client.addKnownAccount({
+        userId: result.data.user.id,
+        email: result.data.user.email,
+        fullName: result.data.user.full_name,
+        avatarUrl: result.data.user.avatar_url,
+        provider,
+        lastActiveAt: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+    return result;
   }
   async listOAuthProviders(options) {
     return this._get("/oauth/providers", options);
@@ -2589,7 +2790,10 @@ var StorageService = class extends ServiceModule {
     const stallTimeout = DEFAULT_STALL_TIMEOUT_MS;
     const controller = new AbortController();
     let parentSignalCleanup;
-    const combinedSignal = signal ? AbortSignal.any?.([signal, controller.signal]) ?? (() => {
+    const combinedSignal = signal ? AbortSignal.any?.([
+      signal,
+      controller.signal
+    ]) ?? (() => {
       const onAbort = () => controller.abort();
       signal.addEventListener("abort", onAbort, { once: true });
       parentSignalCleanup = () => signal.removeEventListener("abort", onAbort);
@@ -2770,7 +2974,10 @@ var StorageService = class extends ServiceModule {
       }
       const controller = new AbortController();
       let partSignalCleanup;
-      const combinedSignal = signal ? AbortSignal.any?.([signal, controller.signal]) ?? (() => {
+      const combinedSignal = signal ? AbortSignal.any?.([
+        signal,
+        controller.signal
+      ]) ?? (() => {
         const onAbort = () => controller.abort();
         signal.addEventListener("abort", onAbort, { once: true });
         partSignalCleanup = () => signal.removeEventListener("abort", onAbort);
@@ -2934,6 +3141,7 @@ var RealtimeService = class extends ServiceModule {
     super(...arguments);
     this.basePath = "/v1/realtime";
     this.ws = null;
+    this.usedTicketAuth = false;
     this.subscriptions = /* @__PURE__ */ new Map();
     this.presenceCallbacks = /* @__PURE__ */ new Map();
     this.statusCallbacks = /* @__PURE__ */ new Set();
@@ -3062,10 +3270,31 @@ var RealtimeService = class extends ServiceModule {
   // --------------------------------------------------------------------------
   connect() {
     if (this._status === "connecting" || this._status === "connected") return;
-    const baseUrl = this.client.getBaseUrl();
-    const wsUrl = baseUrl.replace(/^http/, "ws") + "/v1/realtime/ws";
     this.setStatus(this.reconnectAttempt > 0 ? "reconnecting" : "connecting");
+    this.fetchTicketAndConnect();
+  }
+  async fetchTicketAndConnect() {
+    const baseUrl = this.client.getBaseUrl();
     try {
+      const headers = { "Content-Type": "application/json" };
+      const apiKey = this.client.getApiKey();
+      if (apiKey) headers["x-api-key"] = apiKey;
+      const token = this.client.getSessionToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const ticketRes = await fetch(`${baseUrl}/v1/realtime/ws/ticket`, {
+        method: "POST",
+        headers
+      });
+      let wsUrl;
+      if (ticketRes.ok) {
+        const ticketData = await ticketRes.json();
+        const ticket = ticketData.ticket;
+        wsUrl = baseUrl.replace(/^http/, "ws") + `/v1/realtime/ws?ticket=${encodeURIComponent(ticket)}`;
+        this.usedTicketAuth = true;
+      } else {
+        wsUrl = baseUrl.replace(/^http/, "ws") + "/v1/realtime/ws";
+        this.usedTicketAuth = false;
+      }
       this.ws = new WebSocket(wsUrl);
     } catch {
       this.scheduleReconnect();
@@ -3073,8 +3302,21 @@ var RealtimeService = class extends ServiceModule {
     }
     this.ws.onopen = () => {
       this.reconnectAttempt = 0;
-      this.authenticate();
+      if (!this.usedTicketAuth) {
+        this.authenticate();
+      }
       this.startHeartbeat();
+      if (this.usedTicketAuth) {
+        setTimeout(() => {
+          if (!this.authenticated) {
+            this.authenticated = true;
+            this.setStatus("connected");
+            for (const channel of this.subscriptions.keys()) {
+              this.sendWs({ type: "subscribe", channel });
+            }
+          }
+        }, 2e3);
+      }
     };
     this.ws.onmessage = (event) => {
       try {
@@ -3561,6 +3803,66 @@ var ChatService = class extends ServiceModule {
     return this.createConversation(data);
   }
 };
+var ConferenceService = class extends ServiceModule {
+  constructor() {
+    super(...arguments);
+    this.basePath = "/v1/conference";
+  }
+  // --------------------------------------------------------------------------
+  // Call Lifecycle
+  // --------------------------------------------------------------------------
+  async createCall(data, options) {
+    return this.post("/calls", data, options);
+  }
+  async getCall(callId, options) {
+    return this._get(`/calls/${callId}`, options);
+  }
+  async listCalls(params, options) {
+    return this._get(this.withQuery("/calls", params), options);
+  }
+  async endCall(callId, options) {
+    return this.post(`/calls/${callId}/end`, void 0, options);
+  }
+  // --------------------------------------------------------------------------
+  // Participants
+  // --------------------------------------------------------------------------
+  async joinCall(callId, options) {
+    return this.post(`/calls/${callId}/join`, void 0, options);
+  }
+  async leaveCall(callId, options) {
+    return this.post(`/calls/${callId}/leave`, void 0, options);
+  }
+  async listParticipants(callId, options) {
+    return this._get(`/calls/${callId}/participants`, options);
+  }
+  // --------------------------------------------------------------------------
+  // Recording
+  // --------------------------------------------------------------------------
+  async startRecording(callId, options) {
+    return this.post(`/calls/${callId}/recording/start`, void 0, options);
+  }
+  async stopRecording(callId, options) {
+    return this.post(`/calls/${callId}/recording/stop`, void 0, options);
+  }
+  async consentToRecording(callId, options) {
+    return this.post(`/calls/${callId}/recording/consent`, void 0, options);
+  }
+  // --------------------------------------------------------------------------
+  // Settings
+  // --------------------------------------------------------------------------
+  async getSettings(options) {
+    return this._get("/settings", options);
+  }
+  async updateSettings(data, options) {
+    return this.put("/settings", data, options);
+  }
+  // --------------------------------------------------------------------------
+  // Stats
+  // --------------------------------------------------------------------------
+  async submitStats(callId, stats, options) {
+    return this.post(`/calls/${callId}/stats`, stats, options);
+  }
+};
 var SocialService = class extends ServiceModule {
   constructor() {
     super(...arguments);
@@ -3682,7 +3984,14 @@ var ReferralsService = class extends ServiceModule {
 var BillingService = class extends ServiceModule {
   constructor() {
     super(...arguments);
-    this.basePath = "/v1/billing";
+    this.basePath = "/v1/money/billing";
+  }
+  retiredSurface(route) {
+    return Promise.reject(
+      new Error(
+        `${route} was retired after the money-services cutover. Use the dedicated money services instead of BillingService for this operation.`
+      )
+    );
   }
   // --------------------------------------------------------------------------
   // Customers
@@ -3697,28 +4006,28 @@ var BillingService = class extends ServiceModule {
   // Subscriptions
   // --------------------------------------------------------------------------
   async subscribe(data, options) {
-    return this.post("/subscriptions", data, options);
+    return this.retiredSurface("/v1/money/billing/subscriptions");
   }
   async listSubscriptions(params, options) {
-    return this._list("/subscriptions", params, options);
+    return this.retiredSurface("/v1/money/billing/subscriptions");
   }
   async cancelSubscription(id, options) {
-    return this.post(`/subscriptions/${id}/cancel`, void 0, options);
+    return this.retiredSurface(`/v1/money/billing/subscriptions/${id}/cancel`);
   }
   async resumeSubscription(id, options) {
-    return this.post(`/subscriptions/${id}/resume`, void 0, options);
+    return this.retiredSurface(`/v1/money/billing/subscriptions/${id}/resume`);
   }
   async upgradeSubscription(id, data, options) {
-    return this.patch(`/subscriptions/${id}/upgrade`, data, options);
+    return this.retiredSurface(`/v1/money/billing/subscriptions/${id}/upgrade`);
   }
   // --------------------------------------------------------------------------
   // Usage
   // --------------------------------------------------------------------------
   async reportUsage(data, options) {
-    return this.post("/usage", data, options);
+    return this.retiredSurface("/v1/money/billing/usage");
   }
   async getUsageSummary(options) {
-    return this._get("/usage/summary", options);
+    return this.retiredSurface("/v1/money/billing/usage/summary");
   }
   // --------------------------------------------------------------------------
   // Invoices
@@ -3751,7 +4060,7 @@ var BillingService = class extends ServiceModule {
     return this.post(`/connected-accounts/${id}/onboarding-link`, data, options);
   }
   async getAccountBalance(id, options) {
-    return this._get(`/connected-accounts/${id}/balance`, options);
+    return this.retiredSurface(`/v1/money/billing/connected-accounts/${id}/balance`);
   }
   async createAccountSession(id, options) {
     return this.post(`/connected-accounts/${id}/account-session`, void 0, options);
@@ -3766,25 +4075,25 @@ var BillingService = class extends ServiceModule {
   // Payments (Marketplace)
   // --------------------------------------------------------------------------
   async createPayment(data, options) {
-    return this.post("/payments", data, options);
+    return this.retiredSurface("/v1/money/billing/payments");
   }
   async getPayment(id, options) {
-    return this._get(`/payments/${id}`, options);
+    return this.retiredSurface(`/v1/money/billing/payments/${id}`);
   }
   async listPayments(params, options) {
-    return this._list("/payments", params, options);
+    return this.retiredSurface("/v1/money/billing/payments");
   }
   // --------------------------------------------------------------------------
   // Refunds
   // --------------------------------------------------------------------------
   async refundPayment(id, data, options) {
-    return this.post(`/payments/${id}/refund`, data, options);
+    return this.retiredSurface(`/v1/money/billing/payments/${id}/refund`);
   }
   // --------------------------------------------------------------------------
   // Payouts
   // --------------------------------------------------------------------------
   async getPayoutHistory(accountId, params, options) {
-    return this._list(`/connected-accounts/${accountId}/payouts`, params, options);
+    return this.retiredSurface(`/v1/money/billing/connected-accounts/${accountId}/payouts`);
   }
   async getPayoutSchedule(accountId, options) {
     return this._get(`/connected-accounts/${accountId}/payout-schedule`, options);
@@ -3796,13 +4105,10 @@ var BillingService = class extends ServiceModule {
   // Ledger
   // --------------------------------------------------------------------------
   async getTransactions(params, options) {
-    return this._list("/transactions", params, options);
+    return this.retiredSurface("/v1/money/billing/transactions");
   }
   async getTransactionSummary(params, options) {
-    return this._get(
-      this.withQuery("/transactions/summary", params),
-      options
-    );
+    return this.retiredSurface("/v1/money/billing/transactions/summary");
   }
   // --------------------------------------------------------------------------
   // Setup Sessions
@@ -3814,35 +4120,31 @@ var BillingService = class extends ServiceModule {
   // Connected Account Operations: Products, Prices, Subscriptions, Transfers
   // --------------------------------------------------------------------------
   async createProduct(data, options) {
-    return this.post("/products", data, options);
+    return this.retiredSurface("/v1/money/billing/products");
   }
   async createPrice(data, options) {
-    return this.post("/prices", data, options);
+    return this.retiredSurface("/v1/money/billing/prices");
   }
   async deactivatePrice(id, options) {
-    return this.post(`/prices/${id}/deactivate`, void 0, options);
+    return this.retiredSurface(`/v1/money/billing/prices/${id}/deactivate`);
   }
   async createConnectedSubscription(data, options) {
-    return this.post("/connected-subscriptions", data, options);
+    return this.retiredSurface("/v1/money/billing/connected-subscriptions");
   }
   async cancelConnectedSubscription(id, data, options) {
-    return this.post(`/connected-subscriptions/${id}/cancel`, data, options);
+    return this.retiredSurface(`/v1/money/billing/connected-subscriptions/${id}/cancel`);
   }
   async listConnectedSubscriptions(params, options) {
-    return this._list(
-      "/connected-subscriptions",
-      params,
-      options
-    );
+    return this.retiredSurface("/v1/money/billing/connected-subscriptions");
   }
   async createConnectedSetupIntent(data, options) {
-    return this.post("/connected-setup-intents", data, options);
+    return this.retiredSurface("/v1/money/billing/connected-setup-intents");
   }
   async createTransfer(data, options) {
-    return this.post("/transfers", data, options);
+    return this.retiredSurface("/v1/money/billing/transfers");
   }
   async syncPaymentStatus(id, options) {
-    return this.post(`/payments/${id}/sync`, void 0, options);
+    return this.retiredSurface(`/v1/money/billing/payments/${id}/sync`);
   }
   // --------------------------------------------------------------------------
   // Legacy methods (backward compat)
@@ -5249,6 +5551,71 @@ var FlagContentService = class extends ServiceModule {
     return this._get(`/appeals/${id}`, options);
   }
 };
+var CreatorMakerService = class extends ServiceModule {
+  constructor() {
+    super(...arguments);
+    this.basePath = "/v1/creator-maker";
+  }
+  /** Submit a generation job. */
+  async generate(data, options) {
+    return this.post("/jobs", data, options);
+  }
+  /** Get a generation job by ID. */
+  async getJob(jobId, options) {
+    return this._get(`/jobs/${jobId}`, options);
+  }
+  /** Long-poll for job completion (server holds up to 30s). */
+  async pollJob(jobId, options) {
+    return this._get(`/jobs/${jobId}/poll`, {
+      ...options,
+      timeout: 35e3
+    });
+  }
+  /** List the current user's generation jobs. */
+  async listJobs(params, options) {
+    return this._list("/jobs", params, options);
+  }
+  /** Cancel a pending or queued job. */
+  async cancelJob(jobId, options) {
+    return this.post(`/jobs/${jobId}/cancel`, void 0, options);
+  }
+  /** Retry a failed job. */
+  async retryJob(jobId, options) {
+    return this.post(`/jobs/${jobId}/retry`, void 0, options);
+  }
+  /** Generate variations of a completed job. */
+  async generateVariations(jobId, options) {
+    return this.post(`/jobs/${jobId}/variations`, void 0, options);
+  }
+  /** List available style presets, optionally filtered by mode. */
+  async listPresets(params, options) {
+    return this._get(this.withQuery("/presets", params), options);
+  }
+  /** Get a style preset by slug. */
+  async getPreset(slug, options) {
+    return this._get(`/presets/${slug}`, options);
+  }
+  /** Create a project. */
+  async createProject(data, options) {
+    return this.post("/projects", data, options);
+  }
+  /** List the current user's projects. */
+  async listProjects(params, options) {
+    return this._list("/projects", params, options);
+  }
+  /** Get generation usage and credit balance. */
+  async getUsage(options) {
+    return this._get("/usage", options);
+  }
+  /** Get a generation output by ID. */
+  async getOutput(outputId, options) {
+    return this._get(`/outputs/${outputId}`, options);
+  }
+  /** Get a download URL for a generation output. */
+  async getDownloadUrl(outputId, options) {
+    return this._get(`/outputs/${outputId}/download`, options);
+  }
+};
 var AgentAuthService = class extends ServiceModule {
   constructor() {
     super(...arguments);
@@ -5446,6 +5813,13 @@ var AgentProjectsService = class extends ServiceModule {
   async heartbeat(taskId, agentId, applicationId, options) {
     return this.post(
       this.withAppId(`/tasks/${taskId}/heartbeat`, applicationId),
+      { agent_id: agentId },
+      options
+    );
+  }
+  async startTask(taskId, agentId, applicationId, options) {
+    return this.post(
+      this.withAppId(`/tasks/${taskId}/start`, applicationId),
       { agent_id: agentId },
       options
     );
@@ -5723,6 +6097,7 @@ var ScaleMule = class {
     this.video = new VideoService(this._client);
     this.data = new DataService(this._client);
     this.chat = new ChatService(this._client);
+    this.conference = new ConferenceService(this._client);
     this.social = new SocialService(this._client);
     this.referrals = new ReferralsService(this._client);
     this.billing = new BillingService(this._client);
@@ -5748,6 +6123,7 @@ var ScaleMule = class {
     this.functions = new FunctionsService(this._client);
     this.photo = new PhotoService(this._client);
     this.flagContent = new FlagContentService(this._client);
+    this.creatorMaker = new CreatorMakerService(this._client);
     this.compliance = new ComplianceService(this._client);
     this.orchestrator = new OrchestratorService(this._client);
     this.agentAuth = new AgentAuthService(this._client);
@@ -5826,6 +6202,36 @@ var ScaleMule = class {
   /** Clear all accounts from the pool */
   async clearAllAccounts() {
     return this._client.clearAllAccounts();
+  }
+  // --------------------------------------------------------------------------
+  // Account Switcher (Secure — metadata only, re-auth required)
+  // --------------------------------------------------------------------------
+  /** Whether the account switcher is enabled */
+  isAccountSwitcherEnabled() {
+    return this._client.isAccountSwitcherEnabled();
+  }
+  /** The configured privacy level for the account switcher */
+  getAccountSwitcherPrivacy() {
+    return this._client.getAccountSwitcherPrivacy();
+  }
+  /**
+   * Get all accounts that have previously logged in on this device.
+   * Returns privacy-transformed display data — no raw PII in masked/minimal modes.
+   * Requires `enableAccountSwitcher: true` in config.
+   */
+  getKnownAccounts() {
+    return this._client.getKnownAccounts();
+  }
+  /**
+   * Forget a specific account — removes it from the known accounts list.
+   * Does NOT affect any active session.
+   */
+  async removeKnownAccount(userId) {
+    return this._client.removeKnownAccount(userId);
+  }
+  /** Forget all known accounts on this device. */
+  async clearKnownAccounts() {
+    return this._client.clearKnownAccounts();
   }
   /** The base URL being used for API requests. */
   getBaseUrl() {
@@ -6658,6 +7064,8 @@ function ScaleMuleProvider({
   analyticsProxyUrl,
   authProxyUrl,
   publishableKey,
+  enableAccountSwitcher,
+  accountSwitcherPrivacy,
   children,
   onLogin,
   onLogout,
@@ -6667,20 +7075,30 @@ function ScaleMuleProvider({
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState(null);
+  const resolvedGatewayUrl = gatewayUrl || (environment === "dev" ? "https://api-dev.scalemule.com" : "https://api.scalemule.com");
   const client = useMemo(
     () => createClient({
       apiKey,
       applicationId,
       environment,
-      gatewayUrl,
+      gatewayUrl: resolvedGatewayUrl,
       debug,
       storage,
       pendingSessionInit: !!authProxyUrl
     }),
-    [apiKey, applicationId, environment, gatewayUrl, debug, storage, authProxyUrl]
+    [apiKey, applicationId, environment, resolvedGatewayUrl, debug, storage, authProxyUrl]
+  );
+  const money = useMemo(
+    () => createMoneyClient({
+      apiKey,
+      gatewayUrl: resolvedGatewayUrl,
+      environment,
+      accessToken: client.getSessionToken() || void 0,
+      fetch: globalThis.fetch.bind(globalThis)
+    }),
+    [apiKey, resolvedGatewayUrl, environment, client]
   );
   const baseClient = useMemo(() => {
-    const resolvedGatewayUrl = gatewayUrl || (environment === "dev" ? "https://api-dev.scalemule.com" : "https://api.scalemule.com");
     return new ScaleMule({
       apiKey,
       applicationId,
@@ -6688,15 +7106,17 @@ function ScaleMuleProvider({
       environment,
       debug
     });
-  }, [apiKey, applicationId, environment, gatewayUrl, debug]);
+  }, [apiKey, applicationId, environment, resolvedGatewayUrl, debug]);
   useEffect(() => {
     const token = client.getSessionToken();
     if (token) {
       baseClient.setAccessToken(token);
+      money.setAccessToken(token);
     } else {
       baseClient.clearAccessToken();
+      money.setAccessToken(void 0);
     }
-  }, [client, baseClient, user]);
+  }, [client, baseClient, money, user]);
   useEffect(() => {
     let mounted = true;
     async function initialize() {
@@ -6784,6 +7204,7 @@ function ScaleMuleProvider({
   const value = useMemo(
     () => ({
       client,
+      money,
       realtime: baseClient.realtime,
       user,
       setUser: handleSetUser,
@@ -6793,11 +7214,13 @@ function ScaleMuleProvider({
       analyticsProxyUrl,
       authProxyUrl,
       publishableKey,
-      gatewayUrl: gatewayUrl || (environment === "dev" ? "https://api-dev.scalemule.com" : "https://api.scalemule.com"),
+      gatewayUrl: resolvedGatewayUrl,
       environment: environment || void 0,
+      enableAccountSwitcher,
+      accountSwitcherPrivacy,
       bootstrapFlags
     }),
-    [client, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, bootstrapFlags]
+    [client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags]
   );
   return /* @__PURE__ */ jsx(ScaleMuleContext.Provider, { value, children });
 }
@@ -6813,6 +7236,45 @@ function useScaleMule() {
 function useScaleMuleClient() {
   const { client } = useScaleMule();
   return client;
+}
+function useMoneyClient() {
+  const { money } = useScaleMule();
+  return money;
+}
+function maskEmail2(email) {
+  const [local, domain] = email.split("@");
+  if (!domain) return "***@***.***";
+  const tldDot = domain.lastIndexOf(".");
+  const tld = tldDot > 0 ? domain.slice(tldDot) : "";
+  const domainBase = tldDot > 0 ? domain.slice(0, tldDot) : domain;
+  return `${local[0] || "*"}***@${domainBase[0] || "*"}***${tld}`;
+}
+function stableColorIndex2(userId) {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash << 5) - hash + userId.charCodeAt(i) | 0;
+  }
+  return Math.abs(hash) % 8;
+}
+function applyClientPrivacy(entry, privacy) {
+  if (!privacy || privacy === "full") return entry;
+  if (privacy === "masked") {
+    return {
+      userId: entry.userId,
+      email: entry.email ? maskEmail2(entry.email) : void 0,
+      fullName: entry.fullName ? `${entry.fullName[0].toUpperCase()}.` : void 0,
+      provider: entry.provider,
+      lastActiveAt: entry.lastActiveAt,
+      colorIndex: stableColorIndex2(entry.userId)
+    };
+  }
+  return {
+    userId: entry.userId,
+    provider: entry.provider,
+    lastActiveAt: entry.lastActiveAt,
+    displayLabel: "Account",
+    colorIndex: stableColorIndex2(entry.userId)
+  };
 }
 function getCookie(name) {
   if (typeof document === "undefined") return void 0;
@@ -6842,7 +7304,7 @@ async function proxyFetch(proxyUrl, path, options = {}) {
   return data;
 }
 function useAuth() {
-  const { client, user, setUser, initializing, error, setError, authProxyUrl } = useScaleMule();
+  const { client, user, setUser, initializing, error, setError, authProxyUrl, enableAccountSwitcher, accountSwitcherPrivacy } = useScaleMule();
   const register = useCallback(
     async (data) => {
       setError(null);
@@ -7450,6 +7912,63 @@ function useAuth() {
     },
     [client, setUser, setError, authProxyUrl]
   );
+  const readKnownAccountsCookie = useCallback(() => {
+    if (!enableAccountSwitcher) return [];
+    if (typeof document === "undefined") return [];
+    const match = document.cookie.match(/(?:^|; )sm_known_accounts=([^;]*)/);
+    if (!match) return [];
+    try {
+      const decoded = decodeURIComponent(match[1]);
+      const accounts = JSON.parse(decoded);
+      let entries = Object.values(accounts);
+      if (accountSwitcherPrivacy && accountSwitcherPrivacy !== "full") {
+        entries = entries.map((e) => applyClientPrivacy(e, accountSwitcherPrivacy));
+      }
+      return entries;
+    } catch {
+      return [];
+    }
+  }, [enableAccountSwitcher, accountSwitcherPrivacy]);
+  const [knownAccounts, setKnownAccounts] = useState([]);
+  useEffect(() => {
+    setKnownAccounts(readKnownAccountsCookie());
+  }, [readKnownAccountsCookie, user]);
+  const switchAccount = useCallback(
+    async (userId) => {
+      const target = knownAccounts.find((a) => a.userId === userId) || null;
+      if (!target) return null;
+      if (authProxyUrl) {
+        await proxyFetch(authProxyUrl, "switch-account");
+      } else {
+        const sessionToken = client.getSessionToken();
+        if (sessionToken) {
+          try {
+            await client.post("/v1/auth/logout", { session_token: sessionToken });
+          } catch {
+          }
+        }
+        await client.clearSession();
+      }
+      setUser(null);
+      return target;
+    },
+    [client, setUser, knownAccounts, authProxyUrl]
+  );
+  const removeKnownAccount = useCallback(
+    async (userId) => {
+      if (authProxyUrl) {
+        await proxyFetch(authProxyUrl, "forget-account", { body: { user_id: userId } });
+      }
+      setKnownAccounts((prev) => prev.filter((a) => a.userId !== userId));
+    },
+    [authProxyUrl]
+  );
+  const clearKnownAccounts = useCallback(async () => {
+    if (authProxyUrl) {
+      await proxyFetch(authProxyUrl, "forget-all-accounts");
+    }
+    setKnownAccounts([]);
+  }, [authProxyUrl]);
   return useMemo(
     () => ({
       user,
@@ -7481,7 +8000,12 @@ function useAuth() {
       // Phone auth
       sendPhoneCode,
       verifyPhone,
-      loginWithPhone
+      loginWithPhone,
+      // Account switcher
+      knownAccounts,
+      switchAccount,
+      removeKnownAccount,
+      clearKnownAccounts
     }),
     [
       user,
@@ -7508,9 +8032,19 @@ function useAuth() {
       regenerateBackupCodes,
       sendPhoneCode,
       verifyPhone,
-      loginWithPhone
+      loginWithPhone,
+      knownAccounts,
+      switchAccount,
+      removeKnownAccount,
+      clearKnownAccounts
     ]
   );
+}
+function retiredBillingRouteError(route) {
+  return {
+    code: "MONEY_BILLING_ROUTE_RETIRED",
+    message: `${route} was retired after the money-services cutover. Use @scalemule/money for subscriptions, pricing, and asset operations.`
+  };
 }
 function useBilling() {
   const { client } = useScaleMule();
@@ -7521,7 +8055,7 @@ function useBilling() {
       setError(null);
       setLoading(true);
       try {
-        return await client.post("/v1/billing/connected-accounts", data);
+        return await client.post("/v1/money/billing/connected-accounts", data);
       } catch (err) {
         const apiError = err instanceof ScaleMuleApiError ? err : { code: "UNKNOWN", message: err instanceof Error ? err.message : "Unknown error" };
         setError(apiError);
@@ -7536,7 +8070,7 @@ function useBilling() {
     setError(null);
     setLoading(true);
     try {
-      return await client.get("/v1/billing/connected-accounts/me");
+      return await client.get("/v1/money/billing/connected-accounts/me");
     } catch (err) {
       const apiError = err instanceof ScaleMuleApiError ? err : { code: "UNKNOWN", message: err instanceof Error ? err.message : "Unknown error" };
       setError(apiError);
@@ -7550,7 +8084,7 @@ function useBilling() {
       setError(null);
       setLoading(true);
       try {
-        return await client.get(`/v1/billing/connected-accounts/${id}`);
+        return await client.get(`/v1/money/billing/connected-accounts/${id}`);
       } catch (err) {
         const apiError = err instanceof ScaleMuleApiError ? err : { code: "UNKNOWN", message: err instanceof Error ? err.message : "Unknown error" };
         setError(apiError);
@@ -7567,7 +8101,7 @@ function useBilling() {
       setLoading(true);
       try {
         const result = await client.post(
-          `/v1/billing/connected-accounts/${id}/onboarding-link`,
+          `/v1/money/billing/connected-accounts/${id}/onboarding-link`,
           data
         );
         return result.url;
@@ -7586,11 +8120,7 @@ function useBilling() {
       setError(null);
       setLoading(true);
       try {
-        return await client.get(
-          `/v1/billing/connected-accounts/${id}/balance`
-        );
-      } catch (err) {
-        const apiError = err instanceof ScaleMuleApiError ? err : { code: "UNKNOWN", message: err instanceof Error ? err.message : "Unknown error" };
+        const apiError = retiredBillingRouteError(`/v1/money/billing/connected-accounts/${id}/balance`);
         setError(apiError);
         return null;
       } finally {
@@ -7604,9 +8134,8 @@ function useBilling() {
       setError(null);
       setLoading(true);
       try {
-        return await client.post("/v1/billing/payments", data);
-      } catch (err) {
-        const apiError = err instanceof ScaleMuleApiError ? err : { code: "UNKNOWN", message: err instanceof Error ? err.message : "Unknown error" };
+        void data;
+        const apiError = retiredBillingRouteError("/v1/money/billing/payments");
         setError(apiError);
         return null;
       } finally {
@@ -7620,9 +8149,7 @@ function useBilling() {
       setError(null);
       setLoading(true);
       try {
-        return await client.get(`/v1/billing/payments/${id}`);
-      } catch (err) {
-        const apiError = err instanceof ScaleMuleApiError ? err : { code: "UNKNOWN", message: err instanceof Error ? err.message : "Unknown error" };
+        const apiError = retiredBillingRouteError(`/v1/money/billing/payments/${id}`);
         setError(apiError);
         return null;
       } finally {
@@ -7636,10 +8163,8 @@ function useBilling() {
       setError(null);
       setLoading(true);
       try {
-        const query = params ? "?" + Object.entries(params).filter(([, v]) => v !== void 0).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&") : "";
-        return await client.get(`/v1/billing/payments${query}`);
-      } catch (err) {
-        const apiError = err instanceof ScaleMuleApiError ? err : { code: "UNKNOWN", message: err instanceof Error ? err.message : "Unknown error" };
+        void params;
+        const apiError = retiredBillingRouteError("/v1/money/billing/payments");
         setError(apiError);
         return [];
       } finally {
@@ -7653,9 +8178,8 @@ function useBilling() {
       setError(null);
       setLoading(true);
       try {
-        return await client.post(`/v1/billing/payments/${id}/refund`, data);
-      } catch (err) {
-        const apiError = err instanceof ScaleMuleApiError ? err : { code: "UNKNOWN", message: err instanceof Error ? err.message : "Unknown error" };
+        void data;
+        const apiError = retiredBillingRouteError(`/v1/money/billing/payments/${id}/refund`);
         setError(apiError);
         return null;
       } finally {
@@ -7669,12 +8193,8 @@ function useBilling() {
       setError(null);
       setLoading(true);
       try {
-        const query = params ? "?" + Object.entries(params).filter(([, v]) => v !== void 0).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&") : "";
-        return await client.get(
-          `/v1/billing/connected-accounts/${accountId}/payouts${query}`
-        );
-      } catch (err) {
-        const apiError = err instanceof ScaleMuleApiError ? err : { code: "UNKNOWN", message: err instanceof Error ? err.message : "Unknown error" };
+        void params;
+        const apiError = retiredBillingRouteError(`/v1/money/billing/connected-accounts/${accountId}/payouts`);
         setError(apiError);
         return [];
       } finally {
@@ -7689,7 +8209,7 @@ function useBilling() {
       setLoading(true);
       try {
         return await client.get(
-          `/v1/billing/connected-accounts/${accountId}/payout-schedule`
+          `/v1/money/billing/connected-accounts/${accountId}/payout-schedule`
         );
       } catch (err) {
         const apiError = err instanceof ScaleMuleApiError ? err : { code: "UNKNOWN", message: err instanceof Error ? err.message : "Unknown error" };
@@ -7707,7 +8227,7 @@ function useBilling() {
       setLoading(true);
       try {
         return await client.put(
-          `/v1/billing/connected-accounts/${accountId}/payout-schedule`,
+          `/v1/money/billing/connected-accounts/${accountId}/payout-schedule`,
           data
         );
       } catch (err) {
@@ -7725,10 +8245,8 @@ function useBilling() {
       setError(null);
       setLoading(true);
       try {
-        const query = params ? "?" + Object.entries(params).filter(([, v]) => v !== void 0).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&") : "";
-        return await client.get(`/v1/billing/transactions${query}`);
-      } catch (err) {
-        const apiError = err instanceof ScaleMuleApiError ? err : { code: "UNKNOWN", message: err instanceof Error ? err.message : "Unknown error" };
+        void params;
+        const apiError = retiredBillingRouteError("/v1/money/billing/transactions");
         setError(apiError);
         return [];
       } finally {
@@ -7742,12 +8260,8 @@ function useBilling() {
       setError(null);
       setLoading(true);
       try {
-        const query = params ? "?" + Object.entries(params).filter(([, v]) => v !== void 0).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&") : "";
-        return await client.get(
-          `/v1/billing/transactions/summary${query}`
-        );
-      } catch (err) {
-        const apiError = err instanceof ScaleMuleApiError ? err : { code: "UNKNOWN", message: err instanceof Error ? err.message : "Unknown error" };
+        void params;
+        const apiError = retiredBillingRouteError("/v1/money/billing/transactions/summary");
         setError(apiError);
         return null;
       } finally {
@@ -7762,7 +8276,7 @@ function useBilling() {
       setLoading(true);
       try {
         const result = await client.post(
-          "/v1/billing/setup-sessions",
+          "/v1/money/billing/setup-sessions",
           data
         );
         return result.client_secret;
@@ -8004,6 +8518,9 @@ function useContent(options = {}) {
     ]
   );
 }
+
+// src/hooks/useMoney.ts
+var useMoney = useMoneyClient;
 function useUser() {
   const { client, user, setUser, setError } = useScaleMule();
   const [loading, setLoading] = useState(false);
@@ -9359,4 +9876,4 @@ function createSafeLogger(prefix) {
   };
 }
 
-export { ScaleMuleApiError, ScaleMuleClient2 as ScaleMuleClient, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { ScaleMuleApiError, ScaleMuleClient2 as ScaleMuleClient, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };

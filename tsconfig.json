@@ -18,7 +18,9 @@
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@scalemule/money": ["../money/dist/index.d.ts"],
+      "@scalemule/money/*": ["../money/dist/*"]
     }
   },
   "include": ["src/**/*"],

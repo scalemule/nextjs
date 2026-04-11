@@ -1,5 +1,6 @@
 'use strict';
 
+var money = require('@scalemule/money');
 var headers = require('next/headers');
 var server = require('next/server');
 var crypto$1 = require('crypto');
@@ -30,9 +31,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// node_modules/semver/internal/constants.js
+// ../sdk/node_modules/semver/internal/constants.js
 var require_constants = __commonJS({
-  "node_modules/semver/internal/constants.js"(exports$1, module) {
+  "../sdk/node_modules/semver/internal/constants.js"(exports$1, module) {
     var SEMVER_SPEC_VERSION = "2.0.0";
     var MAX_LENGTH = 256;
     var MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER || /* istanbul ignore next */
@@ -61,18 +62,18 @@ var require_constants = __commonJS({
   }
 });
 
-// node_modules/semver/internal/debug.js
+// ../sdk/node_modules/semver/internal/debug.js
 var require_debug = __commonJS({
-  "node_modules/semver/internal/debug.js"(exports$1, module) {
+  "../sdk/node_modules/semver/internal/debug.js"(exports$1, module) {
     var debug = typeof process === "object" && process.env && process.env.NODE_DEBUG && /\bsemver\b/i.test(process.env.NODE_DEBUG) ? (...args) => console.error("SEMVER", ...args) : () => {
     };
     module.exports = debug;
   }
 });
 
-// node_modules/semver/internal/re.js
+// ../sdk/node_modules/semver/internal/re.js
 var require_re = __commonJS({
-  "node_modules/semver/internal/re.js"(exports$1, module) {
+  "../sdk/node_modules/semver/internal/re.js"(exports$1, module) {
     var {
       MAX_SAFE_COMPONENT_LENGTH,
       MAX_SAFE_BUILD_LENGTH,
@@ -157,9 +158,9 @@ var require_re = __commonJS({
   }
 });
 
-// node_modules/semver/internal/parse-options.js
+// ../sdk/node_modules/semver/internal/parse-options.js
 var require_parse_options = __commonJS({
-  "node_modules/semver/internal/parse-options.js"(exports$1, module) {
+  "../sdk/node_modules/semver/internal/parse-options.js"(exports$1, module) {
     var looseOption = Object.freeze({ loose: true });
     var emptyOpts = Object.freeze({});
     var parseOptions = (options) => {
@@ -175,9 +176,9 @@ var require_parse_options = __commonJS({
   }
 });
 
-// node_modules/semver/internal/identifiers.js
+// ../sdk/node_modules/semver/internal/identifiers.js
 var require_identifiers = __commonJS({
-  "node_modules/semver/internal/identifiers.js"(exports$1, module) {
+  "../sdk/node_modules/semver/internal/identifiers.js"(exports$1, module) {
     var numeric = /^[0-9]+$/;
     var compareIdentifiers = (a, b) => {
       if (typeof a === "number" && typeof b === "number") {
@@ -199,9 +200,9 @@ var require_identifiers = __commonJS({
   }
 });
 
-// node_modules/semver/classes/semver.js
+// ../sdk/node_modules/semver/classes/semver.js
 var require_semver = __commonJS({
-  "node_modules/semver/classes/semver.js"(exports$1, module) {
+  "../sdk/node_modules/semver/classes/semver.js"(exports$1, module) {
     var debug = require_debug();
     var { MAX_LENGTH, MAX_SAFE_INTEGER } = require_constants();
     var { safeRe: re, t } = require_re();
@@ -477,9 +478,9 @@ var require_semver = __commonJS({
   }
 });
 
-// node_modules/semver/functions/parse.js
+// ../sdk/node_modules/semver/functions/parse.js
 var require_parse = __commonJS({
-  "node_modules/semver/functions/parse.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/parse.js"(exports$1, module) {
     var SemVer = require_semver();
     var parse = (version, options, throwErrors = false) => {
       if (version instanceof SemVer) {
@@ -498,9 +499,9 @@ var require_parse = __commonJS({
   }
 });
 
-// node_modules/semver/functions/valid.js
+// ../sdk/node_modules/semver/functions/valid.js
 var require_valid = __commonJS({
-  "node_modules/semver/functions/valid.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/valid.js"(exports$1, module) {
     var parse = require_parse();
     var valid = (version, options) => {
       const v = parse(version, options);
@@ -510,9 +511,9 @@ var require_valid = __commonJS({
   }
 });
 
-// node_modules/semver/functions/clean.js
+// ../sdk/node_modules/semver/functions/clean.js
 var require_clean = __commonJS({
-  "node_modules/semver/functions/clean.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/clean.js"(exports$1, module) {
     var parse = require_parse();
     var clean = (version, options) => {
       const s = parse(version.trim().replace(/^[=v]+/, ""), options);
@@ -522,9 +523,9 @@ var require_clean = __commonJS({
   }
 });
 
-// node_modules/semver/functions/inc.js
+// ../sdk/node_modules/semver/functions/inc.js
 var require_inc = __commonJS({
-  "node_modules/semver/functions/inc.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/inc.js"(exports$1, module) {
     var SemVer = require_semver();
     var inc = (version, release, options, identifier, identifierBase) => {
       if (typeof options === "string") {
@@ -545,9 +546,9 @@ var require_inc = __commonJS({
   }
 });
 
-// node_modules/semver/functions/diff.js
+// ../sdk/node_modules/semver/functions/diff.js
 var require_diff = __commonJS({
-  "node_modules/semver/functions/diff.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/diff.js"(exports$1, module) {
     var parse = require_parse();
     var diff = (version1, version2) => {
       const v1 = parse(version1, null, true);
@@ -588,36 +589,36 @@ var require_diff = __commonJS({
   }
 });
 
-// node_modules/semver/functions/major.js
+// ../sdk/node_modules/semver/functions/major.js
 var require_major = __commonJS({
-  "node_modules/semver/functions/major.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/major.js"(exports$1, module) {
     var SemVer = require_semver();
     var major = (a, loose) => new SemVer(a, loose).major;
     module.exports = major;
   }
 });
 
-// node_modules/semver/functions/minor.js
+// ../sdk/node_modules/semver/functions/minor.js
 var require_minor = __commonJS({
-  "node_modules/semver/functions/minor.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/minor.js"(exports$1, module) {
     var SemVer = require_semver();
     var minor = (a, loose) => new SemVer(a, loose).minor;
     module.exports = minor;
   }
 });
 
-// node_modules/semver/functions/patch.js
+// ../sdk/node_modules/semver/functions/patch.js
 var require_patch = __commonJS({
-  "node_modules/semver/functions/patch.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/patch.js"(exports$1, module) {
     var SemVer = require_semver();
     var patch = (a, loose) => new SemVer(a, loose).patch;
     module.exports = patch;
   }
 });
 
-// node_modules/semver/functions/prerelease.js
+// ../sdk/node_modules/semver/functions/prerelease.js
 var require_prerelease = __commonJS({
-  "node_modules/semver/functions/prerelease.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/prerelease.js"(exports$1, module) {
     var parse = require_parse();
     var prerelease = (version, options) => {
       const parsed = parse(version, options);
@@ -627,36 +628,36 @@ var require_prerelease = __commonJS({
   }
 });
 
-// node_modules/semver/functions/compare.js
+// ../sdk/node_modules/semver/functions/compare.js
 var require_compare = __commonJS({
-  "node_modules/semver/functions/compare.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/compare.js"(exports$1, module) {
     var SemVer = require_semver();
     var compare = (a, b, loose) => new SemVer(a, loose).compare(new SemVer(b, loose));
     module.exports = compare;
   }
 });
 
-// node_modules/semver/functions/rcompare.js
+// ../sdk/node_modules/semver/functions/rcompare.js
 var require_rcompare = __commonJS({
-  "node_modules/semver/functions/rcompare.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/rcompare.js"(exports$1, module) {
     var compare = require_compare();
     var rcompare = (a, b, loose) => compare(b, a, loose);
     module.exports = rcompare;
   }
 });
 
-// node_modules/semver/functions/compare-loose.js
+// ../sdk/node_modules/semver/functions/compare-loose.js
 var require_compare_loose = __commonJS({
-  "node_modules/semver/functions/compare-loose.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/compare-loose.js"(exports$1, module) {
     var compare = require_compare();
     var compareLoose = (a, b) => compare(a, b, true);
     module.exports = compareLoose;
   }
 });
 
-// node_modules/semver/functions/compare-build.js
+// ../sdk/node_modules/semver/functions/compare-build.js
 var require_compare_build = __commonJS({
-  "node_modules/semver/functions/compare-build.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/compare-build.js"(exports$1, module) {
     var SemVer = require_semver();
     var compareBuild = (a, b, loose) => {
       const versionA = new SemVer(a, loose);
@@ -667,81 +668,81 @@ var require_compare_build = __commonJS({
   }
 });
 
-// node_modules/semver/functions/sort.js
+// ../sdk/node_modules/semver/functions/sort.js
 var require_sort = __commonJS({
-  "node_modules/semver/functions/sort.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/sort.js"(exports$1, module) {
     var compareBuild = require_compare_build();
     var sort = (list, loose) => list.sort((a, b) => compareBuild(a, b, loose));
     module.exports = sort;
   }
 });
 
-// node_modules/semver/functions/rsort.js
+// ../sdk/node_modules/semver/functions/rsort.js
 var require_rsort = __commonJS({
-  "node_modules/semver/functions/rsort.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/rsort.js"(exports$1, module) {
     var compareBuild = require_compare_build();
     var rsort = (list, loose) => list.sort((a, b) => compareBuild(b, a, loose));
     module.exports = rsort;
   }
 });
 
-// node_modules/semver/functions/gt.js
+// ../sdk/node_modules/semver/functions/gt.js
 var require_gt = __commonJS({
-  "node_modules/semver/functions/gt.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/gt.js"(exports$1, module) {
     var compare = require_compare();
     var gt = (a, b, loose) => compare(a, b, loose) > 0;
     module.exports = gt;
   }
 });
 
-// node_modules/semver/functions/lt.js
+// ../sdk/node_modules/semver/functions/lt.js
 var require_lt = __commonJS({
-  "node_modules/semver/functions/lt.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/lt.js"(exports$1, module) {
     var compare = require_compare();
     var lt = (a, b, loose) => compare(a, b, loose) < 0;
     module.exports = lt;
   }
 });
 
-// node_modules/semver/functions/eq.js
+// ../sdk/node_modules/semver/functions/eq.js
 var require_eq = __commonJS({
-  "node_modules/semver/functions/eq.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/eq.js"(exports$1, module) {
     var compare = require_compare();
     var eq = (a, b, loose) => compare(a, b, loose) === 0;
     module.exports = eq;
   }
 });
 
-// node_modules/semver/functions/neq.js
+// ../sdk/node_modules/semver/functions/neq.js
 var require_neq = __commonJS({
-  "node_modules/semver/functions/neq.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/neq.js"(exports$1, module) {
     var compare = require_compare();
     var neq = (a, b, loose) => compare(a, b, loose) !== 0;
     module.exports = neq;
   }
 });
 
-// node_modules/semver/functions/gte.js
+// ../sdk/node_modules/semver/functions/gte.js
 var require_gte = __commonJS({
-  "node_modules/semver/functions/gte.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/gte.js"(exports$1, module) {
     var compare = require_compare();
     var gte = (a, b, loose) => compare(a, b, loose) >= 0;
     module.exports = gte;
   }
 });
 
-// node_modules/semver/functions/lte.js
+// ../sdk/node_modules/semver/functions/lte.js
 var require_lte = __commonJS({
-  "node_modules/semver/functions/lte.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/lte.js"(exports$1, module) {
     var compare = require_compare();
     var lte = (a, b, loose) => compare(a, b, loose) <= 0;
     module.exports = lte;
   }
 });
 
-// node_modules/semver/functions/cmp.js
+// ../sdk/node_modules/semver/functions/cmp.js
 var require_cmp = __commonJS({
-  "node_modules/semver/functions/cmp.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/cmp.js"(exports$1, module) {
     var eq = require_eq();
     var neq = require_neq();
     var gt = require_gt();
@@ -788,9 +789,9 @@ var require_cmp = __commonJS({
   }
 });
 
-// node_modules/semver/functions/coerce.js
+// ../sdk/node_modules/semver/functions/coerce.js
 var require_coerce = __commonJS({
-  "node_modules/semver/functions/coerce.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/coerce.js"(exports$1, module) {
     var SemVer = require_semver();
     var parse = require_parse();
     var { safeRe: re, t } = require_re();
@@ -833,9 +834,9 @@ var require_coerce = __commonJS({
   }
 });
 
-// node_modules/semver/internal/lrucache.js
+// ../sdk/node_modules/semver/internal/lrucache.js
 var require_lrucache = __commonJS({
-  "node_modules/semver/internal/lrucache.js"(exports$1, module) {
+  "../sdk/node_modules/semver/internal/lrucache.js"(exports$1, module) {
     var LRUCache = class {
       constructor() {
         this.max = 1e3;
@@ -870,9 +871,9 @@ var require_lrucache = __commonJS({
   }
 });
 
-// node_modules/semver/classes/range.js
+// ../sdk/node_modules/semver/classes/range.js
 var require_range = __commonJS({
-  "node_modules/semver/classes/range.js"(exports$1, module) {
+  "../sdk/node_modules/semver/classes/range.js"(exports$1, module) {
     var SPACE_CHARACTERS = /\s+/g;
     var Range = class _Range {
       constructor(range, options) {
@@ -1246,9 +1247,9 @@ var require_range = __commonJS({
   }
 });
 
-// node_modules/semver/classes/comparator.js
+// ../sdk/node_modules/semver/classes/comparator.js
 var require_comparator = __commonJS({
-  "node_modules/semver/classes/comparator.js"(exports$1, module) {
+  "../sdk/node_modules/semver/classes/comparator.js"(exports$1, module) {
     var ANY = /* @__PURE__ */ Symbol("SemVer ANY");
     var Comparator = class _Comparator {
       static get ANY() {
@@ -1358,9 +1359,9 @@ var require_comparator = __commonJS({
   }
 });
 
-// node_modules/semver/functions/satisfies.js
+// ../sdk/node_modules/semver/functions/satisfies.js
 var require_satisfies = __commonJS({
-  "node_modules/semver/functions/satisfies.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/satisfies.js"(exports$1, module) {
     var Range = require_range();
     var satisfies = (version, range, options) => {
       try {
@@ -1374,18 +1375,18 @@ var require_satisfies = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/to-comparators.js
+// ../sdk/node_modules/semver/ranges/to-comparators.js
 var require_to_comparators = __commonJS({
-  "node_modules/semver/ranges/to-comparators.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/to-comparators.js"(exports$1, module) {
     var Range = require_range();
     var toComparators = (range, options) => new Range(range, options).set.map((comp) => comp.map((c) => c.value).join(" ").trim().split(" "));
     module.exports = toComparators;
   }
 });
 
-// node_modules/semver/ranges/max-satisfying.js
+// ../sdk/node_modules/semver/ranges/max-satisfying.js
 var require_max_satisfying = __commonJS({
-  "node_modules/semver/ranges/max-satisfying.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/max-satisfying.js"(exports$1, module) {
     var SemVer = require_semver();
     var Range = require_range();
     var maxSatisfying = (versions, range, options) => {
@@ -1411,9 +1412,9 @@ var require_max_satisfying = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/min-satisfying.js
+// ../sdk/node_modules/semver/ranges/min-satisfying.js
 var require_min_satisfying = __commonJS({
-  "node_modules/semver/ranges/min-satisfying.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/min-satisfying.js"(exports$1, module) {
     var SemVer = require_semver();
     var Range = require_range();
     var minSatisfying = (versions, range, options) => {
@@ -1439,9 +1440,9 @@ var require_min_satisfying = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/min-version.js
+// ../sdk/node_modules/semver/ranges/min-version.js
 var require_min_version = __commonJS({
-  "node_modules/semver/ranges/min-version.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/min-version.js"(exports$1, module) {
     var SemVer = require_semver();
     var Range = require_range();
     var gt = require_gt();
@@ -1497,9 +1498,9 @@ var require_min_version = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/valid.js
+// ../sdk/node_modules/semver/ranges/valid.js
 var require_valid2 = __commonJS({
-  "node_modules/semver/ranges/valid.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/valid.js"(exports$1, module) {
     var Range = require_range();
     var validRange = (range, options) => {
       try {
@@ -1512,9 +1513,9 @@ var require_valid2 = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/outside.js
+// ../sdk/node_modules/semver/ranges/outside.js
 var require_outside = __commonJS({
-  "node_modules/semver/ranges/outside.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/outside.js"(exports$1, module) {
     var SemVer = require_semver();
     var Comparator = require_comparator();
     var { ANY } = Comparator;
@@ -1580,27 +1581,27 @@ var require_outside = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/gtr.js
+// ../sdk/node_modules/semver/ranges/gtr.js
 var require_gtr = __commonJS({
-  "node_modules/semver/ranges/gtr.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/gtr.js"(exports$1, module) {
     var outside = require_outside();
     var gtr = (version, range, options) => outside(version, range, ">", options);
     module.exports = gtr;
   }
 });
 
-// node_modules/semver/ranges/ltr.js
+// ../sdk/node_modules/semver/ranges/ltr.js
 var require_ltr = __commonJS({
-  "node_modules/semver/ranges/ltr.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/ltr.js"(exports$1, module) {
     var outside = require_outside();
     var ltr = (version, range, options) => outside(version, range, "<", options);
     module.exports = ltr;
   }
 });
 
-// node_modules/semver/ranges/intersects.js
+// ../sdk/node_modules/semver/ranges/intersects.js
 var require_intersects = __commonJS({
-  "node_modules/semver/ranges/intersects.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/intersects.js"(exports$1, module) {
     var Range = require_range();
     var intersects = (r1, r2, options) => {
       r1 = new Range(r1, options);
@@ -1611,9 +1612,9 @@ var require_intersects = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/simplify.js
+// ../sdk/node_modules/semver/ranges/simplify.js
 var require_simplify = __commonJS({
-  "node_modules/semver/ranges/simplify.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/simplify.js"(exports$1, module) {
     var satisfies = require_satisfies();
     var compare = require_compare();
     module.exports = (versions, range, options) => {
@@ -1660,9 +1661,9 @@ var require_simplify = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/subset.js
+// ../sdk/node_modules/semver/ranges/subset.js
 var require_subset = __commonJS({
-  "node_modules/semver/ranges/subset.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/subset.js"(exports$1, module) {
     var Range = require_range();
     var Comparator = require_comparator();
     var { ANY } = Comparator;
@@ -1821,9 +1822,9 @@ var require_subset = __commonJS({
   }
 });
 
-// node_modules/semver/index.js
+// ../sdk/node_modules/semver/index.js
 var require_semver2 = __commonJS({
-  "node_modules/semver/index.js"(exports$1, module) {
+  "../sdk/node_modules/semver/index.js"(exports$1, module) {
     var internalRe = require_re();
     var constants = require_constants();
     var SemVer = require_semver();
@@ -2667,6 +2668,14 @@ var ScaleMuleServer = class {
     this.apiKey = config.apiKey;
     this.gatewayUrl = resolveGatewayUrl(config);
     this.debug = config.debug || false;
+    this.money = money.createMoneyClient({
+      apiKey: this.apiKey,
+      gatewayUrl: this.gatewayUrl,
+      fetch: globalThis.fetch.bind(globalThis)
+    });
+  }
+  moneyWithSession(sessionToken) {
+    return this.money.withAccessToken(sessionToken);
   }
   /**
    * Make a request to the ScaleMule API
@@ -2745,6 +2754,7 @@ function createServerClient(config) {
 }
 var SESSION_COOKIE_NAME = "sm_session";
 var USER_ID_COOKIE_NAME = "sm_user_id";
+var KNOWN_ACCOUNTS_COOKIE_NAME = "sm_known_accounts";
 ({
   secure: process.env.NODE_ENV === "production"});
 function createCookieHeader(name, value, options = {}) {
@@ -2844,6 +2854,163 @@ function getSessionFromRequest(request) {
     userId,
     expiresAt: /* @__PURE__ */ new Date()
   };
+}
+var MAX_KNOWN_ACCOUNTS = 10;
+function maskEmail(email) {
+  const [local, domain] = email.split("@");
+  if (!domain) return "***@***.***";
+  const tldDot = domain.lastIndexOf(".");
+  const tld = tldDot > 0 ? domain.slice(tldDot) : "";
+  const domainBase = tldDot > 0 ? domain.slice(0, tldDot) : domain;
+  return `${local[0] || "*"}***@${domainBase[0] || "*"}***${tld}`;
+}
+function stableColorIndex(userId) {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash << 5) - hash + userId.charCodeAt(i) | 0;
+  }
+  return Math.abs(hash) % 8;
+}
+function applyPrivacyToEntry(entry, privacy) {
+  switch (privacy) {
+    case "full":
+      return entry;
+    case "masked":
+      return {
+        userId: entry.userId,
+        email: entry.email ? maskEmail(entry.email) : void 0,
+        fullName: entry.fullName ? `${entry.fullName[0].toUpperCase()}.` : void 0,
+        provider: entry.provider,
+        lastActiveAt: entry.lastActiveAt,
+        colorIndex: stableColorIndex(entry.userId)
+      };
+    case "minimal":
+      return {
+        userId: entry.userId,
+        provider: entry.provider,
+        lastActiveAt: entry.lastActiveAt,
+        displayLabel: "Account",
+        colorIndex: stableColorIndex(entry.userId)
+      };
+  }
+}
+function appendKnownAccountCookie(headers2, account, existingCookie, options = {}, privacy) {
+  let accounts = {};
+  if (existingCookie) {
+    try {
+      accounts = JSON.parse(decodeURIComponent(existingCookie));
+    } catch {
+    }
+  }
+  const effectivePrivacy = privacy || "full";
+  for (const [userId, entry] of Object.entries(accounts)) {
+    accounts[userId] = applyPrivacyToEntry(entry, effectivePrivacy);
+  }
+  accounts[account.userId] = applyPrivacyToEntry(account, effectivePrivacy);
+  const entries = Object.entries(accounts);
+  if (entries.length > MAX_KNOWN_ACCOUNTS) {
+    entries.sort((a, b) => new Date(b[1].lastActiveAt).getTime() - new Date(a[1].lastActiveAt).getTime());
+    accounts = Object.fromEntries(entries.slice(0, MAX_KNOWN_ACCOUNTS));
+  }
+  const maxAge = 365 * 24 * 60 * 60;
+  const secure = options.secure ?? process.env.NODE_ENV === "production";
+  const sameSite = options.sameSite ?? "lax";
+  const path = options.path ?? "/";
+  let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(accounts))}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`;
+  if (secure) {
+    cookie += "; Secure";
+  }
+  if (options.domain) {
+    cookie += `; Domain=${options.domain}`;
+  }
+  headers2.append("Set-Cookie", cookie);
+}
+function removeKnownAccountFromCookie(headers2, userId, existingCookie, options = {}) {
+  let accounts = {};
+  if (existingCookie) {
+    try {
+      accounts = JSON.parse(decodeURIComponent(existingCookie));
+    } catch {
+    }
+  }
+  delete accounts[userId];
+  const maxAge = 365 * 24 * 60 * 60;
+  const secure = options.secure ?? process.env.NODE_ENV === "production";
+  const sameSite = options.sameSite ?? "lax";
+  const path = options.path ?? "/";
+  let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(accounts))}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`;
+  if (secure) {
+    cookie += "; Secure";
+  }
+  if (options.domain) {
+    cookie += `; Domain=${options.domain}`;
+  }
+  headers2.append("Set-Cookie", cookie);
+}
+function clearKnownAccountsCookie(headers2, options = {}) {
+  const path = options.path ?? "/";
+  let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=; Path=${path}; Max-Age=0`;
+  if (options.domain) {
+    cookie += `; Domain=${options.domain}`;
+  }
+  headers2.append("Set-Cookie", cookie);
+}
+function getKnownAccountsFromRequest(request) {
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) return [];
+  const cookies4 = Object.fromEntries(
+    cookieHeader.split(";").map((c) => {
+      const [key, ...rest] = c.trim().split("=");
+      return [key, decodeURIComponent(rest.join("="))];
+    })
+  );
+  const raw = cookies4[KNOWN_ACCOUNTS_COOKIE_NAME];
+  if (!raw) return [];
+  try {
+    const accounts = JSON.parse(raw);
+    return Object.values(accounts);
+  } catch {
+    return [];
+  }
+}
+function getKnownAccountsCookieRaw(request) {
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) return null;
+  const cookies4 = Object.fromEntries(
+    cookieHeader.split(";").map((c) => {
+      const [key, ...rest] = c.trim().split("=");
+      return [key, decodeURIComponent(rest.join("="))];
+    })
+  );
+  return cookies4[KNOWN_ACCOUNTS_COOKIE_NAME] || null;
+}
+function normalizeKnownAccountsCookie(request, privacy, options = {}) {
+  if (!privacy || privacy === "full") return null;
+  const raw = getKnownAccountsCookieRaw(request);
+  if (!raw) return null;
+  let accounts = {};
+  try {
+    accounts = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  let changed = false;
+  for (const [userId, entry] of Object.entries(accounts)) {
+    const normalized = applyPrivacyToEntry(entry, privacy);
+    if (JSON.stringify(normalized) !== JSON.stringify(entry)) {
+      accounts[userId] = normalized;
+      changed = true;
+    }
+  }
+  if (!changed) return null;
+  const maxAge = 365 * 24 * 60 * 60;
+  const secure = options.secure ?? process.env.NODE_ENV === "production";
+  const sameSite = options.sameSite ?? "lax";
+  const path = options.path ?? "/";
+  let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(accounts))}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`;
+  if (secure) cookie += "; Secure";
+  if (options.domain) cookie += `; Domain=${options.domain}`;
+  return cookie;
 }
 async function requireSession() {
   const session = await getSession();
@@ -3004,7 +3171,25 @@ function createAuthRoutes(config = {}) {
           } catch {
             return successResponse({ user: registeredUser, message: "Registration successful" }, 201);
           }
-          return withSession(loginData, { user: registeredUser, sessionToken: loginData.session_token, userId: registeredUser.id }, cookieOptions);
+          const registerResponse = withSession(loginData, { user: registeredUser, sessionToken: loginData.session_token, userId: registeredUser.id }, cookieOptions);
+          if (config.enableAccountSwitcher) {
+            const existingKnown = getKnownAccountsCookieRaw(request);
+            appendKnownAccountCookie(
+              registerResponse.headers,
+              {
+                userId: registeredUser.id,
+                email: registeredUser.email,
+                fullName: registeredUser.full_name ?? void 0,
+                avatarUrl: registeredUser.avatar_url ?? void 0,
+                provider: "email",
+                lastActiveAt: (/* @__PURE__ */ new Date()).toISOString()
+              },
+              existingKnown,
+              cookieOptions,
+              config.accountSwitcherPrivacy
+            );
+          }
+          return registerResponse;
         }
         // ==================== Login ====================
         case "login": {
@@ -3035,7 +3220,25 @@ function createAuthRoutes(config = {}) {
               email: loginData.user.email
             });
           }
-          return withSession(loginData, { user: loginData.user, sessionToken: loginData.session_token, userId: loginData.user.id }, cookieOptions);
+          const loginResponse = withSession(loginData, { user: loginData.user, sessionToken: loginData.session_token, userId: loginData.user.id }, cookieOptions);
+          if (config.enableAccountSwitcher) {
+            const existingKnown = getKnownAccountsCookieRaw(request);
+            appendKnownAccountCookie(
+              loginResponse.headers,
+              {
+                userId: loginData.user.id,
+                email: loginData.user.email,
+                fullName: loginData.user.full_name ?? void 0,
+                avatarUrl: loginData.user.avatar_url ?? void 0,
+                provider: "email",
+                lastActiveAt: (/* @__PURE__ */ new Date()).toISOString()
+              },
+              existingKnown,
+              cookieOptions,
+              config.accountSwitcherPrivacy
+            );
+          }
+          return loginResponse;
         }
         // ==================== Logout ====================
         case "logout": {
@@ -3182,6 +3385,59 @@ function createAuthRoutes(config = {}) {
           }
           return successResponse({ message: "Password changed successfully" });
         }
+        // ==================== Switch Account ====================
+        // Clears the active session so the user can re-authenticate as a different account.
+        // The known accounts cookie is preserved — only the session cookie is cleared.
+        case "switch-account": {
+          if (!config.enableAccountSwitcher) {
+            return errorResponse("NOT_FOUND", "Account switcher not enabled", 404);
+          }
+          const session = await getSession();
+          if (session) {
+            try {
+              await sm.auth.logout(session.sessionToken);
+            } catch {
+            }
+          }
+          const switchResponse = clearSession({ message: "Session cleared for account switch" }, cookieOptions);
+          const knownAccounts = getKnownAccountsFromRequest(request);
+          return new Response(
+            JSON.stringify({ success: true, data: { message: "Session cleared for account switch", knownAccounts } }),
+            { status: 200, headers: switchResponse.headers }
+          );
+        }
+        // ==================== Forget Account ====================
+        // Remove a specific account from the known accounts cookie.
+        case "forget-account": {
+          if (!config.enableAccountSwitcher) {
+            return errorResponse("NOT_FOUND", "Account switcher not enabled", 404);
+          }
+          const { user_id } = body;
+          if (!user_id) {
+            return errorResponse("VALIDATION_ERROR", "user_id required", 400);
+          }
+          const headers2 = new Headers();
+          headers2.set("Content-Type", "application/json");
+          const existingKnown = getKnownAccountsCookieRaw(request);
+          removeKnownAccountFromCookie(headers2, user_id, existingKnown, cookieOptions);
+          return new Response(
+            JSON.stringify({ success: true, data: { message: "Account forgotten" } }),
+            { status: 200, headers: headers2 }
+          );
+        }
+        // ==================== Forget All Accounts ====================
+        case "forget-all-accounts": {
+          if (!config.enableAccountSwitcher) {
+            return errorResponse("NOT_FOUND", "Account switcher not enabled", 404);
+          }
+          const headers2 = new Headers();
+          headers2.set("Content-Type", "application/json");
+          clearKnownAccountsCookie(headers2, cookieOptions);
+          return new Response(
+            JSON.stringify({ success: true, data: { message: "All accounts forgotten" } }),
+            { status: 200, headers: headers2 }
+          );
+        }
         default:
           return errorResponse("NOT_FOUND", `Unknown endpoint: ${path}`, 404);
       }
@@ -3197,20 +3453,25 @@ function createAuthRoutes(config = {}) {
       switch (path) {
         // ==================== Get Current User ====================
         case "me": {
+          const normCookie = config.enableAccountSwitcher ? normalizeKnownAccountsCookie(request, config.accountSwitcherPrivacy, cookieOptions) : null;
+          const withNorm = (resp) => {
+            if (normCookie) resp.headers.append("Set-Cookie", normCookie);
+            return resp;
+          };
           const session = await getSession();
           if (!session) {
-            return errorResponse("UNAUTHORIZED", "Authentication required", 401);
+            return withNorm(errorResponse("UNAUTHORIZED", "Authentication required", 401));
           }
           let userData;
           try {
             userData = await sm.auth.me(session.sessionToken);
           } catch {
-            return clearSession(
+            return withNorm(clearSession(
               { error: { code: "SESSION_EXPIRED", message: "Session expired" } },
               cookieOptions
-            );
+            ));
           }
-          return successResponse({ user: userData, sessionToken: session.sessionToken, userId: session.userId });
+          return withNorm(successResponse({ user: userData, sessionToken: session.sessionToken, userId: session.userId }));
         }
         // ==================== Get Session Status ====================
         case "session": {
@@ -3219,6 +3480,14 @@ function createAuthRoutes(config = {}) {
             authenticated: !!session,
             userId: session?.userId || null
           });
+        }
+        // ==================== Get Known Accounts ====================
+        case "known-accounts": {
+          if (!config.enableAccountSwitcher) {
+            return errorResponse("NOT_FOUND", "Account switcher not enabled", 404);
+          }
+          const knownAccounts = getKnownAccountsFromRequest(request);
+          return successResponse({ knownAccounts });
         }
         default:
           return errorResponse("NOT_FOUND", `Unknown endpoint: ${path}`, 404);
@@ -3946,7 +4215,7 @@ function createWebhookHandler(config = {}) {
   };
 }
 
-// node_modules/@scalemule/sdk/dist/flags/server.mjs
+// ../sdk/dist/flags/server.mjs
 var import_semver = __toESM(require_semver2());
 function hashToBucket(flagKey, identifier, salt) {
   const hash = crypto$1.createHash("sha256").update(`${salt}.${flagKey}.${identifier}`).digest();
@@ -4829,14 +5098,17 @@ async function prefetchBundles(keys) {
 
 exports.CSRF_COOKIE_NAME = CSRF_COOKIE_NAME;
 exports.CSRF_HEADER_NAME = CSRF_HEADER_NAME;
+exports.KNOWN_ACCOUNTS_COOKIE_NAME = KNOWN_ACCOUNTS_COOKIE_NAME;
 exports.OAUTH_STATE_COOKIE_NAME = OAUTH_STATE_COOKIE_NAME;
 exports.SESSION_COOKIE_NAME = SESSION_COOKIE_NAME;
 exports.ScaleMuleError = ScaleMuleError;
 exports.ScaleMuleServer = ScaleMuleServer;
 exports.USER_ID_COOKIE_NAME = USER_ID_COOKIE_NAME;
 exports.apiHandler = apiHandler;
+exports.appendKnownAccountCookie = appendKnownAccountCookie;
 exports.buildClientContextHeaders = buildClientContextHeaders;
 exports.buildFlagContext = buildFlagContext;
+exports.clearKnownAccountsCookie = clearKnownAccountsCookie;
 exports.clearOAuthState = clearOAuthState;
 exports.clearSession = clearSession;
 exports.configureBundles = configureBundles;
@@ -4858,6 +5130,8 @@ exports.getAppSecretOrDefault = getAppSecretOrDefault;
 exports.getBootstrapFlags = getBootstrapFlags;
 exports.getBundle = getBundle;
 exports.getCSRFToken = getCSRFToken;
+exports.getKnownAccountsCookieRaw = getKnownAccountsCookieRaw;
+exports.getKnownAccountsFromRequest = getKnownAccountsFromRequest;
 exports.getMySqlBundle = getMySqlBundle;
 exports.getOAuthBundle = getOAuthBundle;
 exports.getPostgresBundle = getPostgresBundle;
@@ -4868,10 +5142,12 @@ exports.getSessionFromRequest = getSessionFromRequest;
 exports.getSmtpBundle = getSmtpBundle;
 exports.invalidateBundleCache = invalidateBundleCache;
 exports.invalidateSecretCache = invalidateSecretCache;
+exports.normalizeKnownAccountsCookie = normalizeKnownAccountsCookie;
 exports.parseWebhookEvent = parseWebhookEvent;
 exports.prefetchBundles = prefetchBundles;
 exports.prefetchSecrets = prefetchSecrets;
 exports.registerVideoWebhook = registerVideoWebhook;
+exports.removeKnownAccountFromCookie = removeKnownAccountFromCookie;
 exports.requireAppSecret = requireAppSecret;
 exports.requireBundle = requireBundle;
 exports.requireSession = requireSession;

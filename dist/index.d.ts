@@ -1,14 +1,18 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import { ReactNode } from 'react';
+import { MoneyClient } from '@scalemule/money';
+export { MoneyClient, MoneyClientConfig, createMoneyClient } from '@scalemule/money';
 import { RealtimeService } from '@scalemule/sdk';
 import { ScaleMuleClient } from './client.js';
 export { ClientConfig, RequestOptions, createClient } from './client.js';
-import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-BoENfro3.js';
-export { h as AccountBalance, i as AnalyticsEvent, j as ApiResponse, B as BatchTrackRequest, k as BillingPayment, l as BillingPayout, m as BillingRefund, n as BillingTransaction, C as ChangeEmailRequest, o as ChangePasswordRequest, p as ClientContext, q as ConnectedAccount, D as DeviceFingerprint, r as DeviceInfo, E as EnhancedAnalyticsEvent, F as ForgotPasswordRequest, s as LinkedAccount, t as ListFilesResponse, u as LoginDeviceInfo, v as LoginRequest, w as LoginResponseWithMFA, x as LoginRiskInfo, M as MFAChallengeResponse, y as MFAMethod, z as MFASMSSetupResponse, G as MFASetupRequest, H as MFAStatus, I as MFATOTPSetupResponse, J as MFAVerifyRequest, O as OAuthCallbackRequest, K as OAuthCallbackResponse, N as OAuthConfig, P as OAuthProvider, Q as OAuthStartResponse, R as PageViewData, T as PayoutSchedule, V as PhoneLoginRequest, W as PhoneSendCodeRequest, X as PhoneVerifyRequest, Y as Profile, Z as RefreshResponse, _ as RegisterRequest, $ as ResetPasswordRequest, a0 as ScaleMuleApiError, a1 as ScaleMuleEnvironment, a2 as Session, a3 as SignedUploadCompleteRequest, a4 as SignedUploadRequest, a5 as SignedUploadResponse, a6 as SignedUploadUrl, a7 as StorageAdapter, a8 as StorageFile, a9 as TrackEventResponse, aa as TransactionSummary, ab as UTMParams, ac as UpdateProfileRequest, ad as UploadOptions, ae as UploadResponse, af as VerifyEmailRequest } from './index-BoENfro3.js';
+import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-BIIUrnPr.js';
+export { h as AccountBalance, i as AnalyticsEvent, j as ApiResponse, B as BatchTrackRequest, k as BillingPayment, l as BillingPayout, m as BillingRefund, n as BillingTransaction, C as ChangeEmailRequest, o as ChangePasswordRequest, p as ClientContext, q as ConnectedAccount, D as DeviceFingerprint, r as DeviceInfo, E as EnhancedAnalyticsEvent, F as ForgotPasswordRequest, K as KnownAccountInfo, s as LinkedAccount, t as ListFilesResponse, u as LoginDeviceInfo, v as LoginRequest, w as LoginResponseWithMFA, x as LoginRiskInfo, M as MFAChallengeResponse, y as MFAMethod, z as MFASMSSetupResponse, G as MFASetupRequest, H as MFAStatus, I as MFATOTPSetupResponse, J as MFAVerifyRequest, O as OAuthCallbackRequest, N as OAuthCallbackResponse, P as OAuthConfig, Q as OAuthProvider, R as OAuthStartResponse, T as PageViewData, V as PayoutSchedule, W as PhoneLoginRequest, X as PhoneSendCodeRequest, Y as PhoneVerifyRequest, Z as Profile, _ as RefreshResponse, $ as RegisterRequest, a0 as ResetPasswordRequest, a1 as ScaleMuleApiError, a2 as ScaleMuleEnvironment, a3 as Session, a4 as SignedUploadCompleteRequest, a5 as SignedUploadRequest, a6 as SignedUploadResponse, a7 as SignedUploadUrl, a8 as StorageAdapter, a9 as StorageFile, aa as TrackEventResponse, ab as TransactionSummary, ac as UTMParams, ad as UpdateProfileRequest, ae as UploadOptions, af as UploadResponse, ag as VerifyEmailRequest } from './index-BIIUrnPr.js';
 
 interface ScaleMuleContextValue {
     /** The API client instance */
     client: ScaleMuleClient;
+    /** Money client instance sharing the same session token */
+    money: MoneyClient;
     /** Base SDK realtime service — shared singleton for WebSocket connections */
     realtime: RealtimeService;
     /** Current authenticated user */
@@ -31,6 +35,10 @@ interface ScaleMuleContextValue {
     gatewayUrl?: string;
     /** Configured environment ('dev' or 'prod') */
     environment?: string;
+    /** Whether the account switcher is enabled */
+    enableAccountSwitcher?: boolean;
+    /** Privacy level for account switcher */
+    accountSwitcherPrivacy?: string;
     /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
     bootstrapFlags?: Record<string, unknown>;
 }
@@ -45,9 +53,10 @@ interface ScaleMuleProviderProps extends ScaleMuleConfig {
     /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
     bootstrapFlags?: Record<string, unknown>;
 }
-declare function ScaleMuleProvider({ apiKey, applicationId, environment, gatewayUrl, debug, storage, analyticsProxyUrl, authProxyUrl, publishableKey, children, onLogin, onLogout, onAuthError, bootstrapFlags, }: ScaleMuleProviderProps): react_jsx_runtime.JSX.Element;
+declare function ScaleMuleProvider({ apiKey, applicationId, environment, gatewayUrl, debug, storage, analyticsProxyUrl, authProxyUrl, publishableKey, enableAccountSwitcher, accountSwitcherPrivacy, children, onLogin, onLogout, onAuthError, bootstrapFlags, }: ScaleMuleProviderProps): react_jsx_runtime.JSX.Element;
 declare function useScaleMule(): ScaleMuleContextValue;
 declare function useScaleMuleClient(): ScaleMuleClient;
+declare function useMoneyClient(): MoneyClient;
 
 declare function useAuth(): UseAuthReturn;
 
@@ -130,6 +139,8 @@ interface UseContentOptions {
  * ```
  */
 declare function useContent(options?: UseContentOptions): UseContentReturn;
+
+declare const useMoney: typeof useMoneyClient;
 
 /**
  * User profile hook for ScaleMule
@@ -493,4 +504,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, ListFilesParams, LoginResponse, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, ListFilesParams, LoginResponse, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };

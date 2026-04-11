@@ -1,4 +1,4 @@
-import { a7 as StorageAdapter } from './index-BoENfro3.mjs';
+import { a8 as StorageAdapter } from './index-BIIUrnPr.mjs';
 
 /**
  * ScaleMule API Client
@@ -34,6 +34,10 @@ interface ClientConfig {
      * preventing race conditions where requests fire before the auth token is available.
      */
     pendingSessionInit?: boolean;
+    /** Enable the account switcher */
+    enableAccountSwitcher?: boolean;
+    /** Privacy level for account switcher */
+    accountSwitcherPrivacy?: 'full' | 'masked' | 'minimal';
 }
 interface RequestOptions extends RequestInit {
     /** Skip adding auth headers (for public endpoints) */
