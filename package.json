@@ -52,6 +52,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@scalemule/money": "^0.0.1",
     "@scalemule/sdk": "^0.0.29"
   },
   "peerDependencies": {

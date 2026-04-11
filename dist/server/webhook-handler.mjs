@@ -1,4 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
+import '@scalemule/money';
+
+// src/server/webhooks.ts
 
 // src/server/webhooks.ts
 function verifyWebhookSignature(payload, signature, secret) {

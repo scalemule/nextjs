@@ -5,6 +5,8 @@
  * Does not manage sessions - that's handled by cookies.
  */
 
+import { createMoneyClient } from '@scalemule/money'
+import type { MoneyClient } from '@scalemule/money'
 import { ScaleMuleApiError } from '../types'
 import type {
   ApiError,
@@ -62,11 +64,21 @@ export class ScaleMuleServer {
   private apiKey: string
   private gatewayUrl: string
   private debug: boolean
+  money: MoneyClient
 
   constructor(config: ServerConfig) {
     this.apiKey = config.apiKey
     this.gatewayUrl = resolveGatewayUrl(config)
     this.debug = config.debug || false
+    this.money = createMoneyClient({
+      apiKey: this.apiKey,
+      gatewayUrl: this.gatewayUrl,
+      fetch: globalThis.fetch.bind(globalThis),
+    })
+  }
+
+  moneyWithSession(sessionToken: string): MoneyClient {
+    return this.money.withAccessToken(sessionToken)
   }
 
   /**

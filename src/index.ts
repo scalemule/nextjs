@@ -36,13 +36,19 @@
  */
 
 // Provider
-export { ScaleMuleProvider, useScaleMule, useScaleMuleClient } from './provider'
+export {
+  ScaleMuleProvider,
+  useScaleMule,
+  useScaleMuleClient,
+  useMoneyClient,
+} from './provider'
 export type { ScaleMuleProviderProps } from './provider'
 
 // Hooks
 export { useAuth } from './hooks/useAuth'
 export { useBilling } from './hooks/useBilling'
 export { useContent } from './hooks/useContent'
+export { useMoney } from './hooks/useMoney'
 export { useUser } from './hooks/useUser'
 export { useRealtime } from './hooks/useRealtime'
 export { useAnalytics } from './hooks/useAnalytics'
@@ -180,6 +186,10 @@ export type {
 // Client (for advanced usage)
 export { ScaleMuleClient, createClient } from './client'
 export type { ClientConfig, RequestOptions } from './client'
+
+// Money client re-exports
+export { createMoneyClient, MoneyClient } from '@scalemule/money'
+export type { MoneyClientConfig } from '@scalemule/money'
 
 // Validation helpers
 export {

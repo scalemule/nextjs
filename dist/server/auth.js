@@ -1,5 +1,6 @@
 'use strict';
 
+var money = require('@scalemule/money');
 var headers = require('next/headers');
 require('next/server');
 
@@ -689,6 +690,14 @@ var ScaleMuleServer = class {
     this.apiKey = config.apiKey;
     this.gatewayUrl = resolveGatewayUrl(config);
     this.debug = config.debug || false;
+    this.money = money.createMoneyClient({
+      apiKey: this.apiKey,
+      gatewayUrl: this.gatewayUrl,
+      fetch: globalThis.fetch.bind(globalThis)
+    });
+  }
+  moneyWithSession(sessionToken) {
+    return this.money.withAccessToken(sessionToken);
   }
   /**
    * Make a request to the ScaleMule API
@@ -767,6 +776,7 @@ function createServerClient(config) {
 }
 var SESSION_COOKIE_NAME = "sm_session";
 var USER_ID_COOKIE_NAME = "sm_user_id";
+var KNOWN_ACCOUNTS_COOKIE_NAME = "sm_known_accounts";
 ({
   secure: process.env.NODE_ENV === "production"});
 function createCookieHeader(name, value, options = {}) {
@@ -846,6 +856,163 @@ async function getSession() {
     expiresAt: /* @__PURE__ */ new Date()
     // Note: actual expiry is managed by ScaleMule backend
   };
+}
+var MAX_KNOWN_ACCOUNTS = 10;
+function maskEmail(email) {
+  const [local, domain] = email.split("@");
+  if (!domain) return "***@***.***";
+  const tldDot = domain.lastIndexOf(".");
+  const tld = tldDot > 0 ? domain.slice(tldDot) : "";
+  const domainBase = tldDot > 0 ? domain.slice(0, tldDot) : domain;
+  return `${local[0] || "*"}***@${domainBase[0] || "*"}***${tld}`;
+}
+function stableColorIndex(userId) {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = (hash << 5) - hash + userId.charCodeAt(i) | 0;
+  }
+  return Math.abs(hash) % 8;
+}
+function applyPrivacyToEntry(entry, privacy) {
+  switch (privacy) {
+    case "full":
+      return entry;
+    case "masked":
+      return {
+        userId: entry.userId,
+        email: entry.email ? maskEmail(entry.email) : void 0,
+        fullName: entry.fullName ? `${entry.fullName[0].toUpperCase()}.` : void 0,
+        provider: entry.provider,
+        lastActiveAt: entry.lastActiveAt,
+        colorIndex: stableColorIndex(entry.userId)
+      };
+    case "minimal":
+      return {
+        userId: entry.userId,
+        provider: entry.provider,
+        lastActiveAt: entry.lastActiveAt,
+        displayLabel: "Account",
+        colorIndex: stableColorIndex(entry.userId)
+      };
+  }
+}
+function appendKnownAccountCookie(headers, account, existingCookie, options = {}, privacy) {
+  let accounts = {};
+  if (existingCookie) {
+    try {
+      accounts = JSON.parse(decodeURIComponent(existingCookie));
+    } catch {
+    }
+  }
+  const effectivePrivacy = privacy || "full";
+  for (const [userId, entry] of Object.entries(accounts)) {
+    accounts[userId] = applyPrivacyToEntry(entry, effectivePrivacy);
+  }
+  accounts[account.userId] = applyPrivacyToEntry(account, effectivePrivacy);
+  const entries = Object.entries(accounts);
+  if (entries.length > MAX_KNOWN_ACCOUNTS) {
+    entries.sort((a, b) => new Date(b[1].lastActiveAt).getTime() - new Date(a[1].lastActiveAt).getTime());
+    accounts = Object.fromEntries(entries.slice(0, MAX_KNOWN_ACCOUNTS));
+  }
+  const maxAge = 365 * 24 * 60 * 60;
+  const secure = options.secure ?? process.env.NODE_ENV === "production";
+  const sameSite = options.sameSite ?? "lax";
+  const path = options.path ?? "/";
+  let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(accounts))}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`;
+  if (secure) {
+    cookie += "; Secure";
+  }
+  if (options.domain) {
+    cookie += `; Domain=${options.domain}`;
+  }
+  headers.append("Set-Cookie", cookie);
+}
+function removeKnownAccountFromCookie(headers, userId, existingCookie, options = {}) {
+  let accounts = {};
+  if (existingCookie) {
+    try {
+      accounts = JSON.parse(decodeURIComponent(existingCookie));
+    } catch {
+    }
+  }
+  delete accounts[userId];
+  const maxAge = 365 * 24 * 60 * 60;
+  const secure = options.secure ?? process.env.NODE_ENV === "production";
+  const sameSite = options.sameSite ?? "lax";
+  const path = options.path ?? "/";
+  let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(accounts))}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`;
+  if (secure) {
+    cookie += "; Secure";
+  }
+  if (options.domain) {
+    cookie += `; Domain=${options.domain}`;
+  }
+  headers.append("Set-Cookie", cookie);
+}
+function clearKnownAccountsCookie(headers, options = {}) {
+  const path = options.path ?? "/";
+  let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=; Path=${path}; Max-Age=0`;
+  if (options.domain) {
+    cookie += `; Domain=${options.domain}`;
+  }
+  headers.append("Set-Cookie", cookie);
+}
+function getKnownAccountsFromRequest(request) {
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) return [];
+  const cookies3 = Object.fromEntries(
+    cookieHeader.split(";").map((c) => {
+      const [key, ...rest] = c.trim().split("=");
+      return [key, decodeURIComponent(rest.join("="))];
+    })
+  );
+  const raw = cookies3[KNOWN_ACCOUNTS_COOKIE_NAME];
+  if (!raw) return [];
+  try {
+    const accounts = JSON.parse(raw);
+    return Object.values(accounts);
+  } catch {
+    return [];
+  }
+}
+function getKnownAccountsCookieRaw(request) {
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) return null;
+  const cookies3 = Object.fromEntries(
+    cookieHeader.split(";").map((c) => {
+      const [key, ...rest] = c.trim().split("=");
+      return [key, decodeURIComponent(rest.join("="))];
+    })
+  );
+  return cookies3[KNOWN_ACCOUNTS_COOKIE_NAME] || null;
+}
+function normalizeKnownAccountsCookie(request, privacy, options = {}) {
+  if (!privacy || privacy === "full") return null;
+  const raw = getKnownAccountsCookieRaw(request);
+  if (!raw) return null;
+  let accounts = {};
+  try {
+    accounts = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  let changed = false;
+  for (const [userId, entry] of Object.entries(accounts)) {
+    const normalized = applyPrivacyToEntry(entry, privacy);
+    if (JSON.stringify(normalized) !== JSON.stringify(entry)) {
+      accounts[userId] = normalized;
+      changed = true;
+    }
+  }
+  if (!changed) return null;
+  const maxAge = 365 * 24 * 60 * 60;
+  const secure = options.secure ?? process.env.NODE_ENV === "production";
+  const sameSite = options.sameSite ?? "lax";
+  const path = options.path ?? "/";
+  let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(accounts))}; Path=${path}; Max-Age=${maxAge}; SameSite=${sameSite}`;
+  if (secure) cookie += "; Secure";
+  if (options.domain) cookie += `; Domain=${options.domain}`;
+  return cookie;
 }
 
 // src/server/timing.ts
@@ -933,7 +1100,25 @@ function createAuthRoutes(config = {}) {
           } catch {
             return successResponse({ user: registeredUser, message: "Registration successful" }, 201);
           }
-          return withSession(loginData, { user: registeredUser, sessionToken: loginData.session_token, userId: registeredUser.id }, cookieOptions);
+          const registerResponse = withSession(loginData, { user: registeredUser, sessionToken: loginData.session_token, userId: registeredUser.id }, cookieOptions);
+          if (config.enableAccountSwitcher) {
+            const existingKnown = getKnownAccountsCookieRaw(request);
+            appendKnownAccountCookie(
+              registerResponse.headers,
+              {
+                userId: registeredUser.id,
+                email: registeredUser.email,
+                fullName: registeredUser.full_name ?? void 0,
+                avatarUrl: registeredUser.avatar_url ?? void 0,
+                provider: "email",
+                lastActiveAt: (/* @__PURE__ */ new Date()).toISOString()
+              },
+              existingKnown,
+              cookieOptions,
+              config.accountSwitcherPrivacy
+            );
+          }
+          return registerResponse;
         }
         // ==================== Login ====================
         case "login": {
@@ -964,7 +1149,25 @@ function createAuthRoutes(config = {}) {
               email: loginData.user.email
             });
           }
-          return withSession(loginData, { user: loginData.user, sessionToken: loginData.session_token, userId: loginData.user.id }, cookieOptions);
+          const loginResponse = withSession(loginData, { user: loginData.user, sessionToken: loginData.session_token, userId: loginData.user.id }, cookieOptions);
+          if (config.enableAccountSwitcher) {
+            const existingKnown = getKnownAccountsCookieRaw(request);
+            appendKnownAccountCookie(
+              loginResponse.headers,
+              {
+                userId: loginData.user.id,
+                email: loginData.user.email,
+                fullName: loginData.user.full_name ?? void 0,
+                avatarUrl: loginData.user.avatar_url ?? void 0,
+                provider: "email",
+                lastActiveAt: (/* @__PURE__ */ new Date()).toISOString()
+              },
+              existingKnown,
+              cookieOptions,
+              config.accountSwitcherPrivacy
+            );
+          }
+          return loginResponse;
         }
         // ==================== Logout ====================
         case "logout": {
@@ -1111,6 +1314,59 @@ function createAuthRoutes(config = {}) {
           }
           return successResponse({ message: "Password changed successfully" });
         }
+        // ==================== Switch Account ====================
+        // Clears the active session so the user can re-authenticate as a different account.
+        // The known accounts cookie is preserved — only the session cookie is cleared.
+        case "switch-account": {
+          if (!config.enableAccountSwitcher) {
+            return errorResponse("NOT_FOUND", "Account switcher not enabled", 404);
+          }
+          const session = await getSession();
+          if (session) {
+            try {
+              await sm.auth.logout(session.sessionToken);
+            } catch {
+            }
+          }
+          const switchResponse = clearSession({ message: "Session cleared for account switch" }, cookieOptions);
+          const knownAccounts = getKnownAccountsFromRequest(request);
+          return new Response(
+            JSON.stringify({ success: true, data: { message: "Session cleared for account switch", knownAccounts } }),
+            { status: 200, headers: switchResponse.headers }
+          );
+        }
+        // ==================== Forget Account ====================
+        // Remove a specific account from the known accounts cookie.
+        case "forget-account": {
+          if (!config.enableAccountSwitcher) {
+            return errorResponse("NOT_FOUND", "Account switcher not enabled", 404);
+          }
+          const { user_id } = body;
+          if (!user_id) {
+            return errorResponse("VALIDATION_ERROR", "user_id required", 400);
+          }
+          const headers = new Headers();
+          headers.set("Content-Type", "application/json");
+          const existingKnown = getKnownAccountsCookieRaw(request);
+          removeKnownAccountFromCookie(headers, user_id, existingKnown, cookieOptions);
+          return new Response(
+            JSON.stringify({ success: true, data: { message: "Account forgotten" } }),
+            { status: 200, headers }
+          );
+        }
+        // ==================== Forget All Accounts ====================
+        case "forget-all-accounts": {
+          if (!config.enableAccountSwitcher) {
+            return errorResponse("NOT_FOUND", "Account switcher not enabled", 404);
+          }
+          const headers = new Headers();
+          headers.set("Content-Type", "application/json");
+          clearKnownAccountsCookie(headers, cookieOptions);
+          return new Response(
+            JSON.stringify({ success: true, data: { message: "All accounts forgotten" } }),
+            { status: 200, headers }
+          );
+        }
         default:
           return errorResponse("NOT_FOUND", `Unknown endpoint: ${path}`, 404);
       }
@@ -1126,20 +1382,25 @@ function createAuthRoutes(config = {}) {
       switch (path) {
         // ==================== Get Current User ====================
         case "me": {
+          const normCookie = config.enableAccountSwitcher ? normalizeKnownAccountsCookie(request, config.accountSwitcherPrivacy, cookieOptions) : null;
+          const withNorm = (resp) => {
+            if (normCookie) resp.headers.append("Set-Cookie", normCookie);
+            return resp;
+          };
           const session = await getSession();
           if (!session) {
-            return errorResponse("UNAUTHORIZED", "Authentication required", 401);
+            return withNorm(errorResponse("UNAUTHORIZED", "Authentication required", 401));
           }
           let userData;
           try {
             userData = await sm.auth.me(session.sessionToken);
           } catch {
-            return clearSession(
+            return withNorm(clearSession(
               { error: { code: "SESSION_EXPIRED", message: "Session expired" } },
               cookieOptions
-            );
+            ));
           }
-          return successResponse({ user: userData, sessionToken: session.sessionToken, userId: session.userId });
+          return withNorm(successResponse({ user: userData, sessionToken: session.sessionToken, userId: session.userId }));
         }
         // ==================== Get Session Status ====================
         case "session": {
@@ -1148,6 +1409,14 @@ function createAuthRoutes(config = {}) {
             authenticated: !!session,
             userId: session?.userId || null
           });
+        }
+        // ==================== Get Known Accounts ====================
+        case "known-accounts": {
+          if (!config.enableAccountSwitcher) {
+            return errorResponse("NOT_FOUND", "Account switcher not enabled", 404);
+          }
+          const knownAccounts = getKnownAccountsFromRequest(request);
+          return successResponse({ knownAccounts });
         }
         default:
           return errorResponse("NOT_FOUND", `Unknown endpoint: ${path}`, 404);

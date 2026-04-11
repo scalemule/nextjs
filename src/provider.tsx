@@ -9,6 +9,7 @@ import {
   useMemo,
   type ReactNode,
 } from 'react'
+import { createMoneyClient, type MoneyClient } from '@scalemule/money'
 import { ScaleMule, type RealtimeService } from '@scalemule/sdk'
 import { ScaleMuleClient, createClient } from './client'
 import type { User, ScaleMuleConfig, ApiError, LoginResponse } from './types'
@@ -47,6 +48,8 @@ function setCachedUser(user: User | null): void {
 interface ScaleMuleContextValue {
   /** The API client instance */
   client: ScaleMuleClient
+  /** Money client instance sharing the same session token */
+  money: MoneyClient
   /** Base SDK realtime service — shared singleton for WebSocket connections */
   realtime: RealtimeService
   /** Current authenticated user */
@@ -124,6 +127,9 @@ export function ScaleMuleProvider({
   const [user, setUser] = useState<User | null>(null)
   const [initializing, setInitializing] = useState(true)
   const [error, setError] = useState<ApiError | null>(null)
+  const resolvedGatewayUrl =
+    gatewayUrl ||
+    (environment === 'dev' ? 'https://api-dev.scalemule.com' : 'https://api.scalemule.com')
 
   // Create client instance (memoized to prevent recreating on every render)
   // In auth proxy mode, set pendingSessionInit so API requests wait for the
@@ -134,12 +140,24 @@ export function ScaleMuleProvider({
         apiKey,
         applicationId,
         environment,
-        gatewayUrl,
+        gatewayUrl: resolvedGatewayUrl,
         debug,
         storage,
         pendingSessionInit: !!authProxyUrl,
       }),
-    [apiKey, applicationId, environment, gatewayUrl, debug, storage, authProxyUrl]
+    [apiKey, applicationId, environment, resolvedGatewayUrl, debug, storage, authProxyUrl]
+  )
+
+  const money = useMemo(
+    () =>
+      createMoneyClient({
+        apiKey,
+        gatewayUrl: resolvedGatewayUrl,
+        environment,
+        accessToken: client.getSessionToken() || undefined,
+        fetch: globalThis.fetch.bind(globalThis),
+      }),
+    [apiKey, resolvedGatewayUrl, environment, client]
   )
 
   // Create a base SDK ScaleMule instance for realtime WebSocket support.
@@ -147,7 +165,6 @@ export function ScaleMuleProvider({
   // ServiceModule (which requires the base SDK client type). This base instance
   // provides the RealtimeService with correct protocol handling.
   const baseClient = useMemo(() => {
-    const resolvedGatewayUrl = gatewayUrl || (environment === 'dev' ? 'https://api-dev.scalemule.com' : 'https://api.scalemule.com')
     return new ScaleMule({
       apiKey,
       applicationId,
@@ -155,17 +172,19 @@ export function ScaleMuleProvider({
       environment,
       debug,
     })
-  }, [apiKey, applicationId, environment, gatewayUrl, debug])
+  }, [apiKey, applicationId, environment, resolvedGatewayUrl, debug])
 
-  // Keep base SDK session token in sync with the NextJS client's token
+  // Keep realtime and money clients in sync with the NextJS session token.
   useEffect(() => {
     const token = client.getSessionToken()
     if (token) {
       baseClient.setAccessToken(token)
+      money.setAccessToken(token)
     } else {
       baseClient.clearAccessToken()
+      money.setAccessToken(undefined)
     }
-  }, [client, baseClient, user]) // re-sync when user changes (login/logout)
+  }, [client, baseClient, money, user]) // re-sync when user changes (login/logout)
 
   // Initialize client and restore session on mount
   // Uses stale-while-revalidate: if a cached user exists, render immediately
@@ -282,6 +301,7 @@ export function ScaleMuleProvider({
   const value = useMemo(
     () => ({
       client,
+      money,
       realtime: baseClient.realtime,
       user,
       setUser: handleSetUser,
@@ -291,13 +311,13 @@ export function ScaleMuleProvider({
       analyticsProxyUrl,
       authProxyUrl,
       publishableKey,
-      gatewayUrl: gatewayUrl || (environment === 'dev' ? 'https://api-dev.scalemule.com' : 'https://api.scalemule.com'),
+      gatewayUrl: resolvedGatewayUrl,
       environment: environment || undefined,
       enableAccountSwitcher,
       accountSwitcherPrivacy,
       bootstrapFlags,
     }),
-    [client, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, gatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags]
+    [client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags]
   )
 
   return (
@@ -332,3 +352,10 @@ export function useScaleMuleClient(): ScaleMuleClient {
   const { client } = useScaleMule()
   return client
 }
+
+export function useMoneyClient(): MoneyClient {
+  const { money } = useScaleMule()
+  return money
+}
+
+export const useMoney = useMoneyClient

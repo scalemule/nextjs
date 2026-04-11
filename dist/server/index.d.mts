@@ -1,7 +1,8 @@
-import { S as ServerConfig } from '../webhook-handler-Cz9jtet2.mjs';
-export { a as ScaleMuleServer, V as VideoFailedEvent, b as VideoReadyEvent, c as VideoTranscodedEvent, d as VideoUploadedEvent, W as WebhookEvent, e as WebhookRoutesConfig, f as createServerClient, g as createWebhookHandler, h as createWebhookRoutes, p as parseWebhookEvent, r as registerVideoWebhook, i as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-Cz9jtet2.mjs';
-import { p as ClientContext, A as ApiError } from '../index-BoENfro3.mjs';
+import { S as ServerConfig } from '../webhook-handler-BqzCYRNJ.mjs';
+export { a as ScaleMuleServer, V as VideoFailedEvent, b as VideoReadyEvent, c as VideoTranscodedEvent, d as VideoUploadedEvent, W as WebhookEvent, e as WebhookRoutesConfig, f as createServerClient, g as createWebhookHandler, h as createWebhookRoutes, p as parseWebhookEvent, r as registerVideoWebhook, i as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-BqzCYRNJ.mjs';
+import { p as ClientContext, A as ApiError } from '../index-BIIUrnPr.mjs';
 import { NextRequest, NextResponse } from 'next/server';
+import '@scalemule/money';
 
 /**
  * Client Context Extraction Utilities (Next.js)
@@ -110,6 +111,12 @@ declare function buildFlagContext(clientContext: Pick<ClientContext, 'ip'> | und
  */
 declare const SESSION_COOKIE_NAME = "sm_session";
 declare const USER_ID_COOKIE_NAME = "sm_user_id";
+/**
+ * Known accounts cookie — stores display metadata (email, name, avatar) for
+ * accounts that have logged in on this device. NOT httpOnly so client JS can
+ * read it to render the account switcher UI. Contains NO tokens or secrets.
+ */
+declare const KNOWN_ACCOUNTS_COOKIE_NAME = "sm_known_accounts";
 interface SessionCookieOptions {
     /** Cookie max age in seconds (default: 7 days) */
     maxAge?: number;
@@ -182,6 +189,51 @@ declare function getSession(): Promise<SessionData | null>;
  */
 declare function getSessionFromRequest(request: Request): SessionData | null;
 /**
+ * Known account entry stored in cookie.
+ * Contains display metadata ONLY — no tokens, no secrets.
+ */
+interface KnownAccountEntry {
+    userId: string;
+    email?: string;
+    fullName?: string;
+    avatarUrl?: string;
+    provider?: string;
+    lastActiveAt: string;
+    displayLabel?: string;
+    colorIndex?: number;
+}
+type AccountSwitcherPrivacy = 'full' | 'masked' | 'minimal';
+/**
+ * Add an account to the known accounts cookie.
+ * Called after successful login. The cookie is NOT httpOnly so client JS
+ * can read it to render the account switcher UI.
+ *
+ * Appends Set-Cookie headers to an existing Headers object.
+ */
+declare function appendKnownAccountCookie(headers: Headers, account: KnownAccountEntry, existingCookie: string | null, options?: SessionCookieOptions, privacy?: AccountSwitcherPrivacy): void;
+/**
+ * Remove a specific account from the known accounts cookie.
+ */
+declare function removeKnownAccountFromCookie(headers: Headers, userId: string, existingCookie: string | null, options?: SessionCookieOptions): void;
+/**
+ * Clear the known accounts cookie entirely.
+ */
+declare function clearKnownAccountsCookie(headers: Headers, options?: SessionCookieOptions): void;
+/**
+ * Read known accounts from a Request's cookies.
+ */
+declare function getKnownAccountsFromRequest(request: Request): KnownAccountEntry[];
+/**
+ * Read the raw known accounts cookie value from a Request.
+ */
+declare function getKnownAccountsCookieRaw(request: Request): string | null;
+/**
+ * Normalize all entries in the known accounts cookie to the given privacy level.
+ * Returns a Set-Cookie header string if any entries changed, or null if nothing changed.
+ * Used on /me requests to migrate legacy full-PII cookies to the configured privacy level.
+ */
+declare function normalizeKnownAccountsCookie(request: Request, privacy: AccountSwitcherPrivacy | undefined, options?: SessionCookieOptions): string | null;
+/**
  * Require authentication - throws Response if not authenticated
  *
  * Use this at the start of protected API routes.
@@ -220,6 +272,19 @@ interface AuthRoutesConfig {
     cookies?: SessionCookieOptions;
     /** Enable CSRF validation on state-changing requests (POST/DELETE/PATCH) */
     csrf?: boolean;
+    /**
+     * Enable the account switcher — remembers which accounts have logged in on
+     * this device (metadata only, no tokens). Switching requires re-authentication.
+     * Adds routes: switch-account, forget-account, forget-all-accounts, known-accounts.
+     */
+    enableAccountSwitcher?: boolean;
+    /**
+     * Privacy level for account switcher display metadata.
+     * - 'full': Store email, name, avatar as-is (default)
+     * - 'masked': Mask email, truncate name to initial
+     * - 'minimal': No PII — just a colored "Account" label
+     */
+    accountSwitcherPrivacy?: 'full' | 'masked' | 'minimal';
     /** Callbacks */
     onLogin?: (user: {
         id: string;
@@ -1011,4 +1076,4 @@ declare function invalidateBundleCache(key?: string): void;
  */
 declare function prefetchBundles(keys: string[]): Promise<void>;
 
-export { type AnalyticsRoutesConfig, type AnalyticsTrackingGateConfig, type AuthMiddlewareConfig, type AuthRoutesConfig, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, type HandlerContext, type HandlerOptions, type MySqlBundle, type NotificationRoutesConfig, OAUTH_STATE_COOKIE_NAME, type OAuthBundle, type PostgresBundle, type PushRoutesConfig, type RedisBundle, type S3Bundle, SESSION_COOKIE_NAME, ScaleMuleError, ServerConfig, type SessionCookieOptions, type SessionData, type SmtpBundle, USER_ID_COOKIE_NAME, apiHandler, buildClientContextHeaders, buildFlagContext, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createNotificationRoutes, createPushRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, prefetchBundles, prefetchSecrets, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, withAuth, withCSRFProtection, withCSRFToken, withSession };
+export { type AnalyticsRoutesConfig, type AnalyticsTrackingGateConfig, type AuthMiddlewareConfig, type AuthRoutesConfig, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, type HandlerContext, type HandlerOptions, KNOWN_ACCOUNTS_COOKIE_NAME, type KnownAccountEntry, type MySqlBundle, type NotificationRoutesConfig, OAUTH_STATE_COOKIE_NAME, type OAuthBundle, type PostgresBundle, type PushRoutesConfig, type RedisBundle, type S3Bundle, SESSION_COOKIE_NAME, ScaleMuleError, ServerConfig, type SessionCookieOptions, type SessionData, type SmtpBundle, USER_ID_COOKIE_NAME, apiHandler, appendKnownAccountCookie, buildClientContextHeaders, buildFlagContext, clearKnownAccountsCookie, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createNotificationRoutes, createPushRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getKnownAccountsCookieRaw, getKnownAccountsFromRequest, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, normalizeKnownAccountsCookie, prefetchBundles, prefetchSecrets, removeKnownAccountFromCookie, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, withAuth, withCSRFProtection, withCSRFToken, withSession };

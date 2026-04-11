@@ -1,6 +1,9 @@
 'use strict';
 
 var crypto = require('crypto');
+require('@scalemule/money');
+
+// src/server/webhooks.ts
 
 // src/server/webhooks.ts
 function verifyWebhookSignature(payload, signature, secret) {
