@@ -31,9 +31,9 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
-// ../sdk/node_modules/semver/internal/constants.js
+// node_modules/semver/internal/constants.js
 var require_constants = __commonJS({
-  "../sdk/node_modules/semver/internal/constants.js"(exports$1, module) {
+  "node_modules/semver/internal/constants.js"(exports$1, module) {
     var SEMVER_SPEC_VERSION = "2.0.0";
     var MAX_LENGTH = 256;
     var MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER || /* istanbul ignore next */
@@ -62,18 +62,18 @@ var require_constants = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/internal/debug.js
+// node_modules/semver/internal/debug.js
 var require_debug = __commonJS({
-  "../sdk/node_modules/semver/internal/debug.js"(exports$1, module) {
+  "node_modules/semver/internal/debug.js"(exports$1, module) {
     var debug = typeof process === "object" && process.env && process.env.NODE_DEBUG && /\bsemver\b/i.test(process.env.NODE_DEBUG) ? (...args) => console.error("SEMVER", ...args) : () => {
     };
     module.exports = debug;
   }
 });
 
-// ../sdk/node_modules/semver/internal/re.js
+// node_modules/semver/internal/re.js
 var require_re = __commonJS({
-  "../sdk/node_modules/semver/internal/re.js"(exports$1, module) {
+  "node_modules/semver/internal/re.js"(exports$1, module) {
     var {
       MAX_SAFE_COMPONENT_LENGTH,
       MAX_SAFE_BUILD_LENGTH,
@@ -158,9 +158,9 @@ var require_re = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/internal/parse-options.js
+// node_modules/semver/internal/parse-options.js
 var require_parse_options = __commonJS({
-  "../sdk/node_modules/semver/internal/parse-options.js"(exports$1, module) {
+  "node_modules/semver/internal/parse-options.js"(exports$1, module) {
     var looseOption = Object.freeze({ loose: true });
     var emptyOpts = Object.freeze({});
     var parseOptions = (options) => {
@@ -176,9 +176,9 @@ var require_parse_options = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/internal/identifiers.js
+// node_modules/semver/internal/identifiers.js
 var require_identifiers = __commonJS({
-  "../sdk/node_modules/semver/internal/identifiers.js"(exports$1, module) {
+  "node_modules/semver/internal/identifiers.js"(exports$1, module) {
     var numeric = /^[0-9]+$/;
     var compareIdentifiers = (a, b) => {
       if (typeof a === "number" && typeof b === "number") {
@@ -200,9 +200,9 @@ var require_identifiers = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/classes/semver.js
+// node_modules/semver/classes/semver.js
 var require_semver = __commonJS({
-  "../sdk/node_modules/semver/classes/semver.js"(exports$1, module) {
+  "node_modules/semver/classes/semver.js"(exports$1, module) {
     var debug = require_debug();
     var { MAX_LENGTH, MAX_SAFE_INTEGER } = require_constants();
     var { safeRe: re, t } = require_re();
@@ -478,9 +478,9 @@ var require_semver = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/functions/parse.js
+// node_modules/semver/functions/parse.js
 var require_parse = __commonJS({
-  "../sdk/node_modules/semver/functions/parse.js"(exports$1, module) {
+  "node_modules/semver/functions/parse.js"(exports$1, module) {
     var SemVer = require_semver();
     var parse = (version, options, throwErrors = false) => {
       if (version instanceof SemVer) {
@@ -499,9 +499,9 @@ var require_parse = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/functions/valid.js
+// node_modules/semver/functions/valid.js
 var require_valid = __commonJS({
-  "../sdk/node_modules/semver/functions/valid.js"(exports$1, module) {
+  "node_modules/semver/functions/valid.js"(exports$1, module) {
     var parse = require_parse();
     var valid = (version, options) => {
       const v = parse(version, options);
@@ -511,9 +511,9 @@ var require_valid = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/functions/clean.js
+// node_modules/semver/functions/clean.js
 var require_clean = __commonJS({
-  "../sdk/node_modules/semver/functions/clean.js"(exports$1, module) {
+  "node_modules/semver/functions/clean.js"(exports$1, module) {
     var parse = require_parse();
     var clean = (version, options) => {
       const s = parse(version.trim().replace(/^[=v]+/, ""), options);
@@ -523,9 +523,9 @@ var require_clean = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/functions/inc.js
+// node_modules/semver/functions/inc.js
 var require_inc = __commonJS({
-  "../sdk/node_modules/semver/functions/inc.js"(exports$1, module) {
+  "node_modules/semver/functions/inc.js"(exports$1, module) {
     var SemVer = require_semver();
     var inc = (version, release, options, identifier, identifierBase) => {
       if (typeof options === "string") {
@@ -546,9 +546,9 @@ var require_inc = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/functions/diff.js
+// node_modules/semver/functions/diff.js
 var require_diff = __commonJS({
-  "../sdk/node_modules/semver/functions/diff.js"(exports$1, module) {
+  "node_modules/semver/functions/diff.js"(exports$1, module) {
     var parse = require_parse();
     var diff = (version1, version2) => {
       const v1 = parse(version1, null, true);
@@ -589,36 +589,36 @@ var require_diff = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/functions/major.js
+// node_modules/semver/functions/major.js
 var require_major = __commonJS({
-  "../sdk/node_modules/semver/functions/major.js"(exports$1, module) {
+  "node_modules/semver/functions/major.js"(exports$1, module) {
     var SemVer = require_semver();
     var major = (a, loose) => new SemVer(a, loose).major;
     module.exports = major;
   }
 });
 
-// ../sdk/node_modules/semver/functions/minor.js
+// node_modules/semver/functions/minor.js
 var require_minor = __commonJS({
-  "../sdk/node_modules/semver/functions/minor.js"(exports$1, module) {
+  "node_modules/semver/functions/minor.js"(exports$1, module) {
     var SemVer = require_semver();
     var minor = (a, loose) => new SemVer(a, loose).minor;
     module.exports = minor;
   }
 });
 
-// ../sdk/node_modules/semver/functions/patch.js
+// node_modules/semver/functions/patch.js
 var require_patch = __commonJS({
-  "../sdk/node_modules/semver/functions/patch.js"(exports$1, module) {
+  "node_modules/semver/functions/patch.js"(exports$1, module) {
     var SemVer = require_semver();
     var patch = (a, loose) => new SemVer(a, loose).patch;
     module.exports = patch;
   }
 });
 
-// ../sdk/node_modules/semver/functions/prerelease.js
+// node_modules/semver/functions/prerelease.js
 var require_prerelease = __commonJS({
-  "../sdk/node_modules/semver/functions/prerelease.js"(exports$1, module) {
+  "node_modules/semver/functions/prerelease.js"(exports$1, module) {
     var parse = require_parse();
     var prerelease = (version, options) => {
       const parsed = parse(version, options);
@@ -628,36 +628,36 @@ var require_prerelease = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/functions/compare.js
+// node_modules/semver/functions/compare.js
 var require_compare = __commonJS({
-  "../sdk/node_modules/semver/functions/compare.js"(exports$1, module) {
+  "node_modules/semver/functions/compare.js"(exports$1, module) {
     var SemVer = require_semver();
     var compare = (a, b, loose) => new SemVer(a, loose).compare(new SemVer(b, loose));
     module.exports = compare;
   }
 });
 
-// ../sdk/node_modules/semver/functions/rcompare.js
+// node_modules/semver/functions/rcompare.js
 var require_rcompare = __commonJS({
-  "../sdk/node_modules/semver/functions/rcompare.js"(exports$1, module) {
+  "node_modules/semver/functions/rcompare.js"(exports$1, module) {
     var compare = require_compare();
     var rcompare = (a, b, loose) => compare(b, a, loose);
     module.exports = rcompare;
   }
 });
 
-// ../sdk/node_modules/semver/functions/compare-loose.js
+// node_modules/semver/functions/compare-loose.js
 var require_compare_loose = __commonJS({
-  "../sdk/node_modules/semver/functions/compare-loose.js"(exports$1, module) {
+  "node_modules/semver/functions/compare-loose.js"(exports$1, module) {
     var compare = require_compare();
     var compareLoose = (a, b) => compare(a, b, true);
     module.exports = compareLoose;
   }
 });
 
-// ../sdk/node_modules/semver/functions/compare-build.js
+// node_modules/semver/functions/compare-build.js
 var require_compare_build = __commonJS({
-  "../sdk/node_modules/semver/functions/compare-build.js"(exports$1, module) {
+  "node_modules/semver/functions/compare-build.js"(exports$1, module) {
     var SemVer = require_semver();
     var compareBuild = (a, b, loose) => {
       const versionA = new SemVer(a, loose);
@@ -668,81 +668,81 @@ var require_compare_build = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/functions/sort.js
+// node_modules/semver/functions/sort.js
 var require_sort = __commonJS({
-  "../sdk/node_modules/semver/functions/sort.js"(exports$1, module) {
+  "node_modules/semver/functions/sort.js"(exports$1, module) {
     var compareBuild = require_compare_build();
     var sort = (list, loose) => list.sort((a, b) => compareBuild(a, b, loose));
     module.exports = sort;
   }
 });
 
-// ../sdk/node_modules/semver/functions/rsort.js
+// node_modules/semver/functions/rsort.js
 var require_rsort = __commonJS({
-  "../sdk/node_modules/semver/functions/rsort.js"(exports$1, module) {
+  "node_modules/semver/functions/rsort.js"(exports$1, module) {
     var compareBuild = require_compare_build();
     var rsort = (list, loose) => list.sort((a, b) => compareBuild(b, a, loose));
     module.exports = rsort;
   }
 });
 
-// ../sdk/node_modules/semver/functions/gt.js
+// node_modules/semver/functions/gt.js
 var require_gt = __commonJS({
-  "../sdk/node_modules/semver/functions/gt.js"(exports$1, module) {
+  "node_modules/semver/functions/gt.js"(exports$1, module) {
     var compare = require_compare();
     var gt = (a, b, loose) => compare(a, b, loose) > 0;
     module.exports = gt;
   }
 });
 
-// ../sdk/node_modules/semver/functions/lt.js
+// node_modules/semver/functions/lt.js
 var require_lt = __commonJS({
-  "../sdk/node_modules/semver/functions/lt.js"(exports$1, module) {
+  "node_modules/semver/functions/lt.js"(exports$1, module) {
     var compare = require_compare();
     var lt = (a, b, loose) => compare(a, b, loose) < 0;
     module.exports = lt;
   }
 });
 
-// ../sdk/node_modules/semver/functions/eq.js
+// node_modules/semver/functions/eq.js
 var require_eq = __commonJS({
-  "../sdk/node_modules/semver/functions/eq.js"(exports$1, module) {
+  "node_modules/semver/functions/eq.js"(exports$1, module) {
     var compare = require_compare();
     var eq = (a, b, loose) => compare(a, b, loose) === 0;
     module.exports = eq;
   }
 });
 
-// ../sdk/node_modules/semver/functions/neq.js
+// node_modules/semver/functions/neq.js
 var require_neq = __commonJS({
-  "../sdk/node_modules/semver/functions/neq.js"(exports$1, module) {
+  "node_modules/semver/functions/neq.js"(exports$1, module) {
     var compare = require_compare();
     var neq = (a, b, loose) => compare(a, b, loose) !== 0;
     module.exports = neq;
   }
 });
 
-// ../sdk/node_modules/semver/functions/gte.js
+// node_modules/semver/functions/gte.js
 var require_gte = __commonJS({
-  "../sdk/node_modules/semver/functions/gte.js"(exports$1, module) {
+  "node_modules/semver/functions/gte.js"(exports$1, module) {
     var compare = require_compare();
     var gte = (a, b, loose) => compare(a, b, loose) >= 0;
     module.exports = gte;
   }
 });
 
-// ../sdk/node_modules/semver/functions/lte.js
+// node_modules/semver/functions/lte.js
 var require_lte = __commonJS({
-  "../sdk/node_modules/semver/functions/lte.js"(exports$1, module) {
+  "node_modules/semver/functions/lte.js"(exports$1, module) {
     var compare = require_compare();
     var lte = (a, b, loose) => compare(a, b, loose) <= 0;
     module.exports = lte;
   }
 });
 
-// ../sdk/node_modules/semver/functions/cmp.js
+// node_modules/semver/functions/cmp.js
 var require_cmp = __commonJS({
-  "../sdk/node_modules/semver/functions/cmp.js"(exports$1, module) {
+  "node_modules/semver/functions/cmp.js"(exports$1, module) {
     var eq = require_eq();
     var neq = require_neq();
     var gt = require_gt();
@@ -789,9 +789,9 @@ var require_cmp = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/functions/coerce.js
+// node_modules/semver/functions/coerce.js
 var require_coerce = __commonJS({
-  "../sdk/node_modules/semver/functions/coerce.js"(exports$1, module) {
+  "node_modules/semver/functions/coerce.js"(exports$1, module) {
     var SemVer = require_semver();
     var parse = require_parse();
     var { safeRe: re, t } = require_re();
@@ -834,9 +834,9 @@ var require_coerce = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/internal/lrucache.js
+// node_modules/semver/internal/lrucache.js
 var require_lrucache = __commonJS({
-  "../sdk/node_modules/semver/internal/lrucache.js"(exports$1, module) {
+  "node_modules/semver/internal/lrucache.js"(exports$1, module) {
     var LRUCache = class {
       constructor() {
         this.max = 1e3;
@@ -871,9 +871,9 @@ var require_lrucache = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/classes/range.js
+// node_modules/semver/classes/range.js
 var require_range = __commonJS({
-  "../sdk/node_modules/semver/classes/range.js"(exports$1, module) {
+  "node_modules/semver/classes/range.js"(exports$1, module) {
     var SPACE_CHARACTERS = /\s+/g;
     var Range = class _Range {
       constructor(range, options) {
@@ -1247,9 +1247,9 @@ var require_range = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/classes/comparator.js
+// node_modules/semver/classes/comparator.js
 var require_comparator = __commonJS({
-  "../sdk/node_modules/semver/classes/comparator.js"(exports$1, module) {
+  "node_modules/semver/classes/comparator.js"(exports$1, module) {
     var ANY = /* @__PURE__ */ Symbol("SemVer ANY");
     var Comparator = class _Comparator {
       static get ANY() {
@@ -1359,9 +1359,9 @@ var require_comparator = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/functions/satisfies.js
+// node_modules/semver/functions/satisfies.js
 var require_satisfies = __commonJS({
-  "../sdk/node_modules/semver/functions/satisfies.js"(exports$1, module) {
+  "node_modules/semver/functions/satisfies.js"(exports$1, module) {
     var Range = require_range();
     var satisfies = (version, range, options) => {
       try {
@@ -1375,18 +1375,18 @@ var require_satisfies = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/ranges/to-comparators.js
+// node_modules/semver/ranges/to-comparators.js
 var require_to_comparators = __commonJS({
-  "../sdk/node_modules/semver/ranges/to-comparators.js"(exports$1, module) {
+  "node_modules/semver/ranges/to-comparators.js"(exports$1, module) {
     var Range = require_range();
     var toComparators = (range, options) => new Range(range, options).set.map((comp) => comp.map((c) => c.value).join(" ").trim().split(" "));
     module.exports = toComparators;
   }
 });
 
-// ../sdk/node_modules/semver/ranges/max-satisfying.js
+// node_modules/semver/ranges/max-satisfying.js
 var require_max_satisfying = __commonJS({
-  "../sdk/node_modules/semver/ranges/max-satisfying.js"(exports$1, module) {
+  "node_modules/semver/ranges/max-satisfying.js"(exports$1, module) {
     var SemVer = require_semver();
     var Range = require_range();
     var maxSatisfying = (versions, range, options) => {
@@ -1412,9 +1412,9 @@ var require_max_satisfying = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/ranges/min-satisfying.js
+// node_modules/semver/ranges/min-satisfying.js
 var require_min_satisfying = __commonJS({
-  "../sdk/node_modules/semver/ranges/min-satisfying.js"(exports$1, module) {
+  "node_modules/semver/ranges/min-satisfying.js"(exports$1, module) {
     var SemVer = require_semver();
     var Range = require_range();
     var minSatisfying = (versions, range, options) => {
@@ -1440,9 +1440,9 @@ var require_min_satisfying = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/ranges/min-version.js
+// node_modules/semver/ranges/min-version.js
 var require_min_version = __commonJS({
-  "../sdk/node_modules/semver/ranges/min-version.js"(exports$1, module) {
+  "node_modules/semver/ranges/min-version.js"(exports$1, module) {
     var SemVer = require_semver();
     var Range = require_range();
     var gt = require_gt();
@@ -1498,9 +1498,9 @@ var require_min_version = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/ranges/valid.js
+// node_modules/semver/ranges/valid.js
 var require_valid2 = __commonJS({
-  "../sdk/node_modules/semver/ranges/valid.js"(exports$1, module) {
+  "node_modules/semver/ranges/valid.js"(exports$1, module) {
     var Range = require_range();
     var validRange = (range, options) => {
       try {
@@ -1513,9 +1513,9 @@ var require_valid2 = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/ranges/outside.js
+// node_modules/semver/ranges/outside.js
 var require_outside = __commonJS({
-  "../sdk/node_modules/semver/ranges/outside.js"(exports$1, module) {
+  "node_modules/semver/ranges/outside.js"(exports$1, module) {
     var SemVer = require_semver();
     var Comparator = require_comparator();
     var { ANY } = Comparator;
@@ -1581,27 +1581,27 @@ var require_outside = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/ranges/gtr.js
+// node_modules/semver/ranges/gtr.js
 var require_gtr = __commonJS({
-  "../sdk/node_modules/semver/ranges/gtr.js"(exports$1, module) {
+  "node_modules/semver/ranges/gtr.js"(exports$1, module) {
     var outside = require_outside();
     var gtr = (version, range, options) => outside(version, range, ">", options);
     module.exports = gtr;
   }
 });
 
-// ../sdk/node_modules/semver/ranges/ltr.js
+// node_modules/semver/ranges/ltr.js
 var require_ltr = __commonJS({
-  "../sdk/node_modules/semver/ranges/ltr.js"(exports$1, module) {
+  "node_modules/semver/ranges/ltr.js"(exports$1, module) {
     var outside = require_outside();
     var ltr = (version, range, options) => outside(version, range, "<", options);
     module.exports = ltr;
   }
 });
 
-// ../sdk/node_modules/semver/ranges/intersects.js
+// node_modules/semver/ranges/intersects.js
 var require_intersects = __commonJS({
-  "../sdk/node_modules/semver/ranges/intersects.js"(exports$1, module) {
+  "node_modules/semver/ranges/intersects.js"(exports$1, module) {
     var Range = require_range();
     var intersects = (r1, r2, options) => {
       r1 = new Range(r1, options);
@@ -1612,9 +1612,9 @@ var require_intersects = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/ranges/simplify.js
+// node_modules/semver/ranges/simplify.js
 var require_simplify = __commonJS({
-  "../sdk/node_modules/semver/ranges/simplify.js"(exports$1, module) {
+  "node_modules/semver/ranges/simplify.js"(exports$1, module) {
     var satisfies = require_satisfies();
     var compare = require_compare();
     module.exports = (versions, range, options) => {
@@ -1661,9 +1661,9 @@ var require_simplify = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/ranges/subset.js
+// node_modules/semver/ranges/subset.js
 var require_subset = __commonJS({
-  "../sdk/node_modules/semver/ranges/subset.js"(exports$1, module) {
+  "node_modules/semver/ranges/subset.js"(exports$1, module) {
     var Range = require_range();
     var Comparator = require_comparator();
     var { ANY } = Comparator;
@@ -1822,9 +1822,9 @@ var require_subset = __commonJS({
   }
 });
 
-// ../sdk/node_modules/semver/index.js
+// node_modules/semver/index.js
 var require_semver2 = __commonJS({
-  "../sdk/node_modules/semver/index.js"(exports$1, module) {
+  "node_modules/semver/index.js"(exports$1, module) {
     var internalRe = require_re();
     var constants = require_constants();
     var SemVer = require_semver();
@@ -4215,7 +4215,7 @@ function createWebhookHandler(config = {}) {
   };
 }
 
-// ../sdk/dist/flags/server.mjs
+// node_modules/@scalemule/sdk/dist/flags/server.mjs
 var import_semver = __toESM(require_semver2());
 function hashToBucket(flagKey, identifier, salt) {
   const hash = crypto$1.createHash("sha256").update(`${salt}.${flagKey}.${identifier}`).digest();
@@ -5096,6 +5096,55 @@ async function prefetchBundles(keys) {
   await Promise.all(keys.map((key) => getBundle(key)));
 }
 
+// src/server/redirect.ts
+function normalizeOrigin(origin) {
+  try {
+    const u = new URL(origin);
+    return `${u.protocol}//${u.host}`.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+function isSafeSchemeRelative(input) {
+  return !(input.startsWith("//") || input.startsWith("\\"));
+}
+function validateSafeRedirect(input, opts = {}) {
+  const defaultPath = opts.defaultPath ?? "/";
+  if (!input || typeof input !== "string") return defaultPath;
+  const trimmed = input.trim();
+  if (!trimmed) return defaultPath;
+  if (!isSafeSchemeRelative(trimmed)) return defaultPath;
+  const colon = trimmed.indexOf(":");
+  if (colon > 0 && colon < 15) {
+    const scheme = trimmed.slice(0, colon).toLowerCase();
+    if (/^[a-z][a-z0-9+.-]*$/.test(scheme) && scheme !== "http" && scheme !== "https") {
+      return defaultPath;
+    }
+  }
+  if (trimmed.startsWith("/")) {
+    if (trimmed.length > 1 && trimmed[1] === "\\") return defaultPath;
+    return trimmed;
+  }
+  const allowed = (opts.allowedOrigins ?? []).map(normalizeOrigin).filter((o) => o !== null);
+  try {
+    const parsed = new URL(trimmed);
+    const origin = `${parsed.protocol}//${parsed.host}`.toLowerCase();
+    if (!allowed.includes(origin)) return defaultPath;
+    if (opts.stripSameOriginHost !== false) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}` || "/";
+    }
+    return trimmed;
+  } catch {
+    return defaultPath;
+  }
+}
+function isSafeRedirect(input, opts = {}) {
+  if (!input || typeof input !== "string") return false;
+  const defaultPath = `__unsafe_sentinel_${Math.random()}`;
+  const resolved = validateSafeRedirect(input, { ...opts, defaultPath });
+  return resolved !== defaultPath;
+}
+
 exports.CSRF_COOKIE_NAME = CSRF_COOKIE_NAME;
 exports.CSRF_HEADER_NAME = CSRF_HEADER_NAME;
 exports.KNOWN_ACCOUNTS_COOKIE_NAME = KNOWN_ACCOUNTS_COOKIE_NAME;
@@ -5142,6 +5191,7 @@ exports.getSessionFromRequest = getSessionFromRequest;
 exports.getSmtpBundle = getSmtpBundle;
 exports.invalidateBundleCache = invalidateBundleCache;
 exports.invalidateSecretCache = invalidateSecretCache;
+exports.isSafeRedirect = isSafeRedirect;
 exports.normalizeKnownAccountsCookie = normalizeKnownAccountsCookie;
 exports.parseWebhookEvent = parseWebhookEvent;
 exports.prefetchBundles = prefetchBundles;
@@ -5158,6 +5208,7 @@ exports.validateCSRFToken = validateCSRFToken;
 exports.validateCSRFTokenAsync = validateCSRFTokenAsync;
 exports.validateOAuthState = validateOAuthState;
 exports.validateOAuthStateAsync = validateOAuthStateAsync;
+exports.validateSafeRedirect = validateSafeRedirect;
 exports.verifyWebhookSignature = verifyWebhookSignature;
 exports.withAuth = withAuth;
 exports.withCSRFProtection = withCSRFProtection;
