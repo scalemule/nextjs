@@ -142,3 +142,14 @@ export type {
 
 export { validateSafeRedirect, isSafeRedirect } from './redirect'
 export type { SafeRedirectOptions } from './redirect'
+
+export {
+  buildSecurityHeaders,
+  DEFAULT_PERMISSIONS_POLICY,
+} from './security-headers'
+export type {
+  BuildSecurityHeadersOptions,
+  SecurityHeaderEntry,
+  PermissionsPolicyMap,
+  PermissionsPolicyValue,
+} from './security-headers'
