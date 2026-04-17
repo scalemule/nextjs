@@ -139,3 +139,6 @@ export type {
   OAuthBundle,
   SmtpBundle,
 } from './bundles'
+
+export { validateSafeRedirect, isSafeRedirect } from './redirect'
+export type { SafeRedirectOptions } from './redirect'

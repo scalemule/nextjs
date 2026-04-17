@@ -1076,4 +1076,70 @@ declare function invalidateBundleCache(key?: string): void;
  */
 declare function prefetchBundles(keys: string[]): Promise<void>;
 
-export { type AnalyticsRoutesConfig, type AnalyticsTrackingGateConfig, type AuthMiddlewareConfig, type AuthRoutesConfig, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, type HandlerContext, type HandlerOptions, KNOWN_ACCOUNTS_COOKIE_NAME, type KnownAccountEntry, type MySqlBundle, type NotificationRoutesConfig, OAUTH_STATE_COOKIE_NAME, type OAuthBundle, type PostgresBundle, type PushRoutesConfig, type RedisBundle, type S3Bundle, SESSION_COOKIE_NAME, ScaleMuleError, ServerConfig, type SessionCookieOptions, type SessionData, type SmtpBundle, USER_ID_COOKIE_NAME, apiHandler, appendKnownAccountCookie, buildClientContextHeaders, buildFlagContext, clearKnownAccountsCookie, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createNotificationRoutes, createPushRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getKnownAccountsCookieRaw, getKnownAccountsFromRequest, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, normalizeKnownAccountsCookie, prefetchBundles, prefetchSecrets, removeKnownAccountFromCookie, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, withAuth, withCSRFProtection, withCSRFToken, withSession };
+/**
+ * Safe-redirect validation for authentication callback URLs.
+ *
+ * Prevents open-redirect attacks on `returnTo` / `callbackUrl` / `next`
+ * params after login / registration / password-reset flows. An attacker
+ * who can inject a `?returnTo=https://evil.example` into your login
+ * form would otherwise redirect the freshly-authenticated user away
+ * from your origin — a classic phishing + credential-harvesting setup.
+ *
+ * Safe by default — unknown input returns the configured default
+ * path. Hosts opt in to external origins explicitly via
+ * `allowedOrigins`.
+ *
+ * Framework-agnostic: no imports from `next/*`. Safe in any
+ * Edge / Node / middleware runtime.
+ */
+interface SafeRedirectOptions {
+    /**
+     * Origins (schema + host + optional port) the redirect is allowed
+     * to land on. Default `[]` — only same-origin relative paths are
+     * allowed. Items are compared case-insensitively after normalizing
+     * the scheme and host.
+     *
+     * Good practice: list only origins that your organization controls
+     * and that are reachable over HTTPS.
+     *
+     * @example
+     * ['https://app.example.com', 'https://admin.example.com']
+     */
+    allowedOrigins?: string[];
+    /**
+     * Value returned when the input is missing, invalid, or points
+     * outside the allowlist. Default `'/'`.
+     */
+    defaultPath?: string;
+    /**
+     * Strip the scheme + host from same-origin absolute URLs and
+     * return only the path + query + fragment. Default `true` — keeps
+     * redirect targets as short relative URLs that route through
+     * client-side routing cleanly.
+     */
+    stripSameOriginHost?: boolean;
+}
+/**
+ * Returns a safe-to-use redirect path, falling back to
+ * `opts.defaultPath` (default `'/'`) when the input fails validation.
+ *
+ * Accepts:
+ *   - empty / nullish → default
+ *   - relative paths like `/foo/bar?x=1#frag` (leading `/` required)
+ *   - absolute URLs whose origin is in `allowedOrigins`
+ *
+ * Rejects everything else, including:
+ *   - schema-relative URLs (`//evil.example`)
+ *   - backslash-prefixed paths
+ *   - `javascript:`, `data:`, `mailto:`, `vbscript:` etc.
+ *   - bare hostnames (`example.com/path`)
+ *   - malformed URLs
+ */
+declare function validateSafeRedirect(input: string | null | undefined, opts?: SafeRedirectOptions): string;
+/**
+ * Boolean predicate form. Returns `true` when `input` would pass
+ * `validateSafeRedirect` with the same options.
+ */
+declare function isSafeRedirect(input: string | null | undefined, opts?: SafeRedirectOptions): boolean;
+
+export { type AnalyticsRoutesConfig, type AnalyticsTrackingGateConfig, type AuthMiddlewareConfig, type AuthRoutesConfig, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, type HandlerContext, type HandlerOptions, KNOWN_ACCOUNTS_COOKIE_NAME, type KnownAccountEntry, type MySqlBundle, type NotificationRoutesConfig, OAUTH_STATE_COOKIE_NAME, type OAuthBundle, type PostgresBundle, type PushRoutesConfig, type RedisBundle, type S3Bundle, SESSION_COOKIE_NAME, type SafeRedirectOptions, ScaleMuleError, ServerConfig, type SessionCookieOptions, type SessionData, type SmtpBundle, USER_ID_COOKIE_NAME, apiHandler, appendKnownAccountCookie, buildClientContextHeaders, buildFlagContext, clearKnownAccountsCookie, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createNotificationRoutes, createPushRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getKnownAccountsCookieRaw, getKnownAccountsFromRequest, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, isSafeRedirect, normalizeKnownAccountsCookie, prefetchBundles, prefetchSecrets, removeKnownAccountFromCookie, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, validateSafeRedirect, withAuth, withCSRFProtection, withCSRFToken, withSession };
