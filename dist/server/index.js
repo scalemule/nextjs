@@ -5145,8 +5145,77 @@ function isSafeRedirect(input, opts = {}) {
   return resolved !== defaultPath;
 }
 
+// src/server/security-headers.ts
+var DEFAULT_PERMISSIONS_POLICY = {
+  // Conference track features — allow self-origin only.
+  camera: "self",
+  microphone: "self",
+  "display-capture": "self",
+  // Deny-by-default for features the SDK never uses.
+  geolocation: "()",
+  payment: "()",
+  "publickey-credentials-get": "self",
+  usb: "()",
+  serial: "()",
+  bluetooth: "()"
+};
+function formatPermissionsDirective(feature, value) {
+  if (value === "*") return `${feature}=*`;
+  if (value === "()" || Array.isArray(value) && value.length === 0) {
+    return `${feature}=()`;
+  }
+  if (value === "self") return `${feature}=(self)`;
+  const origins = value;
+  const parts = origins.map((o) => o === "self" ? "self" : `"${o}"`);
+  return `${feature}=(${parts.join(" ")})`;
+}
+function buildSecurityHeaders(opts = {}) {
+  const headers2 = [];
+  const includeHsts = opts.includeHsts ?? true;
+  const hstsMaxAge = opts.hstsMaxAgeSeconds ?? 31536e3;
+  if (includeHsts && hstsMaxAge > 0) {
+    const parts = [`max-age=${hstsMaxAge}`];
+    if (opts.hstsIncludeSubDomains ?? true) parts.push("includeSubDomains");
+    if (opts.hstsPreload ?? false) parts.push("preload");
+    headers2.push({
+      key: "Strict-Transport-Security",
+      value: parts.join("; ")
+    });
+  }
+  const frameOptions = opts.frameOptions === void 0 ? "DENY" : opts.frameOptions;
+  if (frameOptions !== null) {
+    headers2.push({ key: "X-Frame-Options", value: frameOptions });
+  }
+  const contentTypeOptions = opts.contentTypeOptions === void 0 ? "nosniff" : opts.contentTypeOptions;
+  if (contentTypeOptions !== null) {
+    headers2.push({ key: "X-Content-Type-Options", value: contentTypeOptions });
+  }
+  headers2.push({
+    key: "Referrer-Policy",
+    value: opts.referrerPolicy ?? "strict-origin-when-cross-origin"
+  });
+  const xss = opts.xssProtection === void 0 ? "0" : opts.xssProtection;
+  if (xss !== null) {
+    headers2.push({ key: "X-XSS-Protection", value: xss });
+  }
+  const permissions = opts.permissionsPolicy === void 0 ? DEFAULT_PERMISSIONS_POLICY : opts.permissionsPolicy;
+  if (permissions !== null) {
+    const directives = Object.entries(permissions).map(([feature, value]) => formatPermissionsDirective(feature, value)).join(", ");
+    headers2.push({ key: "Permissions-Policy", value: directives });
+  }
+  if (opts.extraHeaders?.length) {
+    const byKey = new Map(headers2.map((h) => [h.key.toLowerCase(), h]));
+    for (const extra of opts.extraHeaders) {
+      byKey.set(extra.key.toLowerCase(), extra);
+    }
+    return Array.from(byKey.values());
+  }
+  return headers2;
+}
+
 exports.CSRF_COOKIE_NAME = CSRF_COOKIE_NAME;
 exports.CSRF_HEADER_NAME = CSRF_HEADER_NAME;
+exports.DEFAULT_PERMISSIONS_POLICY = DEFAULT_PERMISSIONS_POLICY;
 exports.KNOWN_ACCOUNTS_COOKIE_NAME = KNOWN_ACCOUNTS_COOKIE_NAME;
 exports.OAUTH_STATE_COOKIE_NAME = OAUTH_STATE_COOKIE_NAME;
 exports.SESSION_COOKIE_NAME = SESSION_COOKIE_NAME;
@@ -5157,6 +5226,7 @@ exports.apiHandler = apiHandler;
 exports.appendKnownAccountCookie = appendKnownAccountCookie;
 exports.buildClientContextHeaders = buildClientContextHeaders;
 exports.buildFlagContext = buildFlagContext;
+exports.buildSecurityHeaders = buildSecurityHeaders;
 exports.clearKnownAccountsCookie = clearKnownAccountsCookie;
 exports.clearOAuthState = clearOAuthState;
 exports.clearSession = clearSession;
