@@ -1559,6 +1559,52 @@ var AuthService = class extends ServiceModule {
   async me(options) {
     return this._get("/me", options);
   }
+  // --------------------------------------------------------------------------
+  // User directory (customer-scoped)
+  // --------------------------------------------------------------------------
+  //
+  // Search / fetch users within the caller's application. These endpoints are
+  // scoped by the gateway-injected x-app-id header, so when invoked with a
+  // customer API key + user session they will only return users belonging to
+  // the caller's application. They replace the prior pattern of customer apps
+  // reaching for platform admin credentials to hit admin-only user routes.
+  //
+  // DO NOT call these with platform admin credentials from customer-facing
+  // applications. Use the standard customer auth path (API key + user session)
+  // and let the gateway inject x-app-id on your behalf.
+  /**
+   * Search users within the caller's application.
+   *
+   * Results are automatically scoped to the caller's application via the
+   * x-app-id header injected by the gateway. Server-side page size is fixed
+   * at 50 (the `per_page` query param is not honored upstream).
+   *
+   * @example
+   *   const res = await sm.auth.searchUsers({ search: 'alice' });
+   *   res.data?.users.forEach(u => console.log(u.email));
+   */
+  async searchUsers(params, options) {
+    const query = {};
+    if (params?.search !== void 0) query.search = params.search;
+    if (params?.status !== void 0) query.status = params.status;
+    if (params?.email_verified !== void 0) {
+      query.email_verified = params.email_verified ? "true" : "false";
+    }
+    if (params?.phone_verified !== void 0) {
+      query.phone_verified = params.phone_verified ? "true" : "false";
+    }
+    if (params?.page !== void 0) query.page = params.page;
+    return this._get(this.withQuery("/users", query), options);
+  }
+  /**
+   * Fetch a single user by ID within the caller's application.
+   *
+   * Returns 404 if the user is not in the caller's application — cross-tenant
+   * reads are blocked at the gateway via the x-app-id header scope.
+   */
+  async getUser(userId, options) {
+    return this._get(`/users/${encodeURIComponent(userId)}`, options);
+  }
   /** Refresh the session. Alias: refreshToken() */
   async refreshSession(data, options) {
     return this.post("/refresh", data ?? {}, options);
@@ -2744,7 +2790,10 @@ var StorageService = class extends ServiceModule {
     const stallTimeout = DEFAULT_STALL_TIMEOUT_MS;
     const controller = new AbortController();
     let parentSignalCleanup;
-    const combinedSignal = signal ? AbortSignal.any?.([signal, controller.signal]) ?? (() => {
+    const combinedSignal = signal ? AbortSignal.any?.([
+      signal,
+      controller.signal
+    ]) ?? (() => {
       const onAbort = () => controller.abort();
       signal.addEventListener("abort", onAbort, { once: true });
       parentSignalCleanup = () => signal.removeEventListener("abort", onAbort);
@@ -2925,7 +2974,10 @@ var StorageService = class extends ServiceModule {
       }
       const controller = new AbortController();
       let partSignalCleanup;
-      const combinedSignal = signal ? AbortSignal.any?.([signal, controller.signal]) ?? (() => {
+      const combinedSignal = signal ? AbortSignal.any?.([
+        signal,
+        controller.signal
+      ]) ?? (() => {
         const onAbort = () => controller.abort();
         signal.addEventListener("abort", onAbort, { once: true });
         partSignalCleanup = () => signal.removeEventListener("abort", onAbort);
@@ -3089,6 +3141,7 @@ var RealtimeService = class extends ServiceModule {
     super(...arguments);
     this.basePath = "/v1/realtime";
     this.ws = null;
+    this.usedTicketAuth = false;
     this.subscriptions = /* @__PURE__ */ new Map();
     this.presenceCallbacks = /* @__PURE__ */ new Map();
     this.statusCallbacks = /* @__PURE__ */ new Set();
@@ -3217,10 +3270,31 @@ var RealtimeService = class extends ServiceModule {
   // --------------------------------------------------------------------------
   connect() {
     if (this._status === "connecting" || this._status === "connected") return;
-    const baseUrl = this.client.getBaseUrl();
-    const wsUrl = baseUrl.replace(/^http/, "ws") + "/v1/realtime/ws";
     this.setStatus(this.reconnectAttempt > 0 ? "reconnecting" : "connecting");
+    this.fetchTicketAndConnect();
+  }
+  async fetchTicketAndConnect() {
+    const baseUrl = this.client.getBaseUrl();
     try {
+      const headers = { "Content-Type": "application/json" };
+      const apiKey = this.client.getApiKey();
+      if (apiKey) headers["x-api-key"] = apiKey;
+      const token = this.client.getSessionToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const ticketRes = await fetch(`${baseUrl}/v1/realtime/ws/ticket`, {
+        method: "POST",
+        headers
+      });
+      let wsUrl;
+      if (ticketRes.ok) {
+        const ticketData = await ticketRes.json();
+        const ticket = ticketData.ticket;
+        wsUrl = baseUrl.replace(/^http/, "ws") + `/v1/realtime/ws?ticket=${encodeURIComponent(ticket)}`;
+        this.usedTicketAuth = true;
+      } else {
+        wsUrl = baseUrl.replace(/^http/, "ws") + "/v1/realtime/ws";
+        this.usedTicketAuth = false;
+      }
       this.ws = new WebSocket(wsUrl);
     } catch {
       this.scheduleReconnect();
@@ -3228,8 +3302,21 @@ var RealtimeService = class extends ServiceModule {
     }
     this.ws.onopen = () => {
       this.reconnectAttempt = 0;
-      this.authenticate();
+      if (!this.usedTicketAuth) {
+        this.authenticate();
+      }
       this.startHeartbeat();
+      if (this.usedTicketAuth) {
+        setTimeout(() => {
+          if (!this.authenticated) {
+            this.authenticated = true;
+            this.setStatus("connected");
+            for (const channel of this.subscriptions.keys()) {
+              this.sendWs({ type: "subscribe", channel });
+            }
+          }
+        }, 2e3);
+      }
     };
     this.ws.onmessage = (event) => {
       try {
@@ -3681,6 +3768,9 @@ var ChatService = class extends ServiceModule {
   async sendMessage(conversationId, data, options) {
     return this.post(`/conversations/${conversationId}/messages`, data, options);
   }
+  async getThreadReplies(messageId, params, requestOptions) {
+    return this._get(this.withQuery(`/messages/${messageId}/replies`, params), requestOptions);
+  }
   async getMessages(conversationId, options, requestOptions) {
     return this._get(
       this.withQuery(`/conversations/${conversationId}/messages`, options),
@@ -3714,6 +3804,66 @@ var ChatService = class extends ServiceModule {
   /** @deprecated Use createConversation() instead */
   async createChat(data) {
     return this.createConversation(data);
+  }
+};
+var ConferenceService = class extends ServiceModule {
+  constructor() {
+    super(...arguments);
+    this.basePath = "/v1/conference";
+  }
+  // --------------------------------------------------------------------------
+  // Call Lifecycle
+  // --------------------------------------------------------------------------
+  async createCall(data, options) {
+    return this.post("/calls", data, options);
+  }
+  async getCall(callId, options) {
+    return this._get(`/calls/${callId}`, options);
+  }
+  async listCalls(params, options) {
+    return this._get(this.withQuery("/calls", params), options);
+  }
+  async endCall(callId, options) {
+    return this.post(`/calls/${callId}/end`, void 0, options);
+  }
+  // --------------------------------------------------------------------------
+  // Participants
+  // --------------------------------------------------------------------------
+  async joinCall(callId, options) {
+    return this.post(`/calls/${callId}/join`, void 0, options);
+  }
+  async leaveCall(callId, options) {
+    return this.post(`/calls/${callId}/leave`, void 0, options);
+  }
+  async listParticipants(callId, options) {
+    return this._get(`/calls/${callId}/participants`, options);
+  }
+  // --------------------------------------------------------------------------
+  // Recording
+  // --------------------------------------------------------------------------
+  async startRecording(callId, options) {
+    return this.post(`/calls/${callId}/recording/start`, void 0, options);
+  }
+  async stopRecording(callId, options) {
+    return this.post(`/calls/${callId}/recording/stop`, void 0, options);
+  }
+  async consentToRecording(callId, options) {
+    return this.post(`/calls/${callId}/recording/consent`, void 0, options);
+  }
+  // --------------------------------------------------------------------------
+  // Settings
+  // --------------------------------------------------------------------------
+  async getSettings(options) {
+    return this._get("/settings", options);
+  }
+  async updateSettings(data, options) {
+    return this.put("/settings", data, options);
+  }
+  // --------------------------------------------------------------------------
+  // Stats
+  // --------------------------------------------------------------------------
+  async submitStats(callId, stats, options) {
+    return this.post(`/calls/${callId}/stats`, stats, options);
   }
 };
 var SocialService = class extends ServiceModule {
@@ -3837,7 +3987,14 @@ var ReferralsService = class extends ServiceModule {
 var BillingService = class extends ServiceModule {
   constructor() {
     super(...arguments);
-    this.basePath = "/v1/billing";
+    this.basePath = "/v1/money/billing";
+  }
+  retiredSurface(route) {
+    return Promise.reject(
+      new Error(
+        `${route} was retired after the money-services cutover. Use the dedicated money services instead of BillingService for this operation.`
+      )
+    );
   }
   // --------------------------------------------------------------------------
   // Customers
@@ -3852,28 +4009,28 @@ var BillingService = class extends ServiceModule {
   // Subscriptions
   // --------------------------------------------------------------------------
   async subscribe(data, options) {
-    return this.post("/subscriptions", data, options);
+    return this.retiredSurface("/v1/money/billing/subscriptions");
   }
   async listSubscriptions(params, options) {
-    return this._list("/subscriptions", params, options);
+    return this.retiredSurface("/v1/money/billing/subscriptions");
   }
   async cancelSubscription(id, options) {
-    return this.post(`/subscriptions/${id}/cancel`, void 0, options);
+    return this.retiredSurface(`/v1/money/billing/subscriptions/${id}/cancel`);
   }
   async resumeSubscription(id, options) {
-    return this.post(`/subscriptions/${id}/resume`, void 0, options);
+    return this.retiredSurface(`/v1/money/billing/subscriptions/${id}/resume`);
   }
   async upgradeSubscription(id, data, options) {
-    return this.patch(`/subscriptions/${id}/upgrade`, data, options);
+    return this.retiredSurface(`/v1/money/billing/subscriptions/${id}/upgrade`);
   }
   // --------------------------------------------------------------------------
   // Usage
   // --------------------------------------------------------------------------
   async reportUsage(data, options) {
-    return this.post("/usage", data, options);
+    return this.retiredSurface("/v1/money/billing/usage");
   }
   async getUsageSummary(options) {
-    return this._get("/usage/summary", options);
+    return this.retiredSurface("/v1/money/billing/usage/summary");
   }
   // --------------------------------------------------------------------------
   // Invoices
@@ -3906,7 +4063,7 @@ var BillingService = class extends ServiceModule {
     return this.post(`/connected-accounts/${id}/onboarding-link`, data, options);
   }
   async getAccountBalance(id, options) {
-    return this._get(`/connected-accounts/${id}/balance`, options);
+    return this.retiredSurface(`/v1/money/billing/connected-accounts/${id}/balance`);
   }
   async createAccountSession(id, options) {
     return this.post(`/connected-accounts/${id}/account-session`, void 0, options);
@@ -3921,25 +4078,25 @@ var BillingService = class extends ServiceModule {
   // Payments (Marketplace)
   // --------------------------------------------------------------------------
   async createPayment(data, options) {
-    return this.post("/payments", data, options);
+    return this.retiredSurface("/v1/money/billing/payments");
   }
   async getPayment(id, options) {
-    return this._get(`/payments/${id}`, options);
+    return this.retiredSurface(`/v1/money/billing/payments/${id}`);
   }
   async listPayments(params, options) {
-    return this._list("/payments", params, options);
+    return this.retiredSurface("/v1/money/billing/payments");
   }
   // --------------------------------------------------------------------------
   // Refunds
   // --------------------------------------------------------------------------
   async refundPayment(id, data, options) {
-    return this.post(`/payments/${id}/refund`, data, options);
+    return this.retiredSurface(`/v1/money/billing/payments/${id}/refund`);
   }
   // --------------------------------------------------------------------------
   // Payouts
   // --------------------------------------------------------------------------
   async getPayoutHistory(accountId, params, options) {
-    return this._list(`/connected-accounts/${accountId}/payouts`, params, options);
+    return this.retiredSurface(`/v1/money/billing/connected-accounts/${accountId}/payouts`);
   }
   async getPayoutSchedule(accountId, options) {
     return this._get(`/connected-accounts/${accountId}/payout-schedule`, options);
@@ -3951,13 +4108,10 @@ var BillingService = class extends ServiceModule {
   // Ledger
   // --------------------------------------------------------------------------
   async getTransactions(params, options) {
-    return this._list("/transactions", params, options);
+    return this.retiredSurface("/v1/money/billing/transactions");
   }
   async getTransactionSummary(params, options) {
-    return this._get(
-      this.withQuery("/transactions/summary", params),
-      options
-    );
+    return this.retiredSurface("/v1/money/billing/transactions/summary");
   }
   // --------------------------------------------------------------------------
   // Setup Sessions
@@ -3969,35 +4123,35 @@ var BillingService = class extends ServiceModule {
   // Connected Account Operations: Products, Prices, Subscriptions, Transfers
   // --------------------------------------------------------------------------
   async createProduct(data, options) {
-    return this.post("/products", data, options);
+    return this.retiredSurface("/v1/money/billing/products");
   }
   async createPrice(data, options) {
-    return this.post("/prices", data, options);
+    return this.retiredSurface("/v1/money/billing/prices");
   }
   async deactivatePrice(id, options) {
-    return this.post(`/prices/${id}/deactivate`, void 0, options);
+    return this.retiredSurface(`/v1/money/billing/prices/${id}/deactivate`);
   }
   async createConnectedSubscription(data, options) {
-    return this.post("/connected-subscriptions", data, options);
+    return this.retiredSurface("/v1/money/billing/connected-subscriptions");
   }
   async cancelConnectedSubscription(id, data, options) {
-    return this.post(`/connected-subscriptions/${id}/cancel`, data, options);
+    return this.retiredSurface(
+      `/v1/money/billing/connected-subscriptions/${id}/cancel`
+    );
   }
   async listConnectedSubscriptions(params, options) {
-    return this._list(
-      "/connected-subscriptions",
-      params,
-      options
+    return this.retiredSurface(
+      "/v1/money/billing/connected-subscriptions"
     );
   }
   async createConnectedSetupIntent(data, options) {
-    return this.post("/connected-setup-intents", data, options);
+    return this.retiredSurface("/v1/money/billing/connected-setup-intents");
   }
   async createTransfer(data, options) {
-    return this.post("/transfers", data, options);
+    return this.retiredSurface("/v1/money/billing/transfers");
   }
   async syncPaymentStatus(id, options) {
-    return this.post(`/payments/${id}/sync`, void 0, options);
+    return this.retiredSurface(`/v1/money/billing/payments/${id}/sync`);
   }
   // --------------------------------------------------------------------------
   // Legacy methods (backward compat)
@@ -5010,7 +5164,7 @@ var SearchService = class extends ServiceModule {
     return this.post("/documents", data);
   }
 };
-var PHOTO_BREAKPOINTS = [150, 320, 640, 1080];
+var PHOTO_BREAKPOINTS = [36, 150, 320, 640, 1080];
 var PhotoService = class extends ServiceModule {
   constructor() {
     super(...arguments);
@@ -5069,6 +5223,9 @@ var PhotoService = class extends ServiceModule {
    *
    * // Profile avatar at 48px -> snaps to 150px
    * const url = sm.photo.getOptimalUrl(photoId, 48)
+   *
+   * // Tiny avatar at 36px -> exact cache hit on 36px micro-thumbnail
+   * const url = sm.photo.getOptimalUrl(photoId, 36)
    * ```
    */
   getOptimalUrl(photoId, displayWidth, options) {
@@ -5078,6 +5235,13 @@ var PhotoService = class extends ServiceModule {
     const physicalWidth = Math.ceil(cssWidth * dpr);
     const size = PHOTO_BREAKPOINTS.find((bp) => bp >= physicalWidth) ?? PHOTO_BREAKPOINTS[PHOTO_BREAKPOINTS.length - 1];
     return this.getTransformUrl(photoId, { width: size, height: size, fit: "cover" });
+  }
+  /**
+   * Get the 36px avatar micro-thumbnail URL for a photo.
+   * Hits the pre-generated 36x36 bicubic-resized cached variant.
+   */
+  getAvatarThumbnailUrl(photoId) {
+    return this.getOptimalUrl(photoId, 36);
   }
   /**
    * Generate an HTML srcset string for responsive square photo display.
@@ -5950,6 +6114,7 @@ var ScaleMule = class {
     this.video = new VideoService(this._client);
     this.data = new DataService(this._client);
     this.chat = new ChatService(this._client);
+    this.conference = new ConferenceService(this._client);
     this.social = new SocialService(this._client);
     this.referrals = new ReferralsService(this._client);
     this.billing = new BillingService(this._client);
