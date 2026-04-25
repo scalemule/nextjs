@@ -55,6 +55,19 @@ export { useAnalytics } from './hooks/useAnalytics'
 export { useFeatureFlags } from './hooks/useFeatureFlags'
 export { usePushNotifications } from './hooks/usePushNotifications'
 export { useShare } from './hooks/useShare'
+export { useFeedback } from './hooks/useFeedback'
+export type { UseFeedbackOptions, UseFeedbackResult } from './hooks/useFeedback'
+
+// Components
+export { FeedbackWidget } from './components/FeedbackWidget'
+export type { FeedbackWidgetProps } from './components/FeedbackWidget'
+export type {
+  FeedbackItem,
+  FeedbackItemInput,
+  FeedbackPriority,
+  FeedbackStatus,
+  FeedbackType,
+} from './types/feedback'
 export type {
   RealtimeEvent,
   RealtimeMessage,
