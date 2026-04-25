@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, type CSSProperties, type ReactElement } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactElement } from 'react'
 import { useFeedback } from '../hooks/useFeedback'
 import { useScaleMule } from '../provider'
-import type { FeedbackItem, FeedbackType } from '../types/feedback'
+import type { FeedbackItem, FeedbackType, FeedbackWidgetConfig } from '../types/feedback'
 
 export interface FeedbackWidgetProps {
   /** Floating-button corner. Default `bottom-right`. */
@@ -132,6 +132,10 @@ const STYLES = {
     fontSize: 13,
     color: '#dc2626',
   } as CSSProperties,
+  note: {
+    fontSize: 13,
+    color: '#475569',
+  } as CSSProperties,
   success: {
     fontSize: 14,
     fontWeight: 500,
@@ -155,28 +159,14 @@ const ALL_TYPES: FeedbackType[] = ['bug_report', 'feature_request', 'improvement
  * `FEEDBACK_DISABLED` and the widget surfaces the error message.
  */
 export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null {
-  const {
-    position = 'bottom-right',
-    defaultType = 'feature_request',
-    allowedTypes = ALL_TYPES,
-    triggerLabel = 'Feedback',
-    theme = 'auto',
-    className,
-    enableRating = true,
-    ratingLabel = 'How would you rate your experience?',
-    onSubmitted,
-  } = props
-
   const sm = useScaleMule()
+  const { client } = sm
   const { submit } = useFeedback({ enabled: false })
-
-  // The widget is gated by the service-side `feedback_app_config.enabled`
-  // check; client-side we just unconditionally render the trigger. If the
-  // tenant has not enabled feedback, /submit will return 404 and the widget
-  // will surface that to the user — matching the documented contract.
+  const [serverConfig, setServerConfig] = useState<FeedbackWidgetConfig | null>(null)
+  const [configLoaded, setConfigLoaded] = useState(false)
 
   const [open, setOpen] = useState(false)
-  const [type, setType] = useState<FeedbackType>(defaultType)
+  const [type, setType] = useState<FeedbackType>('feature_request')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [email, setEmail] = useState('')
@@ -186,13 +176,52 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
   const [errMsg, setErrMsg] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
-  const isSignedIn = Boolean(sm.user || sm.user === undefined ? false : false)
-  // Detect signed-in state via presence of a current user on the provider.
   const signedIn = Boolean(sm.user)
-  void isSignedIn
+  const resolvedAllowedTypes = props.allowedTypes ?? serverConfig?.allowed_types ?? ALL_TYPES
+  const resolvedDefaultType =
+    (props.defaultType && resolvedAllowedTypes.includes(props.defaultType)
+      ? props.defaultType
+      : resolvedAllowedTypes[0]) ?? 'feature_request'
+  const resolvedPosition = props.position ?? serverConfig?.widget_position ?? 'bottom-right'
+  const resolvedTheme = props.theme ?? serverConfig?.widget_theme ?? 'auto'
+  const allowAnonymous = serverConfig?.allow_anonymous ?? true
+  const anonymousBlocked = !signedIn && !allowAnonymous
+
+  useEffect(() => {
+    let active = true
+
+    client
+      .get<FeedbackWidgetConfig>('/v1/feedback/widget-config')
+      .then((config) => {
+        if (active) setServerConfig(config)
+      })
+      .catch(() => {
+        if (active) setServerConfig(null)
+      })
+      .finally(() => {
+        if (active) setConfigLoaded(true)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [client])
+
+  useEffect(() => {
+    setType((current) =>
+      resolvedAllowedTypes.includes(current) ? current : resolvedDefaultType
+    )
+  }, [resolvedAllowedTypes, resolvedDefaultType])
+
+  if (!configLoaded) {
+    return null
+  }
+  if (serverConfig && !serverConfig.enabled) {
+    return null
+  }
 
   function reset() {
-    setType(defaultType)
+    setType(resolvedDefaultType)
     setTitle('')
     setDescription('')
     setEmail('')
@@ -205,6 +234,10 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim() || !description.trim()) return
+    if (anonymousBlocked) {
+      setErrMsg('Please sign in to send feedback for this app')
+      return
+    }
     if (!signedIn && !email.trim()) {
       setErrMsg('email is required when not signed in')
       return
@@ -221,7 +254,7 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
         tags,
       })
       setDone(true)
-      onSubmitted?.(item)
+      props.onSubmitted?.(item)
     } catch (err) {
       const message =
         err && typeof err === 'object' && 'message' in err
@@ -240,8 +273,8 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
   }
 
   const dark =
-    theme === 'dark' ||
-    (theme === 'auto' &&
+    resolvedTheme === 'dark' ||
+    (resolvedTheme === 'auto' &&
       typeof window !== 'undefined' &&
       window.matchMedia &&
       window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -251,10 +284,10 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={className}
-        style={{ ...STYLES.trigger, ...POSITION_STYLES[position] }}
+        className={props.className}
+        style={{ ...STYLES.trigger, ...POSITION_STYLES[resolvedPosition] }}
       >
-        {triggerLabel}
+        {props.triggerLabel ?? 'Feedback'}
       </button>
 
       {open && (
@@ -296,9 +329,11 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
                   </button>
                 </div>
 
-                {enableRating && (
+                {props.enableRating !== false && (
                   <div>
-                    <div style={STYLES.label}>{ratingLabel}</div>
+                    <div style={STYLES.label}>
+                      {props.ratingLabel ?? 'How would you rate your experience?'}
+                    </div>
                     <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
                       {[1, 2, 3, 4, 5].map((n) => {
                         const active = (hoverRating ?? rating ?? 0) >= n
@@ -353,7 +388,7 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
                     value={type}
                     onChange={(e) => setType(e.target.value as FeedbackType)}
                   >
-                    {allowedTypes.map((t) => (
+                    {resolvedAllowedTypes.map((t) => (
                       <option key={t} value={t}>
                         {TYPE_LABELS[t]}
                       </option>
@@ -385,7 +420,7 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
                   />
                 </label>
 
-                {!signedIn && (
+                {!signedIn && allowAnonymous && (
                   <label>
                     <div style={STYLES.label}>Email</div>
                     <input
@@ -399,13 +434,23 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
                   </label>
                 )}
 
+                {anonymousBlocked && (
+                  <div style={STYLES.note}>
+                    This app only accepts feedback from signed-in users.
+                  </div>
+                )}
+
                 {errMsg && <div style={STYLES.error}>{errMsg}</div>}
 
                 <div style={STYLES.rowEnd}>
                   <button type="button" style={STYLES.secondaryBtn} onClick={handleClose}>
                     Cancel
                   </button>
-                  <button type="submit" style={STYLES.primaryBtn} disabled={submitting}>
+                  <button
+                    type="submit"
+                    style={STYLES.primaryBtn}
+                    disabled={submitting || anonymousBlocked}
+                  >
                     {submitting ? 'Sending…' : 'Send'}
                   </button>
                 </div>

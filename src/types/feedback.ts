@@ -37,6 +37,18 @@ export interface FeedbackItem {
 }
 
 /**
+ * Public widget configuration returned by `GET /v1/feedback/widget-config`.
+ * The SDK uses this to drive runtime widget behavior per application.
+ */
+export interface FeedbackWidgetConfig {
+  enabled: boolean
+  allow_anonymous: boolean
+  widget_theme: 'light' | 'dark' | 'auto'
+  widget_position: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
+  allowed_types: FeedbackType[] | null
+}
+
+/**
  * Body for `POST /v1/feedback/submit`.
  *
  * `email` is required when no end-user session is present — the gateway omits
