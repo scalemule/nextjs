@@ -67,6 +67,7 @@ export type {
   FeedbackPriority,
   FeedbackStatus,
   FeedbackType,
+  FeedbackWidgetConfig,
 } from './types/feedback'
 export type {
   RealtimeEvent,
