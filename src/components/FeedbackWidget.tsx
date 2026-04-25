@@ -18,6 +18,14 @@ export interface FeedbackWidgetProps {
   theme?: 'light' | 'dark' | 'auto'
   /** Optional class for the trigger button (use to override styling). */
   className?: string
+  /** Show the 1–5 star rating row. Default `true`. Rating is stored as a
+   *  `rating:N` tag on the feedback item — staff can filter on it from the
+   *  dashboard inbox. Optional per submission; users who skip it just submit
+   *  without a rating. */
+  enableRating?: boolean
+  /** Label for the rating row when enabled. Default `How would you rate
+   *  your experience?`. */
+  ratingLabel?: string
   /** Called after a successful submit. */
   onSubmitted?: (item: FeedbackItem) => void
 }
@@ -154,6 +162,8 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
     triggerLabel = 'Feedback',
     theme = 'auto',
     className,
+    enableRating = true,
+    ratingLabel = 'How would you rate your experience?',
     onSubmitted,
   } = props
 
@@ -170,6 +180,8 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [email, setEmail] = useState('')
+  const [rating, setRating] = useState<number | null>(null)
+  const [hoverRating, setHoverRating] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [errMsg, setErrMsg] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -184,6 +196,8 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
     setTitle('')
     setDescription('')
     setEmail('')
+    setRating(null)
+    setHoverRating(null)
     setErrMsg(null)
     setDone(false)
   }
@@ -198,11 +212,13 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
     setSubmitting(true)
     setErrMsg(null)
     try {
+      const tags = rating != null ? [`rating:${rating}`] : undefined
       const item = await submit({
         type,
         title: title.trim(),
         description: description.trim(),
         email: signedIn ? undefined : email.trim() || undefined,
+        tags,
       })
       setDone(true)
       onSubmitted?.(item)
@@ -279,6 +295,56 @@ export function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null 
                     ×
                   </button>
                 </div>
+
+                {enableRating && (
+                  <div>
+                    <div style={STYLES.label}>{ratingLabel}</div>
+                    <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                      {[1, 2, 3, 4, 5].map((n) => {
+                        const active = (hoverRating ?? rating ?? 0) >= n
+                        return (
+                          <button
+                            key={n}
+                            type="button"
+                            aria-label={`${n} star${n === 1 ? '' : 's'}`}
+                            onClick={() => setRating(rating === n ? null : n)}
+                            onMouseEnter={() => setHoverRating(n)}
+                            onMouseLeave={() => setHoverRating(null)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: 2,
+                              fontSize: 24,
+                              lineHeight: 1,
+                              color: active ? '#f59e0b' : '#cbd5e1',
+                              transition: 'color 80ms ease',
+                            }}
+                          >
+                            {active ? '★' : '☆'}
+                          </button>
+                        )
+                      })}
+                      {rating != null && (
+                        <button
+                          type="button"
+                          onClick={() => setRating(null)}
+                          style={{
+                            marginLeft: 8,
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'inherit',
+                            opacity: 0.6,
+                            fontSize: 12,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <label>
                   <div style={STYLES.label}>Type</div>
