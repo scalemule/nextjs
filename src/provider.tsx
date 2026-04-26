@@ -121,13 +121,13 @@ export interface ScaleMuleProviderProps extends ScaleMuleConfig {
    *
    * The platform stores the per-app policy in
    * `application_storage_settings.media_policy` (Phase 4 / P3, live in
-   * prod). That endpoint is `MemberOnly` admin-auth, so end-user-context
-   * provider can't fetch it directly — apps that want policy-driven
-   * defaults should declare the value here, mirroring whatever the
-   * platform admin set.
+   * prod). On boot, the provider fetches `GET /v1/storage/policy` (a
+   * lightweight `EndUserOnly` endpoint added in `@scalemule/sdk@0.0.45`)
+   * and uses the returned policy as the effective default.
    *
-   * Default: undefined → `useMedia()` falls back to its built-in
-   * `safe_visible` default.
+   * Passing this prop overrides the auto-fetched value — useful for
+   * tests or when an app needs to force a specific mode regardless of
+   * platform config.
    */
   mediaPolicy?: import('./hooks/useMedia').MediaPolicy
 }
@@ -204,6 +204,50 @@ export function ScaleMuleProvider({
       debug,
     })
   }, [apiKey, applicationId, environment, resolvedGatewayUrl, debug])
+
+  // Auto-fetch the application's `media_policy` so customer apps don't
+  // need to mirror it as a prop. Falls back to the prop if the fetch
+  // fails or the prop is set explicitly. The endpoint is `EndUserOnly`,
+  // so any API-keyed client can read it. Companion change in
+  // `@scalemule/sdk@0.0.45` exposes `storage.getPolicy()`.
+  const [fetchedPolicy, setFetchedPolicy] = useState<
+    import('./hooks/useMedia').MediaPolicy | undefined
+  >(undefined)
+  useEffect(() => {
+    // If the consumer pinned a policy explicitly, don't auto-fetch.
+    if (mediaPolicy) return
+    let mounted = true
+    void (async () => {
+      try {
+        // `getPolicy()` lands in @scalemule/sdk@0.0.45; the type narrowing
+        // tolerates older base SDKs that don't expose it yet.
+        const fn = (
+          baseClient.storage as unknown as {
+            getPolicy?: () => Promise<{ data?: { media_policy?: string } }>
+          }
+        ).getPolicy
+        if (typeof fn !== 'function') return
+        const r = await fn.call(baseClient.storage)
+        if (!mounted) return
+        const v = r?.data?.media_policy as import('./hooks/useMedia').MediaPolicy | undefined
+        if (
+          v === 'fast_trusted' ||
+          v === 'safe_visible' ||
+          v === 'safe_public' ||
+          v === 'moderated' ||
+          v === 'compliance'
+        ) {
+          setFetchedPolicy(v)
+        }
+      } catch {
+        // Network / 4xx — silent. useMedia falls back to safe_visible.
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [baseClient, mediaPolicy])
+  const effectiveMediaPolicy = mediaPolicy ?? fetchedPolicy
 
   // Keep realtime and money clients in sync with the NextJS session token.
   useEffect(() => {
@@ -338,7 +382,7 @@ export function ScaleMuleProvider({
       photo: baseClient.photo,
       video: baseClient.video,
       audio: baseClient.audio,
-      mediaPolicy,
+      mediaPolicy: effectiveMediaPolicy,
       user,
       setUser: handleSetUser,
       initializing,
@@ -353,7 +397,7 @@ export function ScaleMuleProvider({
       accountSwitcherPrivacy,
       bootstrapFlags,
     }),
-    [client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, mediaPolicy]
+    [client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
   )
 
   return (
