@@ -2708,6 +2708,25 @@ var StorageService = class extends ServiceModule {
     return this._get(`/files/${fileId}/info`, options);
   }
   /**
+   * Get the calling app's storage + media settings — content policy,
+   * retention, max upload size, and the per-app `media_policy`.
+   *
+   * `media_policy` drives release-gating in the SDK upload helpers:
+   * `fast_trusted` / `safe_visible` resolve immediately on upload; the
+   * `safe_public` / `moderated` / `compliance` modes await pipeline
+   * completion before resolving the upload promise.
+   */
+  async getSettings(options) {
+    return this._get("/settings", options);
+  }
+  /**
+   * Update the calling app's storage + media settings. Admin-only on the
+   * platform side (callers without the right role get 403).
+   */
+  async updateSettings(settings, options) {
+    return this.put("/settings", settings, options);
+  }
+  /**
    * Aggregate status for a file — single call returns scan + reserved
    * optimize/transcode slots + the canonical view URL paths for image
    * (transform endpoint) and video (HLS playlist) MIME types.
@@ -5658,6 +5677,72 @@ var PhotoService = class extends ServiceModule {
     return this.get(id);
   }
 };
+var AudioService = class extends ServiceModule {
+  /**
+   * @param storage Required for {@link uploadViaStorage}. Wired up by the
+   *   top-level {@link ScaleMule} constructor — most call sites should not
+   *   instantiate `AudioService` directly.
+   */
+  constructor(client, storage) {
+    super(client);
+    this.storage = storage;
+    this.basePath = "/v1/audios";
+  }
+  /**
+   * Register a storage-uploaded audio asset with the audio service.
+   * Idempotent — re-calling with the same `file_id` returns the existing
+   * record.
+   */
+  async register(args, options) {
+    return this.post("/register", { file_id: args.fileId, sm_user_id: args.userId }, options);
+  }
+  /**
+   * Upload a file to storage (browser → S3 direct, private, uncompressed)
+   * and register it with the audio service.
+   *
+   * Mirrors `photo.uploadViaStorage()` / `video.uploadViaStorage()`. If
+   * `register()` fails after a successful storage upload, the file is *not*
+   * lost — the returned `file_id` is still valid as a generic private storage
+   * file. The SDK logs a warning and returns `audio_id: null`.
+   */
+  async uploadViaStorage(file, uploadOptions, requestOptions) {
+    const uploadResult = await this.storage.uploadPrivate(file, {
+      filename: uploadOptions?.filename,
+      metadata: uploadOptions?.metadata,
+      onProgress: uploadOptions?.onProgress,
+      signal: uploadOptions?.signal
+    });
+    if (uploadResult.error || !uploadResult.data) {
+      return { data: null, error: uploadResult.error };
+    }
+    const fileInfo = uploadResult.data;
+    const fileId = fileInfo.id;
+    const originalViewUrl = fileInfo.url ?? null;
+    const registerResult = await this.register({ fileId, userId: uploadOptions?.userId }, requestOptions);
+    if (registerResult.error || !registerResult.data) {
+      console.warn(
+        "[scalemule-sdk] audio.register() failed after storage upload; typed audio metadata unavailable.",
+        registerResult.error
+      );
+      return {
+        data: {
+          file_id: fileId,
+          audio_id: null,
+          original_view_url: originalViewUrl
+        },
+        error: null
+      };
+    }
+    return {
+      data: {
+        file_id: fileId,
+        audio_id: registerResult.data.audio_id,
+        original_view_url: originalViewUrl
+      },
+      error: null
+    };
+  }
+};
 var DeadLetterApi = class extends ServiceModule {
   constructor() {
     super(...arguments);
@@ -6477,6 +6562,7 @@ var ScaleMule = class {
     this.graph = new GraphService(this._client);
     this.functions = new FunctionsService(this._client);
     this.photo = new PhotoService(this._client, this.storage);
+    this.audio = new AudioService(this._client, this.storage);
     this.flagContent = new FlagContentService(this._client);
     this.creatorMaker = new CreatorMakerService(this._client);
     this.compliance = new ComplianceService(this._client);
@@ -7565,6 +7651,7 @@ function ScaleMuleProvider({
       storage: baseClient.storage,
       photo: baseClient.photo,
       video: baseClient.video,
+      audio: baseClient.audio,
       mediaPolicy,
       user,
       setUser: handleSetUser,
@@ -8879,7 +8966,7 @@ function useContent(options = {}) {
   );
 }
 function useMedia() {
-  const { storage, photo, video, mediaPolicy: providerDefaultPolicy } = useScaleMule();
+  const { storage, photo, video, audio, mediaPolicy: providerDefaultPolicy } = useScaleMule();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   const upload = useCallback(
@@ -8933,6 +9020,21 @@ function useMedia() {
             is_public: false
           };
         }
+        if (mimeType.startsWith("audio/") && !isPublic) {
+          const r2 = await audio.uploadViaStorage(file, sharedOpts);
+          if (r2.error || !r2.data) {
+            throw r2.error ?? { code: "upload_error", message: "Upload failed", status: 0 };
+          }
+          return {
+            file_id: r2.data.file_id,
+            photo_id: null,
+            original_view_url: r2.data.original_view_url,
+            optimized_url_promise: Promise.resolve(null),
+            hls_url_promise: Promise.resolve(null),
+            mime_type: mimeType,
+            is_public: false
+          };
+        }
         if (mimeType.startsWith("image/") && isPublic) {
           const r2 = await storage.upload(file, {
             ...sharedOpts,
@@ -8975,7 +9077,7 @@ function useMedia() {
         setUploading(false);
       }
     },
-    [storage, photo, video, providerDefaultPolicy]
+    [storage, photo, video, audio, providerDefaultPolicy]
   );
   const cancelUpload = useCallback(
     async (fileId) => {
