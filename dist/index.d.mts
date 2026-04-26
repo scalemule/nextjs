@@ -2,7 +2,7 @@ import * as react_jsx_runtime from 'react/jsx-runtime';
 import { ReactNode, ReactElement } from 'react';
 import { MoneyClient } from '@scalemule/money';
 export { MoneyClient, MoneyClientConfig, createMoneyClient } from '@scalemule/money';
-import { RealtimeService, StorageService, PhotoService, VideoService, ApiError as ApiError$1 } from '@scalemule/sdk';
+import { RealtimeService, StorageService, PhotoService, VideoService, ApiError as ApiError$1, FileStatus } from '@scalemule/sdk';
 import { ScaleMuleClient } from './client.mjs';
 export { ClientConfig, RequestOptions, createClient } from './client.mjs';
 import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-BIIUrnPr.mjs';
@@ -267,6 +267,70 @@ interface UseMediaReturn {
  * tree and the full anti-patterns list.
  */
 declare function useMedia(): UseMediaReturn;
+
+interface UseFileStatusOptions {
+    /** Storage file_id to read status for. */
+    fileId: string | null | undefined;
+    /**
+     * Optional poll interval in milliseconds. If set, the hook re-fetches
+     * status every `pollIntervalMs`. Useful while waiting for transcode /
+     * optimization to complete. Pass `null` (default) for a one-shot read.
+     *
+     * Polling stops automatically once `scan.status === 'clean'` AND the
+     * caller's expected pipeline is done (`urls.optimized` returns 200 for
+     * images, `urls.hls` returns 200 for videos). Today the hook can only
+     * detect scan clean — broader pipeline-done detection lands when Phase 3
+     * enriches the optimize/transcode response fields.
+     */
+    pollIntervalMs?: number | null;
+    /**
+     * Disable the hook (don't fetch). Useful when `fileId` is conditional.
+     */
+    disabled?: boolean;
+}
+interface UseFileStatusReturn {
+    /** The latest status response, or null on first render / disabled. */
+    status: FileStatus | null;
+    /** True while a fetch is in flight. */
+    loading: boolean;
+    /** Last error, or null. */
+    error: ApiError$1 | null;
+    /**
+     * Convenience: scan is clean. For images/videos, this means the file
+     * is *safe to render*; the optimized / HLS variants may still be
+     * processing. The caller should attempt the constructed URLs and
+     * fall back to `urls.original` if the pipeline-specific URL 404s.
+     */
+    isReady: boolean;
+    /** Force-refresh the status. Promise resolves when the new state is committed. */
+    refresh: () => Promise<void>;
+}
+/**
+ * Subscribes to {@link FileStatus} for a single file. Today this is a
+ * pull-only hook — single fetch by default, optional polling.
+ *
+ * Phase 3 of the realtime-chat media pipeline ADR will add a push variant
+ * for chat surfaces — `useFileStatus({ messageId })` will subscribe to
+ * `file.status` events on the existing per-conversation realtime channel
+ * via the `scalemule-chat` translation bridge (P5'). Until that lands,
+ * customers using this hook from chat surfaces should pass `pollIntervalMs`
+ * in the 1–3 second range while a media pipeline is expected to be running,
+ * then drop the polling once `isReady` is true.
+ *
+ * @example
+ * ```tsx
+ * function ChatImage({ fileId }: { fileId: string }) {
+ *   const { status, isReady } = useFileStatus({
+ *     fileId,
+ *     pollIntervalMs: 2000,
+ *   });
+ *   if (!isReady) return <div>Scanning…</div>;
+ *   const src = status?.urls.optimized ?? status?.urls.original;
+ *   return <img src={src} />;
+ * }
+ * ```
+ */
+declare function useFileStatus(options: UseFileStatusOptions): UseFileStatusReturn;
 
 declare const useMoney: typeof useMoneyClient;
 
@@ -751,4 +815,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };

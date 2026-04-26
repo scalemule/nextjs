@@ -2707,6 +2707,31 @@ var StorageService = class extends ServiceModule {
     return this._get(`/files/${fileId}/info`, options);
   }
   /**
+   * Aggregate status for a file — single call returns scan + reserved
+   * optimize/transcode slots + the canonical view URL paths for image
+   * (transform endpoint) and video (HLS playlist) MIME types.
+   *
+   * Foundational primitive for the chat / progressive media read side.
+   * `useFileStatus()` (in `@scalemule/nextjs`) consumes this for both
+   * first-paint and refresh-on-demand scenarios.
+   *
+   * `optimize` and `transcode` are reserved for Phase 3 enrichment. Until
+   * the photo/video services expose internal status endpoints, callers
+   * should attempt the constructed URLs directly to discover readiness
+   * (404 means the pipeline is still running).
+   *
+   * @example
+   * ```ts
+   * const r = await client.storage.getFileStatus(fileId);
+   * if (r.data?.scan.status === 'clean' && r.data.urls.optimized) {
+   *   // image: try transform URL for an optimized variant
+   * }
+   * ```
+   */
+  async getFileStatus(fileId, options) {
+    return this._get(`/files/${fileId}/status`, options);
+  }
+  /**
    * Get a signed view URL for inline display (img src, thumbnails).
    * Returns CloudFront signed URL (fast, ~1us) or S3 presigned fallback.
    */
@@ -8960,6 +8985,50 @@ function useMedia() {
   );
   return { upload, cancelUpload, error, uploading };
 }
+function useFileStatus(options) {
+  const { storage } = useScaleMule();
+  const { fileId, pollIntervalMs = null, disabled = false } = options;
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const requestSeqRef = useRef(0);
+  const fetchStatus = useCallback(async () => {
+    if (!fileId || disabled) return;
+    const seq = ++requestSeqRef.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await storage.getFileStatus(fileId);
+      if (seq !== requestSeqRef.current) return;
+      if (r.error || !r.data) {
+        setError(r.error);
+        return;
+      }
+      setStatus(r.data);
+    } catch (err) {
+      if (seq !== requestSeqRef.current) return;
+      setError(err);
+    } finally {
+      if (seq === requestSeqRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [storage, fileId, disabled]);
+  useEffect(() => {
+    void fetchStatus();
+  }, [fetchStatus]);
+  useEffect(() => {
+    if (!pollIntervalMs || disabled || !fileId) return;
+    const isClean = status?.scan.status === "clean";
+    if (isClean) return;
+    const id = setInterval(() => {
+      void fetchStatus();
+    }, pollIntervalMs);
+    return () => clearInterval(id);
+  }, [pollIntervalMs, disabled, fileId, status?.scan.status, fetchStatus]);
+  const isReady = status?.scan.status === "clean";
+  return { status, loading, error, isReady, refresh: fetchStatus };
+}
 
 // src/hooks/useMoney.ts
 var useMoney = useMoneyClient;
@@ -10746,4 +10815,4 @@ function createSafeLogger(prefix) {
   };
 }
 
-export { FeedbackWidget, ScaleMuleApiError, ScaleMuleClient2 as ScaleMuleClient, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { FeedbackWidget, ScaleMuleApiError, ScaleMuleClient2 as ScaleMuleClient, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
