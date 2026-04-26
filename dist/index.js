@@ -2708,6 +2708,31 @@ var StorageService = class extends ServiceModule {
     return this._get(`/files/${fileId}/info`, options);
   }
   /**
+   * Aggregate status for a file — single call returns scan + reserved
+   * optimize/transcode slots + the canonical view URL paths for image
+   * (transform endpoint) and video (HLS playlist) MIME types.
+   *
+   * Foundational primitive for the chat / progressive media read side.
+   * `useFileStatus()` (in `@scalemule/nextjs`) consumes this for both
+   * first-paint and refresh-on-demand scenarios.
+   *
+   * `optimize` and `transcode` are reserved for Phase 3 enrichment. Until
+   * the photo/video services expose internal status endpoints, callers
+   * should attempt the constructed URLs directly to discover readiness
+   * (404 means the pipeline is still running).
+   *
+   * @example
+   * ```ts
+   * const r = await client.storage.getFileStatus(fileId);
+   * if (r.data?.scan.status === 'clean' && r.data.urls.optimized) {
+   *   // image: try transform URL for an optimized variant
+   * }
+   * ```
+   */
+  async getFileStatus(fileId, options) {
+    return this._get(`/files/${fileId}/status`, options);
+  }
+  /**
    * Get a signed view URL for inline display (img src, thumbnails).
    * Returns CloudFront signed URL (fast, ~1us) or S3 presigned fallback.
    */
@@ -8961,6 +8986,50 @@ function useMedia() {
   );
   return { upload, cancelUpload, error, uploading };
 }
+function useFileStatus(options) {
+  const { storage } = useScaleMule();
+  const { fileId, pollIntervalMs = null, disabled = false } = options;
+  const [status, setStatus] = react.useState(null);
+  const [loading, setLoading] = react.useState(false);
+  const [error, setError] = react.useState(null);
+  const requestSeqRef = react.useRef(0);
+  const fetchStatus = react.useCallback(async () => {
+    if (!fileId || disabled) return;
+    const seq = ++requestSeqRef.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await storage.getFileStatus(fileId);
+      if (seq !== requestSeqRef.current) return;
+      if (r.error || !r.data) {
+        setError(r.error);
+        return;
+      }
+      setStatus(r.data);
+    } catch (err) {
+      if (seq !== requestSeqRef.current) return;
+      setError(err);
+    } finally {
+      if (seq === requestSeqRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [storage, fileId, disabled]);
+  react.useEffect(() => {
+    void fetchStatus();
+  }, [fetchStatus]);
+  react.useEffect(() => {
+    if (!pollIntervalMs || disabled || !fileId) return;
+    const isClean = status?.scan.status === "clean";
+    if (isClean) return;
+    const id = setInterval(() => {
+      void fetchStatus();
+    }, pollIntervalMs);
+    return () => clearInterval(id);
+  }, [pollIntervalMs, disabled, fileId, status?.scan.status, fetchStatus]);
+  const isReady = status?.scan.status === "clean";
+  return { status, loading, error, isReady, refresh: fetchStatus };
+}
 
 // src/hooks/useMoney.ts
 var useMoney = useMoneyClient;
@@ -10771,6 +10840,7 @@ exports.useBilling = useBilling;
 exports.useContent = useContent;
 exports.useFeatureFlags = useFeatureFlags;
 exports.useFeedback = useFeedback;
+exports.useFileStatus = useFileStatus;
 exports.useMedia = useMedia;
 exports.useMoney = useMoney;
 exports.useMoneyClient = useMoneyClient;
