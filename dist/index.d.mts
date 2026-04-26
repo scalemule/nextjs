@@ -216,13 +216,13 @@ interface ScaleMuleProviderProps extends ScaleMuleConfig {
      *
      * The platform stores the per-app policy in
      * `application_storage_settings.media_policy` (Phase 4 / P3, live in
-     * prod). That endpoint is `MemberOnly` admin-auth, so end-user-context
-     * provider can't fetch it directly — apps that want policy-driven
-     * defaults should declare the value here, mirroring whatever the
-     * platform admin set.
+     * prod). On boot, the provider fetches `GET /v1/storage/policy` (a
+     * lightweight `EndUserOnly` endpoint added in `@scalemule/sdk@0.0.45`)
+     * and uses the returned policy as the effective default.
      *
-     * Default: undefined → `useMedia()` falls back to its built-in
-     * `safe_visible` default.
+     * Passing this prop overrides the auto-fetched value — useful for
+     * tests or when an app needs to force a specific mode regardless of
+     * platform config.
      */
     mediaPolicy?: MediaPolicy;
 }
@@ -436,10 +436,32 @@ interface ScaleMuleMediaProps {
     alt?: string;
     /**
      * Polling interval while waiting for the media pipeline to complete.
-     * Defaults to 2000ms; set to `null` to disable polling. Polling stops
-     * automatically once scan is clean.
+     *
+     * Default behaviour:
+     *   - With `conversationId` set: polling **off** (the realtime
+     *     conversation channel pushes `file_status_changed` events;
+     *     a poll loop on top would just be wasted requests).
+     *   - Without `conversationId`: 2000ms.
+     *
+     * Override either way by passing a number (belt-and-suspenders if you
+     * don't trust your websocket) or `null` (disable explicitly).
+     * Polling stops automatically once both scan and any expected
+     * pipeline (optimize / transcode) have settled.
      */
     pollIntervalMs?: number | null;
+    /**
+     * Chat-surface push: when set, the underlying `useFileStatus` hook
+     * subscribes to the conversation's realtime channel and refreshes on
+     * `file_status_changed` events for this `fileId`. See `useFileStatus`
+     * docs for channel naming and bridge behaviour.
+     */
+    conversationId?: string | null;
+    /**
+     * Conversation kind, controls the channel name prefix
+     * (`conversation:{id}` vs `conversation:lr|bc|support:{id}`).
+     * Default is `'standard'`.
+     */
+    conversationKind?: ConversationKind;
     /**
      * Render a custom placeholder while waiting for scan / upload. Defaults
      * to a tiny "Loading…" div. Receives the current FileStatus (or null).

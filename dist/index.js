@@ -2242,14 +2242,25 @@ var StorageService = class extends ServiceModule {
         },
         requestOpts
       );
-    } else {
-      telemetry?.emit(sessionId, "upload.completed", {
-        file_id,
-        size_bytes: file.size,
-        duration_ms: Date.now() - directStart
-      });
+      return { data: null, error: completeResult.error };
     }
-    return completeResult;
+    telemetry?.emit(sessionId, "upload.completed", {
+      file_id,
+      size_bytes: file.size,
+      duration_ms: Date.now() - directStart
+    });
+    const d = completeResult.data;
+    return {
+      data: {
+        id: d.file_id,
+        filename: d.filename,
+        content_type: d.content_type,
+        size_bytes: d.size_bytes,
+        url: d.url,
+        created_at: (/* @__PURE__ */ new Date()).toISOString()
+      },
+      error: null
+    };
   }
   // --------------------------------------------------------------------------
   // Multipart Upload
@@ -2770,6 +2781,20 @@ var StorageService = class extends ServiceModule {
    */
   async getFileStatus(fileId, options) {
     return this._get(`/files/${fileId}/status`, options);
+  }
+  /**
+   * Read the application's active media policy. Lightweight endpoint
+   * (`GET /v1/storage/policy`) used by the SDK on boot to pick up the
+   * platform-default `media_policy` without requiring app-admin auth.
+   *
+   * @example
+   * ```ts
+   * const { data } = await client.storage.getPolicy();
+   * console.log(data?.media_policy); // 'safe_visible'
+   * ```
+   */
+  async getPolicy(options) {
+    return this._get(`/policy`, options);
   }
   /**
    * Get a signed view URL for inline display (img src, thumbnails).
@@ -4444,15 +4469,19 @@ var BillingService = class extends ServiceModule {
     return this.retiredSurface(`/v1/money/billing/payments/${id}/sync`);
   }
   // --------------------------------------------------------------------------
-  // Legacy methods (backward compat)
+  // Removed aliases (Phase 6 — billing-v2 retirement)
+  //
+  // These were soft-deprecated wrappers in earlier SDK versions. They now
+  // throw at runtime so any caller still using them gets an immediate signal.
+  // Replacements: createSubscription → subscribe(); getInvoices → listInvoices().
   // --------------------------------------------------------------------------
-  /** @deprecated Use subscribe() instead */
+  /** @removed Use subscribe() instead. */
   async createSubscription(data) {
-    return this.subscribe(data);
+    throw new Error("BillingService.createSubscription was removed in Phase 6. Use subscribe() instead.");
   }
-  /** @deprecated Use listInvoices() instead */
+  /** @removed Use listInvoices() instead. */
   async getInvoices(params) {
-    return this.listInvoices(params);
+    throw new Error("BillingService.getInvoices was removed in Phase 6. Use listInvoices() instead.");
   }
 };
 var AnalyticsService = class extends ServiceModule {
@@ -7569,6 +7598,28 @@ function ScaleMuleProvider({
       debug
     });
   }, [apiKey, applicationId, environment, resolvedGatewayUrl, debug]);
+  const [fetchedPolicy, setFetchedPolicy] = React.useState(void 0);
+  React.useEffect(() => {
+    if (mediaPolicy) return;
+    let mounted = true;
+    void (async () => {
+      try {
+        const fn = baseClient.storage.getPolicy;
+        if (typeof fn !== "function") return;
+        const r = await fn.call(baseClient.storage);
+        if (!mounted) return;
+        const v = r?.data?.media_policy;
+        if (v === "fast_trusted" || v === "safe_visible" || v === "safe_public" || v === "moderated" || v === "compliance") {
+          setFetchedPolicy(v);
+        }
+      } catch {
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [baseClient, mediaPolicy]);
+  const effectiveMediaPolicy = mediaPolicy ?? fetchedPolicy;
   React.useEffect(() => {
     const token = client.getSessionToken();
     if (token) {
@@ -7672,7 +7723,7 @@ function ScaleMuleProvider({
       photo: baseClient.photo,
       video: baseClient.video,
       audio: baseClient.audio,
-      mediaPolicy,
+      mediaPolicy: effectiveMediaPolicy,
       user,
       setUser: handleSetUser,
       initializing,
@@ -7687,7 +7738,7 @@ function ScaleMuleProvider({
       accountSwitcherPrivacy,
       bootstrapFlags
     }),
-    [client, money$1, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, mediaPolicy]
+    [client, money$1, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
   );
   return /* @__PURE__ */ jsxRuntime.jsx(ScaleMuleContext.Provider, { value, children });
 }
@@ -9103,10 +9154,13 @@ function useMedia() {
     async (fileId) => {
       setError(null);
       try {
-        const r = await storage.delete(fileId);
-        if (r.error) {
-          if (r.error.status === 404) return;
-          throw r.error;
+        const [, storageResult] = await Promise.all([
+          photo.delete(fileId).catch(() => void 0),
+          storage.delete(fileId)
+        ]);
+        if (storageResult.error) {
+          if (storageResult.error.status === 404) return;
+          throw storageResult.error;
         }
       } catch (err) {
         const e = err;
@@ -9114,7 +9168,7 @@ function useMedia() {
         throw e;
       }
     },
-    [storage]
+    [storage, photo]
   );
   return { upload, cancelUpload, error, uploading };
 }
@@ -9171,23 +9225,36 @@ function useFileStatus(options) {
   }, [fetchStatus]);
   React.useEffect(() => {
     if (!pollIntervalMs || disabled || !fileId) return;
-    const isClean = status?.scan.status === "clean";
-    if (isClean) return;
+    const scan = status?.scan.status;
+    if (scan === "threat" || scan === "quarantined" || scan === "error") return;
+    const optimizePending = status?.optimize != null && status.optimize.status !== "done";
+    const transcodePending = status?.transcode != null && status.transcode.status !== "done";
+    const pipelinePending = optimizePending || transcodePending;
+    const isSettled = scan === "clean" && !pipelinePending;
+    if (isSettled) return;
     const id = setInterval(() => {
       void fetchStatus();
     }, pollIntervalMs);
     return () => clearInterval(id);
-  }, [pollIntervalMs, disabled, fileId, status?.scan.status, fetchStatus]);
+  }, [
+    pollIntervalMs,
+    disabled,
+    fileId,
+    status?.scan.status,
+    status?.optimize,
+    status?.transcode,
+    fetchStatus
+  ]);
   React.useEffect(() => {
     if (!conversationId || !fileId || disabled) return;
     const channel = conversationChannel(conversationKind, conversationId);
     const unsub = realtime.subscribe(channel, (data) => {
+      if (typeof data !== "object" || data === null) return;
       const payload = data;
-      if (!payload) return;
-      const inner = "data" in payload && payload.data ? payload.data : payload;
-      const evt = payload.event;
+      const wrapped = "data" in payload && typeof payload.data === "object" && payload.data !== null ? payload.data : payload;
+      const evt = typeof payload.event === "string" ? payload.event : void 0;
       if (evt && evt !== "file_status_changed") return;
-      if (inner.file_id !== fileId) return;
+      if (wrapped.file_id !== fileId) return;
       void fetchStatus();
     });
     return unsub;
@@ -9205,33 +9272,56 @@ function ScaleMuleMedia(props) {
     className,
     style,
     alt,
-    pollIntervalMs = 2e3,
+    pollIntervalMs,
+    conversationId = null,
+    conversationKind,
     renderPlaceholder,
     renderBlocked,
     renderOverride
   } = props;
-  const { status, isReady } = useFileStatus({ fileId, pollIntervalMs });
+  const effectivePollIntervalMs = pollIntervalMs !== void 0 ? pollIntervalMs : conversationId ? null : 2e3;
+  const { gatewayUrl } = useScaleMule();
+  const { status, isReady } = useFileStatus({
+    fileId,
+    pollIntervalMs: effectivePollIntervalMs,
+    conversationId,
+    conversationKind
+  });
+  const absoluteUrl = React__namespace.useCallback(
+    (url) => {
+      if (!url) return null;
+      if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("blob:") || url.startsWith("data:")) {
+        return url;
+      }
+      if (!gatewayUrl) return url;
+      const base = gatewayUrl.endsWith("/") ? gatewayUrl.slice(0, -1) : gatewayUrl;
+      const path = url.startsWith("/") ? url : `/${url}`;
+      return `${base}${path}`;
+    },
+    [gatewayUrl]
+  );
   const isImage = mimeType.startsWith("image/");
   const isVideo = mimeType.startsWith("video/");
   const isAudio = mimeType.startsWith("audio/");
   const src = React.useMemo(() => {
     const scan = status?.scan.status;
     if (scan === "threat" || scan === "quarantined") return null;
-    if (status && isReady) {
-      if (isImage && status.urls.optimized) return status.urls.optimized;
-      if (isVideo && status.urls.hls) return status.urls.hls;
-      return status.urls.original ?? null;
+    if (!status) {
+      return blobPreview ?? null;
     }
-    if (blobPreview) return blobPreview;
-    return null;
-  }, [status, isReady, isImage, isVideo, blobPreview]);
+    if (isImage && status.urls.optimized) return absoluteUrl(status.urls.optimized);
+    if (isVideo && status.urls.hls) return absoluteUrl(status.urls.hls);
+    if (status.urls.original) return absoluteUrl(status.urls.original);
+    return blobPreview ?? null;
+  }, [status, isImage, isVideo, blobPreview, absoluteUrl]);
   const renderState = React.useMemo(() => {
     const scan = status?.scan.status;
     if (scan === "threat" || scan === "quarantined") return "blocked";
+    if (status?.urls.original) return "ready";
     if (isReady) return "ready";
     if (blobPreview) return "preview";
     return "pending";
-  }, [status?.scan.status, isReady, blobPreview]);
+  }, [status?.scan.status, status?.urls.original, isReady, blobPreview]);
   const videoRef = React__namespace.useRef(null);
   React.useEffect(() => {
     if (!isVideo) return;
@@ -9272,9 +9362,6 @@ function ScaleMuleMedia(props) {
       if (hls) hls.destroy();
     };
   }, [isVideo, src]);
-  if (renderOverride) {
-    return /* @__PURE__ */ jsxRuntime.jsx(jsxRuntime.Fragment, { children: renderOverride({ src, state: renderState }) });
-  }
   if (renderState === "blocked") {
     return /* @__PURE__ */ jsxRuntime.jsx(jsxRuntime.Fragment, { children: renderBlocked ? renderBlocked() : /* @__PURE__ */ jsxRuntime.jsx(
       "div",
@@ -9285,6 +9372,9 @@ function ScaleMuleMedia(props) {
         children: "This file was blocked."
       }
     ) });
+  }
+  if (renderOverride) {
+    return /* @__PURE__ */ jsxRuntime.jsx(jsxRuntime.Fragment, { children: renderOverride({ src, state: renderState }) });
   }
   if (renderState === "pending" && !src) {
     return /* @__PURE__ */ jsxRuntime.jsx(jsxRuntime.Fragment, { children: renderPlaceholder ? renderPlaceholder() : /* @__PURE__ */ jsxRuntime.jsx(
