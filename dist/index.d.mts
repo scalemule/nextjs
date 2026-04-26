@@ -1,4 +1,5 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
+import * as React from 'react';
 import { ReactNode, ReactElement } from 'react';
 import { MoneyClient } from '@scalemule/money';
 export { MoneyClient, MoneyClientConfig, createMoneyClient } from '@scalemule/money';
@@ -331,6 +332,85 @@ interface UseFileStatusReturn {
  * ```
  */
 declare function useFileStatus(options: UseFileStatusOptions): UseFileStatusReturn;
+
+interface ScaleMuleMediaProps {
+    /** Storage `file_id` of the media to render. Required. */
+    fileId: string;
+    /** MIME type — drives which element to render. Required. */
+    mimeType: string;
+    /**
+     * Optional sender-side optimistic preview. While the upload is in
+     * progress (or the recipient hasn't yet observed the message), the
+     * component renders this Blob URL. Once `useFileStatus` resolves a
+     * scan-clean state and a server-side URL, the component swaps to it.
+     */
+    blobPreview?: string;
+    /** Display width hint (CSS pixels). Used for image breakpoint selection. */
+    width?: number;
+    /** Display height hint (CSS pixels). */
+    height?: number;
+    /** Pass-through className for the rendered element. */
+    className?: string;
+    /** Pass-through style. */
+    style?: React.CSSProperties;
+    /** Alt text for `<img>`; aria-label for `<audio>` / `<video>`. */
+    alt?: string;
+    /**
+     * Polling interval while waiting for the media pipeline to complete.
+     * Defaults to 2000ms; set to `null` to disable polling. Polling stops
+     * automatically once scan is clean.
+     */
+    pollIntervalMs?: number | null;
+    /**
+     * Render a custom placeholder while waiting for scan / upload. Defaults
+     * to a tiny "Loading…" div. Receives the current FileStatus (or null).
+     */
+    renderPlaceholder?: () => React.ReactNode;
+    /**
+     * Render the "blocked" UI when scan flips to `threat`. Defaults to a
+     * "This file was blocked" message. Customize for branding.
+     */
+    renderBlocked?: () => React.ReactNode;
+    /**
+     * Custom render override. If provided, the component still calls
+     * `useFileStatus` but yields rendering to this function. Useful for
+     * highly custom presentation (e.g. lightbox triggers, hover overlays).
+     */
+    renderOverride?: (args: {
+        src: string | null;
+        state: 'preview' | 'pending' | 'ready' | 'blocked' | 'error';
+    }) => React.ReactNode;
+}
+/**
+ * Progressive-enhancement media renderer.
+ *
+ * Renders the right element for the given MIME type and progressively
+ * upgrades the source URL as the media pipeline advances:
+ *
+ *   blob preview (if set) → original view URL → optimized variant (image)
+ *                                            → HLS playlist (video)
+ *
+ * Today this is pull-only — `useFileStatus` polls until scan is clean
+ * (and the caller can stop polling by passing `pollIntervalMs={null}`).
+ * The push variant rides on the chat translation bridge (Phase 3 / P5')
+ * and lights up automatically once that ships.
+ *
+ * For non-Safari browsers, HLS playback requires `hls.js` to be
+ * available. The component dynamic-imports it on first need; if the
+ * import fails (not installed), it falls back to the original-bytes URL.
+ *
+ * @example
+ * ```tsx
+ * <ScaleMuleMedia
+ *   fileId={attachment.file_id}
+ *   mimeType={attachment.mime_type}
+ *   width={520}
+ *   blobPreview={pendingPreviewUrl}
+ *   alt={attachment.filename}
+ * />
+ * ```
+ */
+declare function ScaleMuleMedia(props: ScaleMuleMediaProps): React.ReactElement | null;
 
 declare const useMoney: typeof useMoneyClient;
 
@@ -815,4 +895,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };

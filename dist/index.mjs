@@ -1,7 +1,8 @@
+import * as React from 'react';
 import { createContext, useState, useMemo, useEffect, useCallback, useContext, useRef } from 'react';
 import { createMoneyClient } from '@scalemule/money';
 export { MoneyClient, createMoneyClient } from '@scalemule/money';
-import { jsx, jsxs, Fragment } from 'react/jsx-runtime';
+import { jsx, Fragment, jsxs } from 'react/jsx-runtime';
 
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -9029,6 +9030,176 @@ function useFileStatus(options) {
   const isReady = status?.scan.status === "clean";
   return { status, loading, error, isReady, refresh: fetchStatus };
 }
+function ScaleMuleMedia(props) {
+  const {
+    fileId,
+    mimeType,
+    blobPreview,
+    width,
+    height,
+    className,
+    style,
+    alt,
+    pollIntervalMs = 2e3,
+    renderPlaceholder,
+    renderBlocked,
+    renderOverride
+  } = props;
+  const { status, isReady } = useFileStatus({ fileId, pollIntervalMs });
+  const isImage = mimeType.startsWith("image/");
+  const isVideo = mimeType.startsWith("video/");
+  const isAudio = mimeType.startsWith("audio/");
+  const src = useMemo(() => {
+    const scan = status?.scan.status;
+    if (scan === "threat" || scan === "quarantined") return null;
+    if (status && isReady) {
+      if (isImage && status.urls.optimized) return status.urls.optimized;
+      if (isVideo && status.urls.hls) return status.urls.hls;
+      return status.urls.original ?? null;
+    }
+    if (blobPreview) return blobPreview;
+    return null;
+  }, [status, isReady, isImage, isVideo, blobPreview]);
+  const renderState = useMemo(() => {
+    const scan = status?.scan.status;
+    if (scan === "threat" || scan === "quarantined") return "blocked";
+    if (isReady) return "ready";
+    if (blobPreview) return "preview";
+    return "pending";
+  }, [status?.scan.status, isReady, blobPreview]);
+  const videoRef = React.useRef(null);
+  useEffect(() => {
+    if (!isVideo) return;
+    if (!src) return;
+    if (!src.endsWith(".m3u8")) return;
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.canPlayType("application/vnd.apple.mpegurl")) {
+      el.src = src;
+      return;
+    }
+    let cancelled = false;
+    let hls = null;
+    void (async () => {
+      try {
+        const moduleName = "hls.js";
+        const mod = await import(
+          /* @vite-ignore */
+          /* webpackIgnore: true */
+          moduleName
+        ).catch(
+          () => null
+        );
+        if (cancelled || !mod) return;
+        const Hls = mod.default ?? mod;
+        if (Hls.isSupported()) {
+          hls = new Hls();
+          hls.loadSource(src);
+          hls.attachMedia(el);
+        } else {
+          el.src = src;
+        }
+      } catch {
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (hls) hls.destroy();
+    };
+  }, [isVideo, src]);
+  if (renderOverride) {
+    return /* @__PURE__ */ jsx(Fragment, { children: renderOverride({ src, state: renderState }) });
+  }
+  if (renderState === "blocked") {
+    return /* @__PURE__ */ jsx(Fragment, { children: renderBlocked ? renderBlocked() : /* @__PURE__ */ jsx(
+      "div",
+      {
+        role: "alert",
+        className,
+        style: { padding: 12, color: "#a00", ...style },
+        children: "This file was blocked."
+      }
+    ) });
+  }
+  if (renderState === "pending" && !src) {
+    return /* @__PURE__ */ jsx(Fragment, { children: renderPlaceholder ? renderPlaceholder() : /* @__PURE__ */ jsx(
+      "div",
+      {
+        role: "status",
+        "aria-busy": true,
+        className,
+        style: { padding: 12, color: "#666", ...style },
+        children: "Loading\u2026"
+      }
+    ) });
+  }
+  if (isImage) {
+    const finalSrc = src && status?.urls.optimized && (width || height) ? appendQuery(src, {
+      width: width ? String(width) : void 0,
+      height: height ? String(height) : void 0,
+      fit: "cover"
+    }) : src;
+    return /* @__PURE__ */ jsx(
+      "img",
+      {
+        src: finalSrc ?? void 0,
+        alt: alt ?? "",
+        width,
+        height,
+        className,
+        style
+      }
+    );
+  }
+  if (isVideo) {
+    return /* @__PURE__ */ jsx(
+      "video",
+      {
+        ref: videoRef,
+        src: src && !src.endsWith(".m3u8") ? src : void 0,
+        controls: true,
+        playsInline: true,
+        preload: "metadata",
+        className,
+        style,
+        "aria-label": alt,
+        width,
+        height
+      }
+    );
+  }
+  if (isAudio) {
+    return /* @__PURE__ */ jsx(
+      "audio",
+      {
+        src: src ?? void 0,
+        controls: true,
+        preload: "metadata",
+        className,
+        style,
+        "aria-label": alt
+      }
+    );
+  }
+  return /* @__PURE__ */ jsx(
+    "a",
+    {
+      href: src ?? "#",
+      target: "_blank",
+      rel: "noopener noreferrer",
+      className,
+      style,
+      children: alt ?? "Download file"
+    }
+  );
+}
+function appendQuery(url, params) {
+  const filtered = Object.entries(params).filter(([, v]) => v != null && v !== "");
+  if (filtered.length === 0) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  const qs = new URLSearchParams(filtered).toString();
+  return url + sep + qs;
+}
 
 // src/hooks/useMoney.ts
 var useMoney = useMoneyClient;
@@ -10815,4 +10986,4 @@ function createSafeLogger(prefix) {
   };
 }
 
-export { FeedbackWidget, ScaleMuleApiError, ScaleMuleClient2 as ScaleMuleClient, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { FeedbackWidget, ScaleMuleApiError, ScaleMuleClient2 as ScaleMuleClient, ScaleMuleMedia, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };

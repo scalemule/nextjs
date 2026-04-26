@@ -1,8 +1,28 @@
 'use strict';
 
-var react = require('react');
+var React = require('react');
 var money = require('@scalemule/money');
 var jsxRuntime = require('react/jsx-runtime');
+
+function _interopNamespace(e) {
+  if (e && e.__esModule) return e;
+  var n = Object.create(null);
+  if (e) {
+    Object.keys(e).forEach(function (k) {
+      if (k !== 'default') {
+        var d = Object.getOwnPropertyDescriptor(e, k);
+        Object.defineProperty(n, k, d.get ? d : {
+          enumerable: true,
+          get: function () { return e[k]; }
+        });
+      }
+    });
+  }
+  n.default = e;
+  return Object.freeze(n);
+}
+
+var React__namespace = /*#__PURE__*/_interopNamespace(React);
 
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -7408,7 +7428,7 @@ function setCachedUser(user) {
   } catch {
   }
 }
-var ScaleMuleContext = react.createContext(null);
+var ScaleMuleContext = React.createContext(null);
 function ScaleMuleProvider({
   apiKey,
   applicationId,
@@ -7427,11 +7447,11 @@ function ScaleMuleProvider({
   onAuthError,
   bootstrapFlags
 }) {
-  const [user, setUser] = react.useState(null);
-  const [initializing, setInitializing] = react.useState(true);
-  const [error, setError] = react.useState(null);
+  const [user, setUser] = React.useState(null);
+  const [initializing, setInitializing] = React.useState(true);
+  const [error, setError] = React.useState(null);
   const resolvedGatewayUrl = gatewayUrl || (environment === "dev" ? "https://api-dev.scalemule.com" : "https://api.scalemule.com");
-  const client = react.useMemo(
+  const client = React.useMemo(
     () => createClient({
       apiKey,
       applicationId,
@@ -7443,7 +7463,7 @@ function ScaleMuleProvider({
     }),
     [apiKey, applicationId, environment, resolvedGatewayUrl, debug, storage, authProxyUrl]
   );
-  const money$1 = react.useMemo(
+  const money$1 = React.useMemo(
     () => money.createMoneyClient({
       apiKey,
       gatewayUrl: resolvedGatewayUrl,
@@ -7453,7 +7473,7 @@ function ScaleMuleProvider({
     }),
     [apiKey, resolvedGatewayUrl, environment, client]
   );
-  const baseClient = react.useMemo(() => {
+  const baseClient = React.useMemo(() => {
     return new ScaleMule({
       apiKey,
       applicationId,
@@ -7462,7 +7482,7 @@ function ScaleMuleProvider({
       debug
     });
   }, [apiKey, applicationId, environment, resolvedGatewayUrl, debug]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     const token = client.getSessionToken();
     if (token) {
       baseClient.setAccessToken(token);
@@ -7472,7 +7492,7 @@ function ScaleMuleProvider({
       money$1.setAccessToken(void 0);
     }
   }, [client, baseClient, money$1, user]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     let mounted = true;
     async function initialize() {
       try {
@@ -7546,7 +7566,7 @@ function ScaleMuleProvider({
       mounted = false;
     };
   }, [client, debug, onAuthError, authProxyUrl]);
-  const handleSetUser = react.useCallback(
+  const handleSetUser = React.useCallback(
     (newUser) => {
       setUser(newUser);
       setCachedUser(newUser);
@@ -7556,7 +7576,7 @@ function ScaleMuleProvider({
     },
     [onLogout]
   );
-  const value = react.useMemo(
+  const value = React.useMemo(
     () => ({
       client,
       money: money$1,
@@ -7583,7 +7603,7 @@ function ScaleMuleProvider({
   return /* @__PURE__ */ jsxRuntime.jsx(ScaleMuleContext.Provider, { value, children });
 }
 function useScaleMule() {
-  const context = react.useContext(ScaleMuleContext);
+  const context = React.useContext(ScaleMuleContext);
   if (!context) {
     throw new Error(
       "useScaleMule must be used within a ScaleMuleProvider. Make sure to wrap your app with <ScaleMuleProvider>."
@@ -7663,7 +7683,7 @@ async function proxyFetch(proxyUrl, path, options = {}) {
 }
 function useAuth() {
   const { client, user, setUser, initializing, error, setError, authProxyUrl, enableAccountSwitcher, accountSwitcherPrivacy } = useScaleMule();
-  const register = react.useCallback(
+  const register = React.useCallback(
     async (data) => {
       setError(null);
       if (authProxyUrl) {
@@ -7699,7 +7719,7 @@ function useAuth() {
     },
     [client, setUser, setError, authProxyUrl]
   );
-  const login = react.useCallback(
+  const login = React.useCallback(
     async (data) => {
       setError(null);
       if (authProxyUrl) {
@@ -7750,7 +7770,7 @@ function useAuth() {
     },
     [client, setUser, setError, authProxyUrl]
   );
-  const logout = react.useCallback(async () => {
+  const logout = React.useCallback(async () => {
     setError(null);
     if (authProxyUrl) {
       try {
@@ -7770,7 +7790,7 @@ function useAuth() {
     await client.clearSession();
     setUser(null);
   }, [client, setUser, setError, authProxyUrl]);
-  const forgotPassword = react.useCallback(
+  const forgotPassword = React.useCallback(
     async (email) => {
       setError(null);
       if (authProxyUrl) {
@@ -7796,7 +7816,7 @@ function useAuth() {
     },
     [client, setError, authProxyUrl]
   );
-  const resetPassword = react.useCallback(
+  const resetPassword = React.useCallback(
     async (token, newPassword) => {
       setError(null);
       if (authProxyUrl) {
@@ -7822,7 +7842,7 @@ function useAuth() {
     },
     [client, setError, authProxyUrl]
   );
-  const verifyEmail = react.useCallback(
+  const verifyEmail = React.useCallback(
     async (token) => {
       setError(null);
       if (authProxyUrl) {
@@ -7871,7 +7891,7 @@ function useAuth() {
     },
     [client, setUser, setError, authProxyUrl]
   );
-  const resendVerification = react.useCallback(async (email) => {
+  const resendVerification = React.useCallback(async (email) => {
     setError(null);
     if (authProxyUrl) {
       const body = email ? { email } : user ? {} : void 0;
@@ -7906,7 +7926,7 @@ function useAuth() {
       }
     }
   }, [client, user, setError, authProxyUrl]);
-  const refreshSession = react.useCallback(async () => {
+  const refreshSession = React.useCallback(async () => {
     setError(null);
     if (authProxyUrl) {
       const response = await proxyFetch(
@@ -7954,7 +7974,7 @@ function useAuth() {
       throw err;
     }
   }, [client, setUser, setError, authProxyUrl]);
-  const startOAuth = react.useCallback(
+  const startOAuth = React.useCallback(
     async (config) => {
       setError(null);
       let oauthData;
@@ -7978,7 +7998,7 @@ function useAuth() {
     },
     [client, setError]
   );
-  const completeOAuth = react.useCallback(
+  const completeOAuth = React.useCallback(
     async (request) => {
       setError(null);
       if (typeof sessionStorage !== "undefined") {
@@ -8008,7 +8028,7 @@ function useAuth() {
     },
     [client, setUser, setError]
   );
-  const getLinkedAccounts = react.useCallback(async () => {
+  const getLinkedAccounts = React.useCallback(async () => {
     setError(null);
     try {
       const data = await client.get("/v1/auth/oauth/accounts");
@@ -8020,7 +8040,7 @@ function useAuth() {
       throw err;
     }
   }, [client, setError]);
-  const linkAccount = react.useCallback(
+  const linkAccount = React.useCallback(
     async (config) => {
       setError(null);
       if (!user) {
@@ -8051,7 +8071,7 @@ function useAuth() {
     },
     [client, user, setError]
   );
-  const unlinkAccount = react.useCallback(
+  const unlinkAccount = React.useCallback(
     async (provider) => {
       setError(null);
       try {
@@ -8065,7 +8085,7 @@ function useAuth() {
     },
     [client, setError]
   );
-  const getMFAStatus = react.useCallback(async () => {
+  const getMFAStatus = React.useCallback(async () => {
     setError(null);
     try {
       return await client.get("/v1/auth/mfa/status");
@@ -8076,7 +8096,7 @@ function useAuth() {
       throw err;
     }
   }, [client, setError]);
-  const setupMFA = react.useCallback(
+  const setupMFA = React.useCallback(
     async (request) => {
       setError(null);
       try {
@@ -8093,7 +8113,7 @@ function useAuth() {
     },
     [client, setError]
   );
-  const verifyMFA = react.useCallback(
+  const verifyMFA = React.useCallback(
     async (request) => {
       setError(null);
       try {
@@ -8107,7 +8127,7 @@ function useAuth() {
     },
     [client, setError]
   );
-  const completeMFAChallenge = react.useCallback(
+  const completeMFAChallenge = React.useCallback(
     async (challengeToken, code, method) => {
       setError(null);
       let mfaResult;
@@ -8129,7 +8149,7 @@ function useAuth() {
     },
     [client, setUser, setError]
   );
-  const disableMFA = react.useCallback(
+  const disableMFA = React.useCallback(
     async (password) => {
       setError(null);
       try {
@@ -8143,7 +8163,7 @@ function useAuth() {
     },
     [client, setError]
   );
-  const regenerateBackupCodes = react.useCallback(
+  const regenerateBackupCodes = React.useCallback(
     async (password) => {
       setError(null);
       try {
@@ -8160,7 +8180,7 @@ function useAuth() {
     },
     [client, setError]
   );
-  const sendPhoneCode = react.useCallback(
+  const sendPhoneCode = React.useCallback(
     async (request) => {
       setError(null);
       if (authProxyUrl) {
@@ -8186,7 +8206,7 @@ function useAuth() {
     },
     [client, setError, authProxyUrl]
   );
-  const verifyPhone = react.useCallback(
+  const verifyPhone = React.useCallback(
     async (request) => {
       setError(null);
       if (authProxyUrl) {
@@ -8226,7 +8246,7 @@ function useAuth() {
     },
     [client, user, setUser, setError, authProxyUrl]
   );
-  const loginWithPhone = react.useCallback(
+  const loginWithPhone = React.useCallback(
     async (request) => {
       setError(null);
       if (authProxyUrl) {
@@ -8270,7 +8290,7 @@ function useAuth() {
     },
     [client, setUser, setError, authProxyUrl]
   );
-  const readKnownAccountsCookie = react.useCallback(() => {
+  const readKnownAccountsCookie = React.useCallback(() => {
     if (!enableAccountSwitcher) return [];
     if (typeof document === "undefined") return [];
     const match = document.cookie.match(/(?:^|; )sm_known_accounts=([^;]*)/);
@@ -8287,11 +8307,11 @@ function useAuth() {
       return [];
     }
   }, [enableAccountSwitcher, accountSwitcherPrivacy]);
-  const [knownAccounts, setKnownAccounts] = react.useState([]);
-  react.useEffect(() => {
+  const [knownAccounts, setKnownAccounts] = React.useState([]);
+  React.useEffect(() => {
     setKnownAccounts(readKnownAccountsCookie());
   }, [readKnownAccountsCookie, user]);
-  const switchAccount = react.useCallback(
+  const switchAccount = React.useCallback(
     async (userId) => {
       const target = knownAccounts.find((a) => a.userId === userId) || null;
       if (!target) return null;
@@ -8312,7 +8332,7 @@ function useAuth() {
     },
     [client, setUser, knownAccounts, authProxyUrl]
   );
-  const removeKnownAccount = react.useCallback(
+  const removeKnownAccount = React.useCallback(
     async (userId) => {
       if (authProxyUrl) {
         await proxyFetch(authProxyUrl, "forget-account", { body: { user_id: userId } });
@@ -8321,13 +8341,13 @@ function useAuth() {
     },
     [authProxyUrl]
   );
-  const clearKnownAccounts = react.useCallback(async () => {
+  const clearKnownAccounts = React.useCallback(async () => {
     if (authProxyUrl) {
       await proxyFetch(authProxyUrl, "forget-all-accounts");
     }
     setKnownAccounts([]);
   }, [authProxyUrl]);
-  return react.useMemo(
+  return React.useMemo(
     () => ({
       user,
       loading: initializing,
@@ -8406,9 +8426,9 @@ function retiredBillingRouteError(route) {
 }
 function useBilling() {
   const { client } = useScaleMule();
-  const [loading, setLoading] = react.useState(false);
-  const [error, setError] = react.useState(null);
-  const createConnectedAccount = react.useCallback(
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const createConnectedAccount = React.useCallback(
     async (data) => {
       setError(null);
       setLoading(true);
@@ -8424,7 +8444,7 @@ function useBilling() {
     },
     [client]
   );
-  const getMyConnectedAccount = react.useCallback(async () => {
+  const getMyConnectedAccount = React.useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
@@ -8437,7 +8457,7 @@ function useBilling() {
       setLoading(false);
     }
   }, [client]);
-  const getConnectedAccount = react.useCallback(
+  const getConnectedAccount = React.useCallback(
     async (id) => {
       setError(null);
       setLoading(true);
@@ -8453,7 +8473,7 @@ function useBilling() {
     },
     [client]
   );
-  const createOnboardingLink = react.useCallback(
+  const createOnboardingLink = React.useCallback(
     async (id, data) => {
       setError(null);
       setLoading(true);
@@ -8473,7 +8493,7 @@ function useBilling() {
     },
     [client]
   );
-  const getAccountBalance = react.useCallback(
+  const getAccountBalance = React.useCallback(
     async (id) => {
       setError(null);
       setLoading(true);
@@ -8487,7 +8507,7 @@ function useBilling() {
     },
     [client]
   );
-  const createPayment = react.useCallback(
+  const createPayment = React.useCallback(
     async (data) => {
       setError(null);
       setLoading(true);
@@ -8502,7 +8522,7 @@ function useBilling() {
     },
     [client]
   );
-  const getPayment = react.useCallback(
+  const getPayment = React.useCallback(
     async (id) => {
       setError(null);
       setLoading(true);
@@ -8516,7 +8536,7 @@ function useBilling() {
     },
     [client]
   );
-  const listPayments = react.useCallback(
+  const listPayments = React.useCallback(
     async (params) => {
       setError(null);
       setLoading(true);
@@ -8531,7 +8551,7 @@ function useBilling() {
     },
     [client]
   );
-  const refundPayment = react.useCallback(
+  const refundPayment = React.useCallback(
     async (id, data) => {
       setError(null);
       setLoading(true);
@@ -8546,7 +8566,7 @@ function useBilling() {
     },
     [client]
   );
-  const getPayoutHistory = react.useCallback(
+  const getPayoutHistory = React.useCallback(
     async (accountId, params) => {
       setError(null);
       setLoading(true);
@@ -8561,7 +8581,7 @@ function useBilling() {
     },
     [client]
   );
-  const getPayoutSchedule = react.useCallback(
+  const getPayoutSchedule = React.useCallback(
     async (accountId) => {
       setError(null);
       setLoading(true);
@@ -8579,7 +8599,7 @@ function useBilling() {
     },
     [client]
   );
-  const setPayoutSchedule = react.useCallback(
+  const setPayoutSchedule = React.useCallback(
     async (accountId, data) => {
       setError(null);
       setLoading(true);
@@ -8598,7 +8618,7 @@ function useBilling() {
     },
     [client]
   );
-  const getTransactions = react.useCallback(
+  const getTransactions = React.useCallback(
     async (params) => {
       setError(null);
       setLoading(true);
@@ -8613,7 +8633,7 @@ function useBilling() {
     },
     [client]
   );
-  const getTransactionSummary = react.useCallback(
+  const getTransactionSummary = React.useCallback(
     async (params) => {
       setError(null);
       setLoading(true);
@@ -8628,7 +8648,7 @@ function useBilling() {
     },
     [client]
   );
-  const createSetupSession = react.useCallback(
+  const createSetupSession = React.useCallback(
     async (data) => {
       setError(null);
       setLoading(true);
@@ -8648,7 +8668,7 @@ function useBilling() {
     },
     [client]
   );
-  return react.useMemo(
+  return React.useMemo(
     () => ({
       loading,
       error,
@@ -8692,11 +8712,11 @@ function useBilling() {
 function useContent(options = {}) {
   const { autoFetch = false, initialParams } = options;
   const { client, user, setError } = useScaleMule();
-  const [files, setFiles] = react.useState([]);
-  const [loading, setLoading] = react.useState(false);
-  const [uploadProgress, setUploadProgress] = react.useState(null);
-  const [error, setLocalError] = react.useState(null);
-  const list = react.useCallback(
+  const [files, setFiles] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [uploadProgress, setUploadProgress] = React.useState(null);
+  const [error, setLocalError] = React.useState(null);
+  const list = React.useCallback(
     async (params) => {
       setLocalError(null);
       setLoading(true);
@@ -8718,7 +8738,7 @@ function useContent(options = {}) {
     },
     [client, initialParams]
   );
-  const upload = react.useCallback(
+  const upload = React.useCallback(
     async (file, options2) => {
       setLocalError(null);
       setLoading(true);
@@ -8753,7 +8773,7 @@ function useContent(options = {}) {
     },
     [client, list]
   );
-  const remove = react.useCallback(
+  const remove = React.useCallback(
     async (fileId) => {
       setLocalError(null);
       setLoading(true);
@@ -8766,24 +8786,24 @@ function useContent(options = {}) {
     },
     [client]
   );
-  const get = react.useCallback(
+  const get = React.useCallback(
     async (fileId) => {
       setLocalError(null);
       return await client.get(`/v1/storage/files/${fileId}/info`);
     },
     [client]
   );
-  const refresh = react.useCallback(async () => {
+  const refresh = React.useCallback(async () => {
     await list(initialParams);
   }, [list, initialParams]);
-  const getSignedUploadUrl = react.useCallback(
+  const getSignedUploadUrl = React.useCallback(
     async (request) => {
       setLocalError(null);
       return await client.post("/v1/storage/signed-upload", request);
     },
     [client]
   );
-  const uploadToSignedUrl = react.useCallback(
+  const uploadToSignedUrl = React.useCallback(
     async (signedUrl, file, headers, onProgress) => {
       setLocalError(null);
       setLoading(true);
@@ -8831,7 +8851,7 @@ function useContent(options = {}) {
     },
     []
   );
-  const completeSignedUpload = react.useCallback(
+  const completeSignedUpload = React.useCallback(
     async (fileId) => {
       setLocalError(null);
       const data = await client.post(`/v1/storage/signed-upload/${fileId}/complete`);
@@ -8840,12 +8860,12 @@ function useContent(options = {}) {
     },
     [client, list]
   );
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (autoFetch && user) {
       list(initialParams);
     }
   }, [autoFetch, user, list, initialParams]);
-  return react.useMemo(
+  return React.useMemo(
     () => ({
       files,
       loading,
@@ -8878,9 +8898,9 @@ function useContent(options = {}) {
 }
 function useMedia() {
   const { storage, photo, video } = useScaleMule();
-  const [uploading, setUploading] = react.useState(false);
-  const [error, setError] = react.useState(null);
-  const upload = react.useCallback(
+  const [uploading, setUploading] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const upload = React.useCallback(
     async (file, options) => {
       setUploading(true);
       setError(null);
@@ -8967,7 +8987,7 @@ function useMedia() {
     },
     [storage, photo]
   );
-  const cancelUpload = react.useCallback(
+  const cancelUpload = React.useCallback(
     async (fileId) => {
       setError(null);
       try {
@@ -8989,11 +9009,11 @@ function useMedia() {
 function useFileStatus(options) {
   const { storage } = useScaleMule();
   const { fileId, pollIntervalMs = null, disabled = false } = options;
-  const [status, setStatus] = react.useState(null);
-  const [loading, setLoading] = react.useState(false);
-  const [error, setError] = react.useState(null);
-  const requestSeqRef = react.useRef(0);
-  const fetchStatus = react.useCallback(async () => {
+  const [status, setStatus] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const requestSeqRef = React.useRef(0);
+  const fetchStatus = React.useCallback(async () => {
     if (!fileId || disabled) return;
     const seq = ++requestSeqRef.current;
     setLoading(true);
@@ -9015,10 +9035,10 @@ function useFileStatus(options) {
       }
     }
   }, [storage, fileId, disabled]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     void fetchStatus();
   }, [fetchStatus]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!pollIntervalMs || disabled || !fileId) return;
     const isClean = status?.scan.status === "clean";
     if (isClean) return;
@@ -9030,14 +9050,184 @@ function useFileStatus(options) {
   const isReady = status?.scan.status === "clean";
   return { status, loading, error, isReady, refresh: fetchStatus };
 }
+function ScaleMuleMedia(props) {
+  const {
+    fileId,
+    mimeType,
+    blobPreview,
+    width,
+    height,
+    className,
+    style,
+    alt,
+    pollIntervalMs = 2e3,
+    renderPlaceholder,
+    renderBlocked,
+    renderOverride
+  } = props;
+  const { status, isReady } = useFileStatus({ fileId, pollIntervalMs });
+  const isImage = mimeType.startsWith("image/");
+  const isVideo = mimeType.startsWith("video/");
+  const isAudio = mimeType.startsWith("audio/");
+  const src = React.useMemo(() => {
+    const scan = status?.scan.status;
+    if (scan === "threat" || scan === "quarantined") return null;
+    if (status && isReady) {
+      if (isImage && status.urls.optimized) return status.urls.optimized;
+      if (isVideo && status.urls.hls) return status.urls.hls;
+      return status.urls.original ?? null;
+    }
+    if (blobPreview) return blobPreview;
+    return null;
+  }, [status, isReady, isImage, isVideo, blobPreview]);
+  const renderState = React.useMemo(() => {
+    const scan = status?.scan.status;
+    if (scan === "threat" || scan === "quarantined") return "blocked";
+    if (isReady) return "ready";
+    if (blobPreview) return "preview";
+    return "pending";
+  }, [status?.scan.status, isReady, blobPreview]);
+  const videoRef = React__namespace.useRef(null);
+  React.useEffect(() => {
+    if (!isVideo) return;
+    if (!src) return;
+    if (!src.endsWith(".m3u8")) return;
+    const el = videoRef.current;
+    if (!el) return;
+    if (el.canPlayType("application/vnd.apple.mpegurl")) {
+      el.src = src;
+      return;
+    }
+    let cancelled = false;
+    let hls = null;
+    void (async () => {
+      try {
+        const moduleName = "hls.js";
+        const mod = await import(
+          /* @vite-ignore */
+          /* webpackIgnore: true */
+          moduleName
+        ).catch(
+          () => null
+        );
+        if (cancelled || !mod) return;
+        const Hls = mod.default ?? mod;
+        if (Hls.isSupported()) {
+          hls = new Hls();
+          hls.loadSource(src);
+          hls.attachMedia(el);
+        } else {
+          el.src = src;
+        }
+      } catch {
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (hls) hls.destroy();
+    };
+  }, [isVideo, src]);
+  if (renderOverride) {
+    return /* @__PURE__ */ jsxRuntime.jsx(jsxRuntime.Fragment, { children: renderOverride({ src, state: renderState }) });
+  }
+  if (renderState === "blocked") {
+    return /* @__PURE__ */ jsxRuntime.jsx(jsxRuntime.Fragment, { children: renderBlocked ? renderBlocked() : /* @__PURE__ */ jsxRuntime.jsx(
+      "div",
+      {
+        role: "alert",
+        className,
+        style: { padding: 12, color: "#a00", ...style },
+        children: "This file was blocked."
+      }
+    ) });
+  }
+  if (renderState === "pending" && !src) {
+    return /* @__PURE__ */ jsxRuntime.jsx(jsxRuntime.Fragment, { children: renderPlaceholder ? renderPlaceholder() : /* @__PURE__ */ jsxRuntime.jsx(
+      "div",
+      {
+        role: "status",
+        "aria-busy": true,
+        className,
+        style: { padding: 12, color: "#666", ...style },
+        children: "Loading\u2026"
+      }
+    ) });
+  }
+  if (isImage) {
+    const finalSrc = src && status?.urls.optimized && (width || height) ? appendQuery(src, {
+      width: width ? String(width) : void 0,
+      height: height ? String(height) : void 0,
+      fit: "cover"
+    }) : src;
+    return /* @__PURE__ */ jsxRuntime.jsx(
+      "img",
+      {
+        src: finalSrc ?? void 0,
+        alt: alt ?? "",
+        width,
+        height,
+        className,
+        style
+      }
+    );
+  }
+  if (isVideo) {
+    return /* @__PURE__ */ jsxRuntime.jsx(
+      "video",
+      {
+        ref: videoRef,
+        src: src && !src.endsWith(".m3u8") ? src : void 0,
+        controls: true,
+        playsInline: true,
+        preload: "metadata",
+        className,
+        style,
+        "aria-label": alt,
+        width,
+        height
+      }
+    );
+  }
+  if (isAudio) {
+    return /* @__PURE__ */ jsxRuntime.jsx(
+      "audio",
+      {
+        src: src ?? void 0,
+        controls: true,
+        preload: "metadata",
+        className,
+        style,
+        "aria-label": alt
+      }
+    );
+  }
+  return /* @__PURE__ */ jsxRuntime.jsx(
+    "a",
+    {
+      href: src ?? "#",
+      target: "_blank",
+      rel: "noopener noreferrer",
+      className,
+      style,
+      children: alt ?? "Download file"
+    }
+  );
+}
+function appendQuery(url, params) {
+  const filtered = Object.entries(params).filter(([, v]) => v != null && v !== "");
+  if (filtered.length === 0) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  const qs = new URLSearchParams(filtered).toString();
+  return url + sep + qs;
+}
 
 // src/hooks/useMoney.ts
 var useMoney = useMoneyClient;
 function useUser() {
   const { client, user, setUser, setError } = useScaleMule();
-  const [loading, setLoading] = react.useState(false);
-  const [localError, setLocalError] = react.useState(null);
-  const update = react.useCallback(
+  const [loading, setLoading] = React.useState(false);
+  const [localError, setLocalError] = React.useState(null);
+  const update = React.useCallback(
     async (data) => {
       setLocalError(null);
       setLoading(true);
@@ -9051,7 +9241,7 @@ function useUser() {
     },
     [client, setUser]
   );
-  const changePassword = react.useCallback(
+  const changePassword = React.useCallback(
     async (currentPassword, newPassword) => {
       setLocalError(null);
       setLoading(true);
@@ -9066,7 +9256,7 @@ function useUser() {
     },
     [client]
   );
-  const changeEmail = react.useCallback(
+  const changeEmail = React.useCallback(
     async (newEmail, password) => {
       setLocalError(null);
       setLoading(true);
@@ -9081,7 +9271,7 @@ function useUser() {
     },
     [client]
   );
-  const deleteAccount = react.useCallback(
+  const deleteAccount = React.useCallback(
     async (password) => {
       setLocalError(null);
       setLoading(true);
@@ -9097,7 +9287,7 @@ function useUser() {
     },
     [client, setUser]
   );
-  const exportData = react.useCallback(async () => {
+  const exportData = React.useCallback(async () => {
     setLocalError(null);
     setLoading(true);
     try {
@@ -9108,7 +9298,7 @@ function useUser() {
       setLoading(false);
     }
   }, [client]);
-  return react.useMemo(
+  return React.useMemo(
     () => ({
       profile: user,
       loading,
@@ -9124,19 +9314,19 @@ function useUser() {
 }
 function useRealtime(options) {
   const { realtime } = useScaleMule();
-  const [status, setStatus] = react.useState("disconnected");
-  const [lastMessage, setLastMessage] = react.useState(null);
-  const manualUnsubscribesRef = react.useRef([]);
-  const autoUnsubscribesRef = react.useRef([]);
-  const onMessageRef = react.useRef(void 0);
+  const [status, setStatus] = React.useState("disconnected");
+  const [lastMessage, setLastMessage] = React.useState(null);
+  const manualUnsubscribesRef = React.useRef([]);
+  const autoUnsubscribesRef = React.useRef([]);
+  const onMessageRef = React.useRef(void 0);
   const channelSignature = (options?.channels ?? []).join("");
-  react.useEffect(() => {
+  React.useEffect(() => {
     onMessageRef.current = options?.onMessage;
   }, [options?.onMessage]);
-  const disconnect = react.useCallback(() => {
+  const disconnect = React.useCallback(() => {
     realtime.disconnect();
   }, [realtime]);
-  const subscribe = react.useCallback(
+  const subscribe = React.useCallback(
     (channel, callback) => {
       const unsub = realtime.subscribe(channel, (data) => {
         setLastMessage({ channel, data });
@@ -9151,19 +9341,19 @@ function useRealtime(options) {
     },
     [realtime]
   );
-  const publish = react.useCallback(
+  const publish = React.useCallback(
     (channel, data) => {
       realtime.publish(channel, data);
     },
     [realtime]
   );
-  react.useEffect(() => {
+  React.useEffect(() => {
     const unsub = realtime.onStatusChange((newStatus) => {
       setStatus(newStatus);
     });
     return unsub;
   }, [realtime]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     for (const unsub of autoUnsubscribesRef.current) {
       unsub();
     }
@@ -9182,7 +9372,7 @@ function useRealtime(options) {
       autoUnsubscribesRef.current = [];
     };
   }, [realtime, channelSignature]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     return () => {
       for (const unsub of manualUnsubscribesRef.current) {
         unsub();
@@ -9401,20 +9591,20 @@ function useAnalytics(options = {}) {
   } = options;
   const shouldAutoCaptureUtmParams = autoCaptureUtmParams ?? autoCapturUtmParams ?? true;
   const { client, user, analyticsProxyUrl, publishableKey, gatewayUrl } = useScaleMule();
-  const [loading, setLoading] = react.useState(false);
-  const [error, setError] = react.useState(null);
-  const [utmParams, setUtmParams] = react.useState(null);
-  const sessionIdRef = react.useRef(null);
-  const anonymousIdRef = react.useRef(null);
-  const sessionStartRef = react.useRef(Date.now());
-  const originalReferrerRef = react.useRef(null);
-  const idsReadyRef = react.useRef(false);
-  const [sessionId, setSessionId] = react.useState(null);
-  const [anonymousId, setAnonymousId] = react.useState(null);
-  const initialized = react.useRef(false);
-  const landingPage = react.useRef(null);
-  const eventQueue = react.useRef([]);
-  react.useEffect(() => {
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const [utmParams, setUtmParams] = React.useState(null);
+  const sessionIdRef = React.useRef(null);
+  const anonymousIdRef = React.useRef(null);
+  const sessionStartRef = React.useRef(Date.now());
+  const originalReferrerRef = React.useRef(null);
+  const idsReadyRef = React.useRef(false);
+  const [sessionId, setSessionId] = React.useState(null);
+  const [anonymousId, setAnonymousId] = React.useState(null);
+  const initialized = React.useRef(false);
+  const landingPage = React.useRef(null);
+  const eventQueue = React.useRef([]);
+  React.useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
     if (!autoGenerateSessionId) {
@@ -9438,7 +9628,7 @@ function useAnalytics(options = {}) {
       }, 0);
     }
   }, [autoGenerateSessionId, sessionStorageKey, anonymousStorageKey]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (typeof window === "undefined") return;
     if (shouldAutoCaptureUtmParams) {
       const utm = parseUtmParams();
@@ -9463,11 +9653,11 @@ function useAnalytics(options = {}) {
       }
     }
   }, [shouldAutoCaptureUtmParams]);
-  const sendEventRef = react.useRef(null);
-  const getDeviceInfo = react.useCallback(() => {
+  const sendEventRef = React.useRef(null);
+  const getDeviceInfo = React.useCallback(() => {
     return detectDeviceInfo();
   }, []);
-  const buildFullEvent = react.useCallback(
+  const buildFullEvent = React.useCallback(
     (event) => {
       const device = getDeviceInfo();
       const fullEvent = {
@@ -9507,7 +9697,7 @@ function useAnalytics(options = {}) {
     // Note: sessionId/anonymousId removed - we use refs to keep this stable
     [user, utmParams, getDeviceInfo]
   );
-  const sendEvent = react.useCallback(
+  const sendEvent = React.useCallback(
     async (event) => {
       const fullEvent = buildFullEvent(event);
       const payload = JSON.stringify(fullEvent);
@@ -9550,7 +9740,7 @@ function useAnalytics(options = {}) {
     [client, buildFullEvent, useV2, analyticsProxyUrl, publishableKey, gatewayUrl]
   );
   sendEventRef.current = sendEvent;
-  const trackEvent = react.useCallback(
+  const trackEvent = React.useCallback(
     async (event) => {
       if (shouldDedup(event.event_name, eventDedupMs, event.properties)) {
         return { tracked: 0, session_id: sessionIdRef.current || void 0 };
@@ -9576,7 +9766,7 @@ function useAnalytics(options = {}) {
     // Note: idsReady removed - we use ref to keep callback stable
     [sendEvent, eventDedupMs]
   );
-  const trackPageView = react.useCallback(
+  const trackPageView = React.useCallback(
     async (data) => {
       const pageEvent = {
         event_name: "page_viewed",
@@ -9592,7 +9782,7 @@ function useAnalytics(options = {}) {
     },
     [trackEvent]
   );
-  const trackBatch = react.useCallback(
+  const trackBatch = React.useCallback(
     async (events) => {
       setError(null);
       setLoading(true);
@@ -9646,7 +9836,7 @@ function useAnalytics(options = {}) {
     // Note: sessionId removed - we use ref to keep callback stable
     [client, buildFullEvent, useV2, analyticsProxyUrl, publishableKey, gatewayUrl]
   );
-  const identify = react.useCallback(
+  const identify = React.useCallback(
     async (userId, traits) => {
       await trackEvent({
         event_name: "user_identified",
@@ -9661,7 +9851,7 @@ function useAnalytics(options = {}) {
     // Note: anonymousId removed - we use ref
     [trackEvent]
   );
-  const reset = react.useCallback(() => {
+  const reset = React.useCallback(() => {
     const newSessionId = generateUUID();
     const newSessionStart = Date.now();
     sessionIdRef.current = newSessionId;
@@ -9675,10 +9865,10 @@ function useAnalytics(options = {}) {
     originalReferrerRef.current = null;
     setUtmParams(null);
   }, [sessionStorageKey]);
-  const setUtmParamsManual = react.useCallback((params) => {
+  const setUtmParamsManual = React.useCallback((params) => {
     setUtmParams(params);
   }, []);
-  return react.useMemo(
+  return React.useMemo(
     () => ({
       loading,
       error,
@@ -9731,8 +9921,8 @@ function useFeatureFlags(options = {}) {
     enabled = true
   } = options;
   const { client, publishableKey, gatewayUrl, bootstrapFlags } = smContext;
-  const warnedRef = react.useRef(false);
-  react.useEffect(() => {
+  const warnedRef = React.useRef(false);
+  React.useEffect(() => {
     if (!warnedRef.current && (!keys || keys.length === 0)) {
       warnedRef.current = true;
       console.warn(
@@ -9740,7 +9930,7 @@ function useFeatureFlags(options = {}) {
       );
     }
   }, [keys]);
-  const initialFlags = react.useMemo(() => {
+  const initialFlags = React.useMemo(() => {
     if (!bootstrapFlags) return {};
     const result = {};
     for (const [key, value] of Object.entries(bootstrapFlags)) {
@@ -9751,19 +9941,19 @@ function useFeatureFlags(options = {}) {
     return result;
   }, [bootstrapFlags]);
   const hasBootstrap = Object.keys(initialFlags).length > 0;
-  const [flags, setFlags] = react.useState(initialFlags);
-  const [loading, setLoading] = react.useState(enabled && !hasBootstrap);
-  const [error, setError] = react.useState(null);
-  const contextRef = react.useRef(context);
-  const keysRef = react.useRef(keys);
-  const keysKey = react.useMemo(() => keys && keys.length > 0 ? [...keys].sort().join("|") : "", [keys]);
-  react.useEffect(() => {
+  const [flags, setFlags] = React.useState(initialFlags);
+  const [loading, setLoading] = React.useState(enabled && !hasBootstrap);
+  const [error, setError] = React.useState(null);
+  const contextRef = React.useRef(context);
+  const keysRef = React.useRef(keys);
+  const keysKey = React.useMemo(() => keys && keys.length > 0 ? [...keys].sort().join("|") : "", [keys]);
+  React.useEffect(() => {
     contextRef.current = context;
   }, [context]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     keysRef.current = keys;
   }, [keys]);
-  const refresh = react.useCallback(async () => {
+  const refresh = React.useCallback(async () => {
     if (!enabled) {
       setLoading(false);
       return;
@@ -9799,7 +9989,7 @@ function useFeatureFlags(options = {}) {
       setLoading(false);
     }
   }, [client, enabled, environment, keysKey, publishableKey, gatewayUrl]);
-  const bootstrapCoversKeys = react.useMemo(() => {
+  const bootstrapCoversKeys = React.useMemo(() => {
     if (!hasBootstrap || !keys || keys.length === 0) return false;
     if (!keys.every((k) => k in initialFlags)) return false;
     if (environment !== (smContext.environment ?? "prod")) return false;
@@ -9807,12 +9997,12 @@ function useFeatureFlags(options = {}) {
     if (contextKeys.length > 0) return false;
     return true;
   }, [hasBootstrap, keys, initialFlags, environment, smContext.environment, context]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!bootstrapCoversKeys) {
       void refresh();
     }
   }, [refresh, bootstrapCoversKeys]);
-  const isEnabled = react.useCallback(
+  const isEnabled = React.useCallback(
     (flagKey, fallback = false) => {
       const evaluation = flags[flagKey];
       if (!evaluation) return fallback;
@@ -9820,7 +10010,7 @@ function useFeatureFlags(options = {}) {
     },
     [flags]
   );
-  const getFlag = react.useCallback(
+  const getFlag = React.useCallback(
     (flagKey, fallback) => {
       const evaluation = flags[flagKey];
       if (!evaluation) return fallback;
@@ -9845,18 +10035,18 @@ function getCsrfToken() {
 function usePushNotifications(options = {}) {
   const { serviceWorkerUrl = "/sw.js", pushProxyUrl = "/api/push", registrationSource, onNotification } = options;
   const { user } = useScaleMule();
-  const [isSupported, setIsSupported] = react.useState(false);
-  const [permission, setPermission] = react.useState("unsupported");
-  const [isSubscribed, setIsSubscribed] = react.useState(false);
-  const [isLoading, setIsLoading] = react.useState(false);
-  const [error, setError] = react.useState(null);
-  const [tokenId, setTokenId] = react.useState(null);
-  const onNotificationRef = react.useRef(onNotification);
-  react.useEffect(() => {
+  const [isSupported, setIsSupported] = React.useState(false);
+  const [permission, setPermission] = React.useState("unsupported");
+  const [isSubscribed, setIsSubscribed] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [error, setError] = React.useState(null);
+  const [tokenId, setTokenId] = React.useState(null);
+  const onNotificationRef = React.useRef(onNotification);
+  React.useEffect(() => {
     onNotificationRef.current = onNotification;
   }, [onNotification]);
-  const prevUserRef = react.useRef(null);
-  const fetcher = react.useMemo(() => {
+  const prevUserRef = React.useRef(null);
+  const fetcher = React.useMemo(() => {
     async function proxyGet(path) {
       const res = await fetch(`${pushProxyUrl}/${path}`);
       const json = await res.json();
@@ -9907,7 +10097,7 @@ function usePushNotifications(options = {}) {
       disassociateUser: (id) => proxyDelete(`tokens/by-id/${id}/user`)
     };
   }, [pushProxyUrl]);
-  const manager = react.useMemo(() => {
+  const manager = React.useMemo(() => {
     if (typeof window === "undefined") return null;
     try {
       return new WebPushManager({ fetcher, serviceWorkerUrl, registrationSource });
@@ -9915,7 +10105,7 @@ function usePushNotifications(options = {}) {
       return null;
     }
   }, [fetcher, serviceWorkerUrl]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!manager) return;
     const supported = manager.isSupported();
     setIsSupported(supported);
@@ -9936,7 +10126,7 @@ function usePushNotifications(options = {}) {
       });
     }
   }, [manager]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     function handleMessage(event) {
       if (event.data?.type === "push-received") {
@@ -9955,7 +10145,7 @@ function usePushNotifications(options = {}) {
     navigator.serviceWorker.addEventListener("message", handleMessage);
     return () => navigator.serviceWorker.removeEventListener("message", handleMessage);
   }, [manager]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     if (!manager) return;
     const currentUserId = user?.id || null;
     const prevUserId = prevUserRef.current;
@@ -9965,7 +10155,7 @@ function usePushNotifications(options = {}) {
     }
     prevUserRef.current = currentUserId;
   }, [user?.id, manager, isSubscribed]);
-  const subscribe = react.useCallback(async () => {
+  const subscribe = React.useCallback(async () => {
     if (!manager) return;
     setIsLoading(true);
     setError(null);
@@ -9987,7 +10177,7 @@ function usePushNotifications(options = {}) {
       setIsLoading(false);
     }
   }, [manager]);
-  const unsubscribe = react.useCallback(async () => {
+  const unsubscribe = React.useCallback(async () => {
     if (!manager) return;
     setIsLoading(true);
     setError(null);
@@ -10004,7 +10194,7 @@ function usePushNotifications(options = {}) {
       setIsLoading(false);
     }
   }, [manager]);
-  const disassociateUser = react.useCallback(async () => {
+  const disassociateUser = React.useCallback(async () => {
     if (!manager) return;
     try {
       await manager.disassociateUser();
@@ -10025,12 +10215,12 @@ function usePushNotifications(options = {}) {
 }
 function useShare(options) {
   const { client, user } = useScaleMule();
-  const [referralCode, setReferralCode] = react.useState(
+  const [referralCode, setReferralCode] = React.useState(
     options?.referralCode ?? null
   );
-  const [loading, setLoading] = react.useState(false);
-  const [copied, setCopied] = react.useState(false);
-  react.useEffect(() => {
+  const [loading, setLoading] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+  React.useEffect(() => {
     if (!user) {
       setReferralCode(options?.referralCode ?? null);
       setLoading(false);
@@ -10059,7 +10249,7 @@ function useShare(options) {
       cancelled = true;
     };
   }, [user?.id, options?.url, options?.referralCode, options?.autoFetchReferral, client]);
-  const shareUrl = react.useMemo(() => {
+  const shareUrl = React.useMemo(() => {
     const raw = options?.url || (typeof window !== "undefined" ? window.location.href : "");
     if (!raw) return raw;
     try {
@@ -10073,7 +10263,7 @@ function useShare(options) {
       return raw;
     }
   }, [options?.url, referralCode]);
-  const copyLink = react.useCallback(async () => {
+  const copyLink = React.useCallback(async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
     } catch {
@@ -10112,10 +10302,10 @@ function toApiError2(error) {
 function useFeedback(options = {}) {
   const { client } = useScaleMule();
   const { status, type, enabled = true } = options;
-  const [items, setItems] = react.useState([]);
-  const [loading, setLoading] = react.useState(enabled);
-  const [error, setError] = react.useState(null);
-  const refresh = react.useCallback(async () => {
+  const [items, setItems] = React.useState([]);
+  const [loading, setLoading] = React.useState(enabled);
+  const [error, setError] = React.useState(null);
+  const refresh = React.useCallback(async () => {
     if (!enabled) {
       setLoading(false);
       return;
@@ -10136,10 +10326,10 @@ function useFeedback(options = {}) {
       setLoading(false);
     }
   }, [client, enabled, status, type]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     refresh();
   }, [refresh]);
-  const submit = react.useCallback(
+  const submit = React.useCallback(
     async (input) => {
       try {
         const created = await client.post("/v1/feedback/submit", input);
@@ -10272,18 +10462,18 @@ function FeedbackWidget(props) {
   const sm = useScaleMule();
   const { client } = sm;
   const { submit } = useFeedback({ enabled: false });
-  const [serverConfig, setServerConfig] = react.useState(null);
-  const [configLoaded, setConfigLoaded] = react.useState(false);
-  const [open, setOpen] = react.useState(false);
-  const [type, setType] = react.useState("feature_request");
-  const [title, setTitle] = react.useState("");
-  const [description, setDescription] = react.useState("");
-  const [email, setEmail] = react.useState("");
-  const [rating, setRating] = react.useState(null);
-  const [hoverRating, setHoverRating] = react.useState(null);
-  const [submitting, setSubmitting] = react.useState(false);
-  const [errMsg, setErrMsg] = react.useState(null);
-  const [done, setDone] = react.useState(false);
+  const [serverConfig, setServerConfig] = React.useState(null);
+  const [configLoaded, setConfigLoaded] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
+  const [type, setType] = React.useState("feature_request");
+  const [title, setTitle] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [rating, setRating] = React.useState(null);
+  const [hoverRating, setHoverRating] = React.useState(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [errMsg, setErrMsg] = React.useState(null);
+  const [done, setDone] = React.useState(false);
   const signedIn = Boolean(sm.user);
   const resolvedAllowedTypes = props.allowedTypes ?? serverConfig?.allowed_types ?? ALL_TYPES;
   const resolvedDefaultType = (props.defaultType && resolvedAllowedTypes.includes(props.defaultType) ? props.defaultType : resolvedAllowedTypes[0]) ?? "feature_request";
@@ -10291,7 +10481,7 @@ function FeedbackWidget(props) {
   const resolvedTheme = props.theme ?? serverConfig?.widget_theme ?? "auto";
   const allowAnonymous = serverConfig?.allow_anonymous ?? true;
   const anonymousBlocked = !signedIn && !allowAnonymous;
-  react.useEffect(() => {
+  React.useEffect(() => {
     let active = true;
     client.get("/v1/feedback/widget-config").then((config) => {
       if (active) setServerConfig(config);
@@ -10304,7 +10494,7 @@ function FeedbackWidget(props) {
       active = false;
     };
   }, [client]);
-  react.useEffect(() => {
+  React.useEffect(() => {
     setType(
       (current) => resolvedAllowedTypes.includes(current) ? current : resolvedDefaultType
     );
@@ -10827,6 +11017,7 @@ Object.defineProperty(exports, "createMoneyClient", {
 exports.FeedbackWidget = FeedbackWidget;
 exports.ScaleMuleApiError = ScaleMuleApiError;
 exports.ScaleMuleClient = ScaleMuleClient2;
+exports.ScaleMuleMedia = ScaleMuleMedia;
 exports.ScaleMuleProvider = ScaleMuleProvider;
 exports.composePhone = composePhone;
 exports.createClient = createClient;
