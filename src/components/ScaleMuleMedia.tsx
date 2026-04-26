@@ -251,10 +251,12 @@ export function ScaleMuleMedia(props: ScaleMuleMediaProps): React.ReactElement |
   // ──────────────────────────────────────────────────────────────────────
   // Render
   // ──────────────────────────────────────────────────────────────────────
-  if (renderOverride) {
-    return <>{renderOverride({ src, state: renderState })}</>
-  }
-
+  // Blocked state is enforced BEFORE renderOverride. A consumer override
+  // could otherwise paper over the SDK's quarantine UI by rendering its
+  // own fallback URL when `src` happens to be null — exactly the
+  // post-hoc-quarantine bypass we want to prevent.
+  // Consumers that need fully custom handling for blocked content can
+  // still supply `renderBlocked`, which IS honored here.
   if (renderState === 'blocked') {
     return (
       <>
@@ -271,6 +273,10 @@ export function ScaleMuleMedia(props: ScaleMuleMediaProps): React.ReactElement |
           )}
       </>
     )
+  }
+
+  if (renderOverride) {
+    return <>{renderOverride({ src, state: renderState })}</>
   }
 
   if (renderState === 'pending' && !src) {
