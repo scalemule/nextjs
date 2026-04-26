@@ -8906,6 +8906,8 @@ function useMedia() {
       setError(null);
       const isPublic = options?.is_public ?? false;
       const mimeType = file.type || "application/octet-stream";
+      const policy = options?.policy ?? "safe_visible";
+      const gateOnPipeline = policy === "safe_public" || policy === "moderated" || policy === "compliance";
       const sharedOpts = {
         filename: options?.filename,
         metadata: options?.metadata,
@@ -8917,6 +8919,9 @@ function useMedia() {
           const r2 = await photo.uploadViaStorage(file, sharedOpts);
           if (r2.error || !r2.data) {
             throw r2.error ?? { code: "upload_error", message: "Upload failed", status: 0 };
+          }
+          if (gateOnPipeline) {
+            await r2.data.optimized_url_promise;
           }
           return {
             file_id: r2.data.file_id,
@@ -8932,6 +8937,9 @@ function useMedia() {
           const r2 = await video.uploadViaStorage(file, sharedOpts);
           if (r2.error || !r2.data) {
             throw r2.error ?? { code: "upload_error", message: "Upload failed", status: 0 };
+          }
+          if (gateOnPipeline) {
+            await r2.data.hls_url_promise;
           }
           return {
             file_id: r2.data.file_id,
