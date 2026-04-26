@@ -1,13 +1,155 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
+import { ApiError, RealtimeService, StorageService, PhotoService, VideoService, FileStatus } from '@scalemule/sdk';
 import * as React from 'react';
 import { ReactNode, ReactElement } from 'react';
 import { MoneyClient } from '@scalemule/money';
 export { MoneyClient, MoneyClientConfig, createMoneyClient } from '@scalemule/money';
-import { RealtimeService, StorageService, PhotoService, VideoService, ApiError as ApiError$1, FileStatus } from '@scalemule/sdk';
 import { ScaleMuleClient } from './client.mjs';
 export { ClientConfig, RequestOptions, createClient } from './client.mjs';
-import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-BIIUrnPr.mjs';
+import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError$1, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-BIIUrnPr.mjs';
 export { h as AccountBalance, i as AnalyticsEvent, j as ApiResponse, B as BatchTrackRequest, k as BillingPayment, l as BillingPayout, m as BillingRefund, n as BillingTransaction, C as ChangeEmailRequest, o as ChangePasswordRequest, p as ClientContext, q as ConnectedAccount, D as DeviceFingerprint, r as DeviceInfo, E as EnhancedAnalyticsEvent, F as ForgotPasswordRequest, K as KnownAccountInfo, s as LinkedAccount, t as ListFilesResponse, u as LoginDeviceInfo, v as LoginRequest, w as LoginResponseWithMFA, x as LoginRiskInfo, M as MFAChallengeResponse, y as MFAMethod, z as MFASMSSetupResponse, G as MFASetupRequest, H as MFAStatus, I as MFATOTPSetupResponse, J as MFAVerifyRequest, O as OAuthCallbackRequest, N as OAuthCallbackResponse, P as OAuthConfig, Q as OAuthProvider, R as OAuthStartResponse, T as PageViewData, V as PayoutSchedule, W as PhoneLoginRequest, X as PhoneSendCodeRequest, Y as PhoneVerifyRequest, Z as Profile, _ as RefreshResponse, $ as RegisterRequest, a0 as ResetPasswordRequest, a1 as ScaleMuleApiError, a2 as ScaleMuleEnvironment, a3 as Session, a4 as SignedUploadCompleteRequest, a5 as SignedUploadRequest, a6 as SignedUploadResponse, a7 as SignedUploadUrl, a8 as StorageAdapter, a9 as StorageFile, aa as TrackEventResponse, ab as TransactionSummary, ac as UTMParams, ad as UpdateProfileRequest, ae as UploadOptions, af as UploadResponse, ag as VerifyEmailRequest } from './index-BIIUrnPr.mjs';
+
+/**
+ * Result of a single {@link useMedia} upload call.
+ *
+ * The shape is normalized regardless of MIME type — `optimized_url_promise`
+ * resolves on image uploads after the photo optimizer finishes; for non-image
+ * uploads it resolves to `null` immediately. (Video / audio branches will
+ * populate `hls_url_promise` in later phases — today they fall through to
+ * generic storage and that field stays `null`.)
+ */
+interface MediaUploadResult {
+    /** Storage file_id — store this in chat-attachment metadata. */
+    file_id: string;
+    /** Photo service id — null for non-image uploads or when register() failed. */
+    photo_id: string | null;
+    /** Short-lived signed URL to the original bytes (private uploads) or
+     * a public CDN URL (when caller passed `is_public: true`). */
+    original_view_url: string | null;
+    /** Resolves once the photo optimizer finishes. `null` for non-image
+     * MIME types or when register() failed. */
+    optimized_url_promise: Promise<string | null>;
+    /** Resolves once the video transcoder finishes (Phase 2 / S5b). `null` today. */
+    hls_url_promise: Promise<string | null>;
+    /** The file's MIME type — preserved from the input File / Blob. */
+    mime_type: string;
+    /** Whether the resulting storage object is public-readable. */
+    is_public: boolean;
+}
+/**
+ * Per-app media-pipeline policy. Drives release-gating + processing
+ * behavior. **Orthogonal to `is_public`.** See
+ * `docs/MEDIA-UPLOADS.md` and ADR-2026-04-26 for the full taxonomy.
+ *
+ * Today's behavior (Phase 4 v1):
+ *   - `fast_trusted` / `safe_visible` (default): upload promise resolves
+ *     as soon as the file is uploaded + registered. The post-processing
+ *     (scan, optimize, transcode) runs async; callers can observe via
+ *     `useFileStatus`.
+ *   - `safe_public` / `moderated`: upload promise *waits* for the
+ *     optimized image variant (image MIME) or HLS playlist (video MIME)
+ *     to become ready before resolving. Acts as the release-gate for
+ *     UGC-style apps that should not publish raw bytes.
+ *   - `compliance`: today behaves as `safe_public`; Phase 4+ adds the
+ *     audit-log + signed-with-purpose URL semantics.
+ */
+type MediaPolicy = 'fast_trusted' | 'safe_visible' | 'safe_public' | 'moderated' | 'compliance';
+interface UseMediaUploadOptions {
+    /** Whether the resulting storage object should be public-readable.
+     * Default: `false` (private). Public is opt-in for surfaces that
+     * genuinely need it (avatars, public listings). Chat / DM uploads
+     * should always be private. */
+    is_public?: boolean;
+    /**
+     * Per-call media-policy override. Defaults to `safe_visible` (visible
+     * immediately at original fidelity; optimized variants swap in async).
+     * Set to `safe_public` to make the upload promise *await* the optimized
+     * variant (image) or HLS playlist (video) before resolving — useful for
+     * broadcast / UGC apps that gate publication on processing complete.
+     *
+     * The per-app default lives in `application_storage_settings.media_policy`
+     * (Phase 4 / P3, live in prod 2026-04-26). Reading the per-app default
+     * into `useMedia` defaults lands in a follow-up; today the option is
+     * caller-provided per call.
+     */
+    policy?: MediaPolicy;
+    /** Display filename (sanitized server-side). */
+    filename?: string;
+    /** Custom metadata attached to the file. */
+    metadata?: Record<string, unknown>;
+    /** Upload progress callback (0-100). */
+    onProgress?: (percent: number) => void;
+    /** AbortSignal for cancellation. */
+    signal?: AbortSignal;
+    /** Force a non-photo path even for image MIME types — useful for
+     * generic file uploads where you don't want the photo optimizer
+     * to register the file. Default: `false`. */
+    skipPhotoRegister?: boolean;
+}
+interface UseMediaReturn {
+    /** Upload a file. MIME-aware: images go through photo register +
+     * optimization; everything else goes through generic storage. */
+    upload: (file: File | Blob, options?: UseMediaUploadOptions) => Promise<MediaUploadResult>;
+    /** Cancel an upload by its `file_id`. Deletes the storage object so
+     * it doesn't orphan in S3 — useful when a chat composer accepts a
+     * file but the user removes it before sending. Idempotent. */
+    cancelUpload: (fileId: string) => Promise<void>;
+    /** Last error from `upload` or `cancelUpload`. */
+    error: ApiError | null;
+    /** True while an upload is in progress. */
+    uploading: boolean;
+}
+/**
+ * Opinionated, MIME-aware media upload hook.
+ *
+ * `useMedia()` is the canonical upload primitive for chat / progressive
+ * media use. It branches by MIME type:
+ *   - `image/*` → `client.photo.uploadViaStorage()` — upload to storage,
+ *     then register with the photo service so the on-demand transform
+ *     endpoint resolves to optimized variants. The returned
+ *     `optimized_url_promise` resolves once the optimizer finishes.
+ *   - everything else → `client.storage.uploadPrivate()` — a private,
+ *     uncompressed, fail-closed upload to generic storage.
+ *
+ * **Default visibility is `is_public: false`.** Public is opt-in per call.
+ * `useMedia()` does not expose `is_public` via app-level config — visibility
+ * is always an explicit per-call surface choice.
+ *
+ * Compared to `useContent()`:
+ *   - `useContent()` is a thin wrapper over generic storage and does not
+ *     register photos / videos with their typed services. Use it for plain
+ *     file uploads where you don't need optimization or transcoding.
+ *   - `useMedia()` defaults to private + no compression, integrates with the
+ *     typed media services automatically, and is the right primitive for
+ *     anything chat- or media-shaped.
+ *
+ * @example
+ * ```tsx
+ * 'use client';
+ *
+ * import { useMedia, ScaleMuleMedia } from '@scalemule/nextjs';
+ *
+ * function ChatComposer({ onAttach }) {
+ *   const { upload, uploading } = useMedia();
+ *
+ *   async function handlePick(file: File) {
+ *     const result = await upload(file);
+ *     onAttach({
+ *       file_id: result.file_id,
+ *       mime_type: result.mime_type,
+ *       optimized_url_promise: result.optimized_url_promise,
+ *     });
+ *   }
+ *
+ *   return <input type="file" disabled={uploading}
+ *     onChange={(e) => e.target.files?.[0] && handlePick(e.target.files[0])} />;
+ * }
+ * ```
+ *
+ * See `docs/MEDIA-UPLOADS.md` in the platform repo for the decision
+ * tree and the full anti-patterns list.
+ */
+declare function useMedia(): UseMediaReturn;
 
 interface ScaleMuleContextValue {
     /** The API client instance */
@@ -22,6 +164,12 @@ interface ScaleMuleContextValue {
     photo: PhotoService;
     /** Base SDK video service — exposed for `useMedia()` and `video.uploadViaStorage()` */
     video: VideoService;
+    /**
+     * Default media policy for `useMedia()` calls. Set via
+     * `<ScaleMuleProvider mediaPolicy="…">`; per-call overrides win.
+     * Undefined falls back to `useMedia()`'s built-in `safe_visible` default.
+     */
+    mediaPolicy?: MediaPolicy;
     /** Current authenticated user */
     user: User | null;
     /** Set the current user */
@@ -29,9 +177,9 @@ interface ScaleMuleContextValue {
     /** Whether the SDK is initializing */
     initializing: boolean;
     /** Last error */
-    error: ApiError | null;
+    error: ApiError$1 | null;
     /** Set error */
-    setError: (error: ApiError | null) => void;
+    setError: (error: ApiError$1 | null) => void;
     /** Analytics proxy URL (when set, SDK sends events here instead of ScaleMule) */
     analyticsProxyUrl?: string;
     /** Auth proxy URL (when set, auth operations route through this proxy) */
@@ -56,11 +204,27 @@ interface ScaleMuleProviderProps extends ScaleMuleConfig {
     /** Called when user logs out */
     onLogout?: () => void;
     /** Called on authentication error */
-    onAuthError?: (error: ApiError) => void;
+    onAuthError?: (error: ApiError$1) => void;
     /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
     bootstrapFlags?: Record<string, unknown>;
+    /**
+     * Default media-pipeline policy applied to `useMedia()` calls when no
+     * per-call `policy` override is given. Five modes — see
+     * `docs/MEDIA-UPLOADS.md` and the {@link import('./hooks/useMedia').MediaPolicy} type.
+     *
+     * The platform stores the per-app policy in
+     * `application_storage_settings.media_policy` (Phase 4 / P3, live in
+     * prod). That endpoint is `MemberOnly` admin-auth, so end-user-context
+     * provider can't fetch it directly — apps that want policy-driven
+     * defaults should declare the value here, mirroring whatever the
+     * platform admin set.
+     *
+     * Default: undefined → `useMedia()` falls back to its built-in
+     * `safe_visible` default.
+     */
+    mediaPolicy?: MediaPolicy;
 }
-declare function ScaleMuleProvider({ apiKey, applicationId, environment, gatewayUrl, debug, storage, analyticsProxyUrl, authProxyUrl, publishableKey, enableAccountSwitcher, accountSwitcherPrivacy, children, onLogin, onLogout, onAuthError, bootstrapFlags, }: ScaleMuleProviderProps): react_jsx_runtime.JSX.Element;
+declare function ScaleMuleProvider({ apiKey, applicationId, environment, gatewayUrl, debug, storage, analyticsProxyUrl, authProxyUrl, publishableKey, enableAccountSwitcher, accountSwitcherPrivacy, children, onLogin, onLogout, onAuthError, bootstrapFlags, mediaPolicy, }: ScaleMuleProviderProps): react_jsx_runtime.JSX.Element;
 declare function useScaleMule(): ScaleMuleContextValue;
 declare function useScaleMuleClient(): ScaleMuleClient;
 declare function useMoneyClient(): MoneyClient;
@@ -158,148 +322,6 @@ interface UseContentOptions {
  */
 declare function useContent(options?: UseContentOptions): UseContentReturn;
 
-/**
- * Result of a single {@link useMedia} upload call.
- *
- * The shape is normalized regardless of MIME type — `optimized_url_promise`
- * resolves on image uploads after the photo optimizer finishes; for non-image
- * uploads it resolves to `null` immediately. (Video / audio branches will
- * populate `hls_url_promise` in later phases — today they fall through to
- * generic storage and that field stays `null`.)
- */
-interface MediaUploadResult {
-    /** Storage file_id — store this in chat-attachment metadata. */
-    file_id: string;
-    /** Photo service id — null for non-image uploads or when register() failed. */
-    photo_id: string | null;
-    /** Short-lived signed URL to the original bytes (private uploads) or
-     * a public CDN URL (when caller passed `is_public: true`). */
-    original_view_url: string | null;
-    /** Resolves once the photo optimizer finishes. `null` for non-image
-     * MIME types or when register() failed. */
-    optimized_url_promise: Promise<string | null>;
-    /** Resolves once the video transcoder finishes (Phase 2 / S5b). `null` today. */
-    hls_url_promise: Promise<string | null>;
-    /** The file's MIME type — preserved from the input File / Blob. */
-    mime_type: string;
-    /** Whether the resulting storage object is public-readable. */
-    is_public: boolean;
-}
-/**
- * Per-app media-pipeline policy. Drives release-gating + processing
- * behavior. **Orthogonal to `is_public`.** See
- * `docs/MEDIA-UPLOADS.md` and ADR-2026-04-26 for the full taxonomy.
- *
- * Today's behavior (Phase 4 v1):
- *   - `fast_trusted` / `safe_visible` (default): upload promise resolves
- *     as soon as the file is uploaded + registered. The post-processing
- *     (scan, optimize, transcode) runs async; callers can observe via
- *     `useFileStatus`.
- *   - `safe_public` / `moderated`: upload promise *waits* for the
- *     optimized image variant (image MIME) or HLS playlist (video MIME)
- *     to become ready before resolving. Acts as the release-gate for
- *     UGC-style apps that should not publish raw bytes.
- *   - `compliance`: today behaves as `safe_public`; Phase 4+ adds the
- *     audit-log + signed-with-purpose URL semantics.
- */
-type MediaPolicy = 'fast_trusted' | 'safe_visible' | 'safe_public' | 'moderated' | 'compliance';
-interface UseMediaUploadOptions {
-    /** Whether the resulting storage object should be public-readable.
-     * Default: `false` (private). Public is opt-in for surfaces that
-     * genuinely need it (avatars, public listings). Chat / DM uploads
-     * should always be private. */
-    is_public?: boolean;
-    /**
-     * Per-call media-policy override. Defaults to `safe_visible` (visible
-     * immediately at original fidelity; optimized variants swap in async).
-     * Set to `safe_public` to make the upload promise *await* the optimized
-     * variant (image) or HLS playlist (video) before resolving — useful for
-     * broadcast / UGC apps that gate publication on processing complete.
-     *
-     * The per-app default lives in `application_storage_settings.media_policy`
-     * (Phase 4 / P3, live in prod 2026-04-26). Reading the per-app default
-     * into `useMedia` defaults lands in a follow-up; today the option is
-     * caller-provided per call.
-     */
-    policy?: MediaPolicy;
-    /** Display filename (sanitized server-side). */
-    filename?: string;
-    /** Custom metadata attached to the file. */
-    metadata?: Record<string, unknown>;
-    /** Upload progress callback (0-100). */
-    onProgress?: (percent: number) => void;
-    /** AbortSignal for cancellation. */
-    signal?: AbortSignal;
-    /** Force a non-photo path even for image MIME types — useful for
-     * generic file uploads where you don't want the photo optimizer
-     * to register the file. Default: `false`. */
-    skipPhotoRegister?: boolean;
-}
-interface UseMediaReturn {
-    /** Upload a file. MIME-aware: images go through photo register +
-     * optimization; everything else goes through generic storage. */
-    upload: (file: File | Blob, options?: UseMediaUploadOptions) => Promise<MediaUploadResult>;
-    /** Cancel an upload by its `file_id`. Deletes the storage object so
-     * it doesn't orphan in S3 — useful when a chat composer accepts a
-     * file but the user removes it before sending. Idempotent. */
-    cancelUpload: (fileId: string) => Promise<void>;
-    /** Last error from `upload` or `cancelUpload`. */
-    error: ApiError$1 | null;
-    /** True while an upload is in progress. */
-    uploading: boolean;
-}
-/**
- * Opinionated, MIME-aware media upload hook.
- *
- * `useMedia()` is the canonical upload primitive for chat / progressive
- * media use. It branches by MIME type:
- *   - `image/*` → `client.photo.uploadViaStorage()` — upload to storage,
- *     then register with the photo service so the on-demand transform
- *     endpoint resolves to optimized variants. The returned
- *     `optimized_url_promise` resolves once the optimizer finishes.
- *   - everything else → `client.storage.uploadPrivate()` — a private,
- *     uncompressed, fail-closed upload to generic storage.
- *
- * **Default visibility is `is_public: false`.** Public is opt-in per call.
- * `useMedia()` does not expose `is_public` via app-level config — visibility
- * is always an explicit per-call surface choice.
- *
- * Compared to `useContent()`:
- *   - `useContent()` is a thin wrapper over generic storage and does not
- *     register photos / videos with their typed services. Use it for plain
- *     file uploads where you don't need optimization or transcoding.
- *   - `useMedia()` defaults to private + no compression, integrates with the
- *     typed media services automatically, and is the right primitive for
- *     anything chat- or media-shaped.
- *
- * @example
- * ```tsx
- * 'use client';
- *
- * import { useMedia, ScaleMuleMedia } from '@scalemule/nextjs';
- *
- * function ChatComposer({ onAttach }) {
- *   const { upload, uploading } = useMedia();
- *
- *   async function handlePick(file: File) {
- *     const result = await upload(file);
- *     onAttach({
- *       file_id: result.file_id,
- *       mime_type: result.mime_type,
- *       optimized_url_promise: result.optimized_url_promise,
- *     });
- *   }
- *
- *   return <input type="file" disabled={uploading}
- *     onChange={(e) => e.target.files?.[0] && handlePick(e.target.files[0])} />;
- * }
- * ```
- *
- * See `docs/MEDIA-UPLOADS.md` in the platform repo for the decision
- * tree and the full anti-patterns list.
- */
-declare function useMedia(): UseMediaReturn;
-
 interface UseFileStatusOptions {
     /** Storage file_id to read status for. */
     fileId: string | null | undefined;
@@ -326,7 +348,7 @@ interface UseFileStatusReturn {
     /** True while a fetch is in flight. */
     loading: boolean;
     /** Last error, or null. */
-    error: ApiError$1 | null;
+    error: ApiError | null;
     /**
      * Convenience: scan is clean. For images/videos, this means the file
      * is *safe to render*; the optimized / HLS variants may still be
@@ -586,7 +608,7 @@ interface UseFeatureFlagsOptions {
 interface UseFeatureFlagsReturn {
     flags: Record<string, FeatureFlagEvaluation>;
     loading: boolean;
-    error: ApiError | null;
+    error: ApiError$1 | null;
     refresh: () => Promise<void>;
     isEnabled: (flagKey: string, fallback?: boolean) => boolean;
     getFlag: <T = unknown>(flagKey: string, fallback?: T) => T;
@@ -613,7 +635,7 @@ interface UsePushNotificationsReturn {
     /** Whether an operation is in progress */
     isLoading: boolean;
     /** Last error */
-    error: ApiError | null;
+    error: ApiError$1 | null;
     /** Request permission and subscribe to push notifications */
     subscribe: () => Promise<void>;
     /** Unsubscribe from push notifications */
@@ -714,7 +736,7 @@ interface UseFeedbackResult {
     /** End-user's own feedback items for the current tenant. Empty when not signed in. */
     items: FeedbackItem[];
     loading: boolean;
-    error: ApiError | null;
+    error: ApiError$1 | null;
     /** Submit a new feedback item. Returns the persisted item on success. */
     submit: (input: FeedbackItemInput) => Promise<FeedbackItem>;
     /** Re-fetch the list. */
@@ -926,4 +948,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { ApiError$1 as ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
