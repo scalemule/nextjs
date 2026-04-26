@@ -48,6 +48,13 @@ export type { ScaleMuleProviderProps } from './provider'
 export { useAuth } from './hooks/useAuth'
 export { useBilling } from './hooks/useBilling'
 export { useContent } from './hooks/useContent'
+export { useAudio } from './hooks/useAudio'
+export type {
+  AudioFile,
+  AudioUploadResult,
+  UseAudioReturn,
+  UseAudioUploadOptions,
+} from './hooks/useAudio'
 export { useMedia } from './hooks/useMedia'
 export type { MediaUploadResult, UseMediaUploadOptions, UseMediaReturn, MediaPolicy } from './hooks/useMedia'
 export { useFileStatus } from './hooks/useFileStatus'
