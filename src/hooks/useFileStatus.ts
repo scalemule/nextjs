@@ -171,20 +171,17 @@ export function useFileStatus(options: UseFileStatusOptions): UseFileStatusRetur
     const channel = conversationChannel(conversationKind, conversationId)
     const unsub = realtime.subscribe(channel, (data: unknown) => {
       // RealtimeService delivers either the inner data or the full envelope
-      // depending on backend wrapping; handle both shapes.
-      const payload = data as
-        | { event?: string; data?: { file_id?: string } }
-        | { file_id?: string; kind?: string }
-        | null
-        | undefined
-      if (!payload) return
-      const inner =
-        'data' in payload && payload.data
-          ? (payload.data as { file_id?: string })
-          : (payload as { file_id?: string })
-      const evt = (payload as { event?: string }).event
+      // depending on backend wrapping; handle both shapes. Guard against
+      // non-object payloads (string/number/null) before using `in`.
+      if (typeof data !== 'object' || data === null) return
+      const payload = data as Record<string, unknown>
+      const wrapped =
+        'data' in payload && typeof payload.data === 'object' && payload.data !== null
+          ? (payload.data as Record<string, unknown>)
+          : payload
+      const evt = typeof payload.event === 'string' ? payload.event : undefined
       if (evt && evt !== 'file_status_changed') return
-      if (inner.file_id !== fileId) return
+      if (wrapped.file_id !== fileId) return
       void fetchStatus()
     })
     return unsub

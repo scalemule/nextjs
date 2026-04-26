@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { useEffect, useMemo } from 'react'
-import { useFileStatus } from '../hooks/useFileStatus'
+import { useFileStatus, type ConversationKind } from '../hooks/useFileStatus'
 
 export interface ScaleMuleMediaProps {
   /** Storage `file_id` of the media to render. Required. */
@@ -29,9 +29,23 @@ export interface ScaleMuleMediaProps {
   /**
    * Polling interval while waiting for the media pipeline to complete.
    * Defaults to 2000ms; set to `null` to disable polling. Polling stops
-   * automatically once scan is clean.
+   * automatically once scan is clean. When `conversationId` is set the
+   * component receives push updates and you can usually pass `null`.
    */
   pollIntervalMs?: number | null
+  /**
+   * Chat-surface push: when set, the underlying `useFileStatus` hook
+   * subscribes to the conversation's realtime channel and refreshes on
+   * `file_status_changed` events for this `fileId`. See `useFileStatus`
+   * docs for channel naming and bridge behaviour.
+   */
+  conversationId?: string | null
+  /**
+   * Conversation kind, controls the channel name prefix
+   * (`conversation:{id}` vs `conversation:lr|bc|support:{id}`).
+   * Default is `'standard'`.
+   */
+  conversationKind?: ConversationKind
   /**
    * Render a custom placeholder while waiting for scan / upload. Defaults
    * to a tiny "Loading…" div. Receives the current FileStatus (or null).
@@ -93,12 +107,19 @@ export function ScaleMuleMedia(props: ScaleMuleMediaProps): React.ReactElement |
     style,
     alt,
     pollIntervalMs = 2000,
+    conversationId = null,
+    conversationKind,
     renderPlaceholder,
     renderBlocked,
     renderOverride,
   } = props
 
-  const { status, isReady } = useFileStatus({ fileId, pollIntervalMs })
+  const { status, isReady } = useFileStatus({
+    fileId,
+    pollIntervalMs,
+    conversationId,
+    conversationKind,
+  })
 
   // ──────────────────────────────────────────────────────────────────────
   // State machine
