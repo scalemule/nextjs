@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createMoneyClient, type MoneyClient } from '@scalemule/money'
-import { ScaleMule, type RealtimeService, type StorageService, type PhotoService } from '@scalemule/sdk'
+import { ScaleMule, type RealtimeService, type StorageService, type PhotoService, type VideoService } from '@scalemule/sdk'
 import { ScaleMuleClient, createClient } from './client'
 import type { User, ScaleMuleConfig, ApiError, LoginResponse } from './types'
 
@@ -56,6 +56,8 @@ interface ScaleMuleContextValue {
   storage: StorageService
   /** Base SDK photo service — exposed for `useMedia()` and `photo.uploadViaStorage()` */
   photo: PhotoService
+  /** Base SDK video service — exposed for `useMedia()` and `video.uploadViaStorage()` */
+  video: VideoService
   /** Current authenticated user */
   user: User | null
   /** Set the current user */
@@ -309,6 +311,7 @@ export function ScaleMuleProvider({
       realtime: baseClient.realtime,
       storage: baseClient.storage,
       photo: baseClient.photo,
+      video: baseClient.video,
       user,
       setUser: handleSetUser,
       initializing,

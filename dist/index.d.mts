@@ -2,7 +2,7 @@ import * as react_jsx_runtime from 'react/jsx-runtime';
 import { ReactNode, ReactElement } from 'react';
 import { MoneyClient } from '@scalemule/money';
 export { MoneyClient, MoneyClientConfig, createMoneyClient } from '@scalemule/money';
-import { RealtimeService, StorageService, PhotoService, ApiError as ApiError$1 } from '@scalemule/sdk';
+import { RealtimeService, StorageService, PhotoService, VideoService, ApiError as ApiError$1 } from '@scalemule/sdk';
 import { ScaleMuleClient } from './client.mjs';
 export { ClientConfig, RequestOptions, createClient } from './client.mjs';
 import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-BIIUrnPr.mjs';
@@ -19,6 +19,8 @@ interface ScaleMuleContextValue {
     storage: StorageService;
     /** Base SDK photo service — exposed for `useMedia()` and `photo.uploadViaStorage()` */
     photo: PhotoService;
+    /** Base SDK video service — exposed for `useMedia()` and `video.uploadViaStorage()` */
+    video: VideoService;
     /** Current authenticated user */
     user: User | null;
     /** Set the current user */
