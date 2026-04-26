@@ -324,25 +324,39 @@ interface UseContentOptions {
  */
 declare function useContent(options?: UseContentOptions): UseContentReturn;
 
+/**
+ * Conversation kinds recognized by the chat realtime channel naming scheme.
+ * Matches `broadcast_to_conversation` in `ms/scalemule-chat/src/realtime.rs`.
+ */
+type ConversationKind = 'standard' | 'large_room' | 'broadcast' | 'support';
 interface UseFileStatusOptions {
     /** Storage file_id to read status for. */
     fileId: string | null | undefined;
     /**
      * Optional poll interval in milliseconds. If set, the hook re-fetches
-     * status every `pollIntervalMs`. Useful while waiting for transcode /
-     * optimization to complete. Pass `null` (default) for a one-shot read.
-     *
-     * Polling stops automatically once `scan.status === 'clean'` AND the
-     * caller's expected pipeline is done (`urls.optimized` returns 200 for
-     * images, `urls.hls` returns 200 for videos). Today the hook can only
-     * detect scan clean — broader pipeline-done detection lands when Phase 3
-     * enriches the optimize/transcode response fields.
+     * status every `pollIntervalMs` until scan goes clean. Useful for
+     * non-chat surfaces or as a fallback alongside `conversationId` push.
      */
     pollIntervalMs?: number | null;
-    /**
-     * Disable the hook (don't fetch). Useful when `fileId` is conditional.
-     */
+    /** Disable the hook (don't fetch). Useful when `fileId` is conditional. */
     disabled?: boolean;
+    /**
+     * Chat-surface push variant: subscribe to the conversation's realtime
+     * channel and refresh when a `file_status_changed` event arrives for
+     * `fileId`. Auth rides the existing per-conversation channel ACL.
+     */
+    conversationId?: string | null;
+    /**
+     * Conversation kind, controls the channel name prefix:
+     *   - `standard` (default) → `conversation:{id}`
+     *   - `large_room` → `conversation:lr:{id}`
+     *   - `broadcast` → `conversation:bc:{id}`
+     *   - `support` → `conversation:support:{id}`
+     *
+     * If you only have a `messageId`, look up the conversation first via
+     * `client.chat.getMessage(messageId)` and pass the result here.
+     */
+    conversationKind?: ConversationKind;
 }
 interface UseFileStatusReturn {
     /** The latest status response, or null on first render / disabled. */
@@ -362,28 +376,38 @@ interface UseFileStatusReturn {
     refresh: () => Promise<void>;
 }
 /**
- * Subscribes to {@link FileStatus} for a single file. Today this is a
- * pull-only hook — single fetch by default, optional polling.
+ * Subscribes to {@link FileStatus} for a single file.
  *
- * Phase 3 of the realtime-chat media pipeline ADR will add a push variant
- * for chat surfaces — `useFileStatus({ messageId })` will subscribe to
- * `file.status` events on the existing per-conversation realtime channel
- * via the `scalemule-chat` translation bridge (P5'). Until that lands,
- * customers using this hook from chat surfaces should pass `pollIntervalMs`
- * in the 1–3 second range while a media pipeline is expected to be running,
- * then drop the polling once `isReady` is true.
+ * Three call shapes:
  *
- * @example
+ * 1. **Pull-only** — `useFileStatus({ fileId })` plus optional `pollIntervalMs`.
+ *    One-shot fetch; useful for non-chat surfaces or static reads.
+ *
+ * 2. **Chat-surface push** — `useFileStatus({ fileId, conversationId, conversationKind? })`.
+ *    Subscribes to the conversation channel and refreshes when
+ *    `file_status_changed` arrives for this `fileId`. The chat service's
+ *    media-status bridge fans photo/video lifecycle events into the per-conversation
+ *    channel; the hook drops events for other files and dedupes against polling.
+ *
+ * 3. **Push + slow poll fallback** — combine `conversationId` with `pollIntervalMs`
+ *    if you want belt-and-suspenders for environments where the websocket may drop.
+ *
+ * The `surface: 'profile'` push variant (private-user channel) is deferred until
+ * the realtime SDK exposes private-channel subscription by user.
+ *
+ * @example Chat surface (push)
  * ```tsx
- * function ChatImage({ fileId }: { fileId: string }) {
- *   const { status, isReady } = useFileStatus({
- *     fileId,
- *     pollIntervalMs: 2000,
- *   });
+ * function ChatImage({ fileId, conversationId }: { fileId: string; conversationId: string }) {
+ *   const { status, isReady } = useFileStatus({ fileId, conversationId });
  *   if (!isReady) return <div>Scanning…</div>;
  *   const src = status?.urls.optimized ?? status?.urls.original;
  *   return <img src={src} />;
  * }
+ * ```
+ *
+ * @example Non-chat surface (pull + poll)
+ * ```tsx
+ * const { status, isReady } = useFileStatus({ fileId, pollIntervalMs: 2000 });
  * ```
  */
 declare function useFileStatus(options: UseFileStatusOptions): UseFileStatusReturn;
@@ -950,4 +974,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError$1 as ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { ApiError$1 as ApiError, type ConversationKind, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };

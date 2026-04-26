@@ -9118,9 +9118,28 @@ function useMedia() {
   );
   return { upload, cancelUpload, error, uploading };
 }
+function conversationChannel(kind, id) {
+  switch (kind) {
+    case "large_room":
+      return `conversation:lr:${id}`;
+    case "broadcast":
+      return `conversation:bc:${id}`;
+    case "support":
+      return `conversation:support:${id}`;
+    case "standard":
+    default:
+      return `conversation:${id}`;
+  }
+}
 function useFileStatus(options) {
-  const { storage } = useScaleMule();
-  const { fileId, pollIntervalMs = null, disabled = false } = options;
+  const { storage, realtime } = useScaleMule();
+  const {
+    fileId,
+    pollIntervalMs = null,
+    disabled = false,
+    conversationId = null,
+    conversationKind = "standard"
+  } = options;
   const [status, setStatus] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
@@ -9159,6 +9178,20 @@ function useFileStatus(options) {
     }, pollIntervalMs);
     return () => clearInterval(id);
   }, [pollIntervalMs, disabled, fileId, status?.scan.status, fetchStatus]);
+  React.useEffect(() => {
+    if (!conversationId || !fileId || disabled) return;
+    const channel = conversationChannel(conversationKind, conversationId);
+    const unsub = realtime.subscribe(channel, (data) => {
+      const payload = data;
+      if (!payload) return;
+      const inner = "data" in payload && payload.data ? payload.data : payload;
+      const evt = payload.event;
+      if (evt && evt !== "file_status_changed") return;
+      if (inner.file_id !== fileId) return;
+      void fetchStatus();
+    });
+    return unsub;
+  }, [realtime, conversationId, conversationKind, fileId, disabled, fetchStatus]);
   const isReady = status?.scan.status === "clean";
   return { status, loading, error, isReady, refresh: fetchStatus };
 }

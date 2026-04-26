@@ -51,7 +51,11 @@ export { useContent } from './hooks/useContent'
 export { useMedia } from './hooks/useMedia'
 export type { MediaUploadResult, UseMediaUploadOptions, UseMediaReturn, MediaPolicy } from './hooks/useMedia'
 export { useFileStatus } from './hooks/useFileStatus'
-export type { UseFileStatusOptions, UseFileStatusReturn } from './hooks/useFileStatus'
+export type {
+  ConversationKind,
+  UseFileStatusOptions,
+  UseFileStatusReturn,
+} from './hooks/useFileStatus'
 export { ScaleMuleMedia } from './components/ScaleMuleMedia'
 export type { ScaleMuleMediaProps } from './components/ScaleMuleMedia'
 export { useMoney } from './hooks/useMoney'

@@ -132,7 +132,67 @@ function LoginPage() {
 }
 ```
 
-### `useContent()`
+### `useMedia()` — recommended for image / video / audio uploads
+
+One hook covers every MIME type, defaults to private, and auto-routes images
+through the photo pipeline (optimization, transform breakpoints) and videos
+through the video pipeline (HLS transcoding). Drop the result `file_id` into
+a chat message or render it with `<ScaleMuleMedia />` and progressive
+enhancement just works.
+
+```tsx
+import { useMedia, ScaleMuleMedia } from '@scalemule/nextjs'
+
+function Composer({ conversationId }: { conversationId: string }) {
+  const { upload, uploading } = useMedia()
+
+  async function handleFile(file: File) {
+    const result = await upload(file)
+    // result.file_id is private by default; post the message with it.
+    await postMessage({ conversationId, attachments: [{ file_id: result.file_id }] })
+  }
+
+  return <input type="file" disabled={uploading} onChange={(e) => handleFile(e.target.files![0])} />
+}
+
+function Attachment({ fileId, conversationId, mimeType }: {
+  fileId: string; conversationId: string; mimeType: string
+}) {
+  // <ScaleMuleMedia /> uses useFileStatus internally; with conversationId
+  // it subscribes to the conversation channel for live optimize/transcode
+  // updates instead of polling.
+  return (
+    <ScaleMuleMedia
+      fileId={fileId}
+      mimeType={mimeType}
+      conversationId={conversationId}
+    />
+  )
+}
+```
+
+See [`docs/MEDIA-UPLOADS.md`](https://github.com/scalemule/scalemule-repos/blob/main/docs/MEDIA-UPLOADS.md)
+for the full decision tree (which hook for which app, fast/safe policy modes,
+private vs public visibility, anti-patterns).
+
+### `useFileStatus()` — read-side progressive enhancement
+
+```tsx
+import { useFileStatus } from '@scalemule/nextjs'
+
+// Chat surface — subscribe to the conversation channel for push updates.
+const { status, isReady } = useFileStatus({ fileId, conversationId })
+
+// Non-chat — pull-only with optional polling.
+const { status, isReady } = useFileStatus({ fileId, pollIntervalMs: 2000 })
+```
+
+### `useContent()` — generic file uploads (legacy)
+
+> **Deprecated for chat / progressive media.** Use `useMedia()` instead.
+> `useContent()` remains available for plain non-image/video file lists
+> (documents, downloads). It does not auto-route through the photo/video
+> pipelines and does not enforce private-by-default for chat surfaces.
 
 ```tsx
 import { useContent } from '@scalemule/nextjs'

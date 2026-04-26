@@ -4,25 +4,40 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ApiError, FileStatus } from '@scalemule/sdk'
 import { useScaleMule } from '../provider'
 
+/**
+ * Conversation kinds recognized by the chat realtime channel naming scheme.
+ * Matches `broadcast_to_conversation` in `ms/scalemule-chat/src/realtime.rs`.
+ */
+export type ConversationKind = 'standard' | 'large_room' | 'broadcast' | 'support'
+
 export interface UseFileStatusOptions {
   /** Storage file_id to read status for. */
   fileId: string | null | undefined
   /**
    * Optional poll interval in milliseconds. If set, the hook re-fetches
-   * status every `pollIntervalMs`. Useful while waiting for transcode /
-   * optimization to complete. Pass `null` (default) for a one-shot read.
-   *
-   * Polling stops automatically once `scan.status === 'clean'` AND the
-   * caller's expected pipeline is done (`urls.optimized` returns 200 for
-   * images, `urls.hls` returns 200 for videos). Today the hook can only
-   * detect scan clean — broader pipeline-done detection lands when Phase 3
-   * enriches the optimize/transcode response fields.
+   * status every `pollIntervalMs` until scan goes clean. Useful for
+   * non-chat surfaces or as a fallback alongside `conversationId` push.
    */
   pollIntervalMs?: number | null
-  /**
-   * Disable the hook (don't fetch). Useful when `fileId` is conditional.
-   */
+  /** Disable the hook (don't fetch). Useful when `fileId` is conditional. */
   disabled?: boolean
+  /**
+   * Chat-surface push variant: subscribe to the conversation's realtime
+   * channel and refresh when a `file_status_changed` event arrives for
+   * `fileId`. Auth rides the existing per-conversation channel ACL.
+   */
+  conversationId?: string | null
+  /**
+   * Conversation kind, controls the channel name prefix:
+   *   - `standard` (default) → `conversation:{id}`
+   *   - `large_room` → `conversation:lr:{id}`
+   *   - `broadcast` → `conversation:bc:{id}`
+   *   - `support` → `conversation:support:{id}`
+   *
+   * If you only have a `messageId`, look up the conversation first via
+   * `client.chat.getMessage(messageId)` and pass the result here.
+   */
+  conversationKind?: ConversationKind
 }
 
 export interface UseFileStatusReturn {
@@ -43,34 +58,64 @@ export interface UseFileStatusReturn {
   refresh: () => Promise<void>
 }
 
+function conversationChannel(kind: ConversationKind, id: string): string {
+  switch (kind) {
+    case 'large_room':
+      return `conversation:lr:${id}`
+    case 'broadcast':
+      return `conversation:bc:${id}`
+    case 'support':
+      return `conversation:support:${id}`
+    case 'standard':
+    default:
+      return `conversation:${id}`
+  }
+}
+
 /**
- * Subscribes to {@link FileStatus} for a single file. Today this is a
- * pull-only hook — single fetch by default, optional polling.
+ * Subscribes to {@link FileStatus} for a single file.
  *
- * Phase 3 of the realtime-chat media pipeline ADR will add a push variant
- * for chat surfaces — `useFileStatus({ messageId })` will subscribe to
- * `file.status` events on the existing per-conversation realtime channel
- * via the `scalemule-chat` translation bridge (P5'). Until that lands,
- * customers using this hook from chat surfaces should pass `pollIntervalMs`
- * in the 1–3 second range while a media pipeline is expected to be running,
- * then drop the polling once `isReady` is true.
+ * Three call shapes:
  *
- * @example
+ * 1. **Pull-only** — `useFileStatus({ fileId })` plus optional `pollIntervalMs`.
+ *    One-shot fetch; useful for non-chat surfaces or static reads.
+ *
+ * 2. **Chat-surface push** — `useFileStatus({ fileId, conversationId, conversationKind? })`.
+ *    Subscribes to the conversation channel and refreshes when
+ *    `file_status_changed` arrives for this `fileId`. The chat service's
+ *    media-status bridge fans photo/video lifecycle events into the per-conversation
+ *    channel; the hook drops events for other files and dedupes against polling.
+ *
+ * 3. **Push + slow poll fallback** — combine `conversationId` with `pollIntervalMs`
+ *    if you want belt-and-suspenders for environments where the websocket may drop.
+ *
+ * The `surface: 'profile'` push variant (private-user channel) is deferred until
+ * the realtime SDK exposes private-channel subscription by user.
+ *
+ * @example Chat surface (push)
  * ```tsx
- * function ChatImage({ fileId }: { fileId: string }) {
- *   const { status, isReady } = useFileStatus({
- *     fileId,
- *     pollIntervalMs: 2000,
- *   });
+ * function ChatImage({ fileId, conversationId }: { fileId: string; conversationId: string }) {
+ *   const { status, isReady } = useFileStatus({ fileId, conversationId });
  *   if (!isReady) return <div>Scanning…</div>;
  *   const src = status?.urls.optimized ?? status?.urls.original;
  *   return <img src={src} />;
  * }
  * ```
+ *
+ * @example Non-chat surface (pull + poll)
+ * ```tsx
+ * const { status, isReady } = useFileStatus({ fileId, pollIntervalMs: 2000 });
+ * ```
  */
 export function useFileStatus(options: UseFileStatusOptions): UseFileStatusReturn {
-  const { storage } = useScaleMule()
-  const { fileId, pollIntervalMs = null, disabled = false } = options
+  const { storage, realtime } = useScaleMule()
+  const {
+    fileId,
+    pollIntervalMs = null,
+    disabled = false,
+    conversationId = null,
+    conversationKind = 'standard',
+  } = options
 
   const [status, setStatus] = useState<FileStatus | null>(null)
   const [loading, setLoading] = useState(false)
@@ -108,8 +153,7 @@ export function useFileStatus(options: UseFileStatusOptions): UseFileStatusRetur
     void fetchStatus()
   }, [fetchStatus])
 
-  // Optional polling. Stops when scan is clean (the available signal
-  // before Phase 3 enriches optimize/transcode).
+  // Optional polling. Stops when scan is clean.
   useEffect(() => {
     if (!pollIntervalMs || disabled || !fileId) return
     const isClean = status?.scan.status === 'clean'
@@ -119,6 +163,29 @@ export function useFileStatus(options: UseFileStatusOptions): UseFileStatusRetur
     }, pollIntervalMs)
     return () => clearInterval(id)
   }, [pollIntervalMs, disabled, fileId, status?.scan.status, fetchStatus])
+
+  // Chat-surface push subscription. Re-fetch when a file_status_changed
+  // event arrives for our file_id on the conversation channel.
+  useEffect(() => {
+    if (!conversationId || !fileId || disabled) return
+    const channel = conversationChannel(conversationKind, conversationId)
+    const unsub = realtime.subscribe(channel, (data: unknown) => {
+      // RealtimeService delivers either the inner data or the full envelope
+      // depending on backend wrapping; handle both shapes. Guard against
+      // non-object payloads (string/number/null) before using `in`.
+      if (typeof data !== 'object' || data === null) return
+      const payload = data as Record<string, unknown>
+      const wrapped =
+        'data' in payload && typeof payload.data === 'object' && payload.data !== null
+          ? (payload.data as Record<string, unknown>)
+          : payload
+      const evt = typeof payload.event === 'string' ? payload.event : undefined
+      if (evt && evt !== 'file_status_changed') return
+      if (wrapped.file_id !== fileId) return
+      void fetchStatus()
+    })
+    return unsub
+  }, [realtime, conversationId, conversationKind, fileId, disabled, fetchStatus])
 
   const isReady = status?.scan.status === 'clean'
 
