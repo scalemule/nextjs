@@ -117,7 +117,7 @@ export interface UseMediaReturn {
  * tree and the full anti-patterns list.
  */
 export function useMedia(): UseMediaReturn {
-  const { storage, photo } = useScaleMule()
+  const { storage, photo, video } = useScaleMule()
 
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
@@ -154,6 +154,30 @@ export function useMedia(): UseMediaReturn {
             original_view_url: r.data.original_view_url,
             optimized_url_promise: r.data.optimized_url_promise,
             hls_url_promise: Promise.resolve(null),
+            mime_type: mimeType,
+            is_public: false,
+          }
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // Video branch: upload + register with video service.
+        // video.uploadViaStorage handles the storage upload and follows
+        // up with /v1/videos/register so the transcoder picks it up.
+        // The hls_url_promise resolves to the HLS master playlist URL
+        // once transcoding completes (or null on 30s timeout — caller
+        // falls back to original_view_url for immediate playback).
+        // ────────────────────────────────────────────────────────────────
+        if (mimeType.startsWith('video/') && !isPublic) {
+          const r = await video.uploadViaStorage(file, sharedOpts)
+          if (r.error || !r.data) {
+            throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
+          }
+          return {
+            file_id: r.data.file_id,
+            photo_id: null,
+            original_view_url: r.data.original_view_url,
+            optimized_url_promise: Promise.resolve(null),
+            hls_url_promise: r.data.hls_url_promise,
             mime_type: mimeType,
             is_public: false,
           }

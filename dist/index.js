@@ -3505,8 +3505,13 @@ var RealtimeService = class extends ServiceModule {
 var DEFAULT_CHUNK_SIZE = 5 * 1024 * 1024;
 var MIN_CHUNK_SIZE = 5 * 1024 * 1024;
 var VideoService = class extends ServiceModule {
-  constructor() {
-    super(...arguments);
+  /**
+   * @param storage Required for {@link uploadViaStorage}. Wired up by the
+   *   top-level {@link ScaleMule} constructor.
+   */
+  constructor(client, storage) {
+    super(client);
+    this.storage = storage;
     this.basePath = "/v1/videos";
   }
   // --------------------------------------------------------------------------
@@ -3579,6 +3584,115 @@ var VideoService = class extends ServiceModule {
   /** Get video metadata and status. */
   async get(videoId, options) {
     return super._get(`/${videoId}`, options);
+  }
+  /**
+   * Register a video from a file already uploaded to scalemule-storage.
+   *
+   * The synchronous handshake for storage-uploaded videos. Verifies the
+   * caller's app owns the storage `file_id` and reads scan status:
+   *   - clean   → 201, video record created with status='uploading',
+   *               transcode worker advances on `scan.file.completed`
+   *   - pending → 202, video record created with status='pending_scan',
+   *               worker advances when scan completes
+   *   - threat  → 409 (rejected; row not created)
+   *
+   * Idempotent: calling twice with the same file_id returns the existing
+   * row's data (the underlying INSERT uses ON DUPLICATE KEY UPDATE).
+   *
+   * For storage-backed videos `video_id == file_id` — the response's
+   * `video_id` and `file_id` are identical, and either can be used with
+   * `getStreamUrl()` / `get()`.
+   *
+   * Most callers should use {@link uploadViaStorage} which composes
+   * `storage.uploadPrivate()` + `register()` in a single call.
+   */
+  async register(request, options) {
+    return this.post(
+      "/register",
+      {
+        file_id: request.fileId,
+        sm_user_id: request.userId
+      },
+      options
+    );
+  }
+  /**
+   * Upload a video to storage (browser → S3 direct, private, no
+   * compression) and register it with the video service so transcoding
+   * + HLS streaming work.
+   *
+   * The canonical chat-attachment / progressive-video upload primitive.
+   * Same private-direct-to-S3 path as `storage.uploadPrivate()`, plus a
+   * follow-up `video.register()` call so HLS playback URLs become live
+   * once the transcoder finishes.
+   *
+   * The returned `hls_url_promise` resolves once the video's status
+   * flips to `ready` (or after a 30s timeout — caller can still serve
+   * `original_view_url` as the fallback). Phase 3 of the realtime-chat
+   * media pipeline ADR replaces the poll with a realtime subscription.
+   *
+   * If `register()` fails after a successful storage upload, the file
+   * is *not* lost: the returned `file_id` is still valid as a generic
+   * storage file. SDK logs a warning and resolves `hls_url_promise`
+   * to `null`.
+   */
+  async uploadViaStorage(file, uploadOptions, requestOptions) {
+    const uploadResult = await this.storage.uploadPrivate(file, {
+      filename: uploadOptions?.filename,
+      metadata: uploadOptions?.metadata,
+      onProgress: uploadOptions?.onProgress,
+      signal: uploadOptions?.signal
+    });
+    if (uploadResult.error || !uploadResult.data) {
+      return { data: null, error: uploadResult.error };
+    }
+    const fileInfo = uploadResult.data;
+    const fileId = fileInfo.id;
+    const originalViewUrl = fileInfo.url ?? null;
+    const registerResult = await this.register({ fileId, userId: uploadOptions?.userId }, requestOptions);
+    if (registerResult.error || !registerResult.data) {
+      console.warn(
+        "[scalemule-sdk] video.register() failed after storage upload; HLS variants unavailable.",
+        registerResult.error
+      );
+      return {
+        data: {
+          file_id: fileId,
+          video_id: fileId,
+          original_view_url: originalViewUrl,
+          hls_url_promise: Promise.resolve(null)
+        },
+        error: null
+      };
+    }
+    const videoId = registerResult.data.video_id;
+    const hlsUrlPromise = this.pollTranscodeComplete(videoId, requestOptions);
+    return {
+      data: {
+        file_id: fileId,
+        video_id: videoId,
+        original_view_url: originalViewUrl,
+        hls_url_promise: hlsUrlPromise
+      },
+      error: null
+    };
+  }
+  /**
+   * Poll {@link get} until the video's status is `ready` or the 30s
+   * timeout fires. Resolves to the HLS master playlist URL on success;
+   * `null` on timeout (caller should fall back to `original_view_url`).
+   */
+  async pollTranscodeComplete(videoId, requestOptions) {
+    const intervalMs = 1e3;
+    const maxAttempts = 30;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const result = await this.get(videoId, requestOptions);
+      if (result.data?.status === "ready") {
+        return `${this.client.getBaseUrl()}${this.basePath}/${videoId}/playlist.m3u8`;
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
   }
   /**
    * Get the HLS master playlist URL for streaming.
@@ -6310,7 +6424,7 @@ var ScaleMule = class {
     this.auth = new AuthService(this._client);
     this.storage = new StorageService(this._client);
     this.realtime = new RealtimeService(this._client);
-    this.video = new VideoService(this._client);
+    this.video = new VideoService(this._client, this.storage);
     this.data = new DataService(this._client);
     this.chat = new ChatService(this._client);
     this.conference = new ConferenceService(this._client);
@@ -7424,6 +7538,7 @@ function ScaleMuleProvider({
       realtime: baseClient.realtime,
       storage: baseClient.storage,
       photo: baseClient.photo,
+      video: baseClient.video,
       user,
       setUser: handleSetUser,
       initializing,
@@ -8737,7 +8852,7 @@ function useContent(options = {}) {
   );
 }
 function useMedia() {
-  const { storage, photo } = useScaleMule();
+  const { storage, photo, video } = useScaleMule();
   const [uploading, setUploading] = react.useState(false);
   const [error, setError] = react.useState(null);
   const upload = react.useCallback(
@@ -8764,6 +8879,21 @@ function useMedia() {
             original_view_url: r2.data.original_view_url,
             optimized_url_promise: r2.data.optimized_url_promise,
             hls_url_promise: Promise.resolve(null),
+            mime_type: mimeType,
+            is_public: false
+          };
+        }
+        if (mimeType.startsWith("video/") && !isPublic) {
+          const r2 = await video.uploadViaStorage(file, sharedOpts);
+          if (r2.error || !r2.data) {
+            throw r2.error ?? { code: "upload_error", message: "Upload failed", status: 0 };
+          }
+          return {
+            file_id: r2.data.file_id,
+            photo_id: null,
+            original_view_url: r2.data.original_view_url,
+            optimized_url_promise: Promise.resolve(null),
+            hls_url_promise: r2.data.hls_url_promise,
             mime_type: mimeType,
             is_public: false
           };
