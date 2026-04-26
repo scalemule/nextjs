@@ -28,6 +28,17 @@ interface UseContentOptions {
  * Provides file upload, listing, and deletion functionality.
  * Automatically includes user ID for proper multi-tenancy.
  *
+ * **For chat / progressive media use, prefer {@link useMedia} instead.**
+ * `useContent()` is a thin wrapper over generic storage and does NOT register
+ * uploaded images with the photo service or videos with the video service —
+ * so optimized thumbnails and HLS streaming don't light up automatically.
+ * It also defaults to `is_public: true` and compresses images by default;
+ * `useMedia()` defaults to private + uncompressed (the right choice for chat).
+ *
+ * Use `useContent()` for plain file gallery / browser surfaces where you
+ * want flat storage and no media pipeline integration. See
+ * `docs/MEDIA-UPLOADS.md` in the platform repo for the decision tree.
+ *
  * @example
  * ```tsx
  * function Gallery() {

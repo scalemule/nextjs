@@ -1,8 +1,8 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
-import { ReactNode } from 'react';
+import { ReactNode, ReactElement } from 'react';
 import { MoneyClient } from '@scalemule/money';
 export { MoneyClient, MoneyClientConfig, createMoneyClient } from '@scalemule/money';
-import { RealtimeService } from '@scalemule/sdk';
+import { RealtimeService, StorageService, PhotoService, ApiError as ApiError$1 } from '@scalemule/sdk';
 import { ScaleMuleClient } from './client.js';
 export { ClientConfig, RequestOptions, createClient } from './client.js';
 import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-BIIUrnPr.js';
@@ -15,6 +15,10 @@ interface ScaleMuleContextValue {
     money: MoneyClient;
     /** Base SDK realtime service — shared singleton for WebSocket connections */
     realtime: RealtimeService;
+    /** Base SDK storage service — exposed for `useMedia()` and direct chat-attachment uploads */
+    storage: StorageService;
+    /** Base SDK photo service — exposed for `useMedia()` and `photo.uploadViaStorage()` */
+    photo: PhotoService;
     /** Current authenticated user */
     user: User | null;
     /** Set the current user */
@@ -102,6 +106,17 @@ interface UseContentOptions {
  * Provides file upload, listing, and deletion functionality.
  * Automatically includes user ID for proper multi-tenancy.
  *
+ * **For chat / progressive media use, prefer {@link useMedia} instead.**
+ * `useContent()` is a thin wrapper over generic storage and does NOT register
+ * uploaded images with the photo service or videos with the video service —
+ * so optimized thumbnails and HLS streaming don't light up automatically.
+ * It also defaults to `is_public: true` and compresses images by default;
+ * `useMedia()` defaults to private + uncompressed (the right choice for chat).
+ *
+ * Use `useContent()` for plain file gallery / browser surfaces where you
+ * want flat storage and no media pipeline integration. See
+ * `docs/MEDIA-UPLOADS.md` in the platform repo for the decision tree.
+ *
  * @example
  * ```tsx
  * function Gallery() {
@@ -139,6 +154,117 @@ interface UseContentOptions {
  * ```
  */
 declare function useContent(options?: UseContentOptions): UseContentReturn;
+
+/**
+ * Result of a single {@link useMedia} upload call.
+ *
+ * The shape is normalized regardless of MIME type — `optimized_url_promise`
+ * resolves on image uploads after the photo optimizer finishes; for non-image
+ * uploads it resolves to `null` immediately. (Video / audio branches will
+ * populate `hls_url_promise` in later phases — today they fall through to
+ * generic storage and that field stays `null`.)
+ */
+interface MediaUploadResult {
+    /** Storage file_id — store this in chat-attachment metadata. */
+    file_id: string;
+    /** Photo service id — null for non-image uploads or when register() failed. */
+    photo_id: string | null;
+    /** Short-lived signed URL to the original bytes (private uploads) or
+     * a public CDN URL (when caller passed `is_public: true`). */
+    original_view_url: string | null;
+    /** Resolves once the photo optimizer finishes. `null` for non-image
+     * MIME types or when register() failed. */
+    optimized_url_promise: Promise<string | null>;
+    /** Resolves once the video transcoder finishes (Phase 2 / S5b). `null` today. */
+    hls_url_promise: Promise<string | null>;
+    /** The file's MIME type — preserved from the input File / Blob. */
+    mime_type: string;
+    /** Whether the resulting storage object is public-readable. */
+    is_public: boolean;
+}
+interface UseMediaUploadOptions {
+    /** Whether the resulting storage object should be public-readable.
+     * Default: `false` (private). Public is opt-in for surfaces that
+     * genuinely need it (avatars, public listings). Chat / DM uploads
+     * should always be private. */
+    is_public?: boolean;
+    /** Display filename (sanitized server-side). */
+    filename?: string;
+    /** Custom metadata attached to the file. */
+    metadata?: Record<string, unknown>;
+    /** Upload progress callback (0-100). */
+    onProgress?: (percent: number) => void;
+    /** AbortSignal for cancellation. */
+    signal?: AbortSignal;
+    /** Force a non-photo path even for image MIME types — useful for
+     * generic file uploads where you don't want the photo optimizer
+     * to register the file. Default: `false`. */
+    skipPhotoRegister?: boolean;
+}
+interface UseMediaReturn {
+    /** Upload a file. MIME-aware: images go through photo register +
+     * optimization; everything else goes through generic storage. */
+    upload: (file: File | Blob, options?: UseMediaUploadOptions) => Promise<MediaUploadResult>;
+    /** Cancel an upload by its `file_id`. Deletes the storage object so
+     * it doesn't orphan in S3 — useful when a chat composer accepts a
+     * file but the user removes it before sending. Idempotent. */
+    cancelUpload: (fileId: string) => Promise<void>;
+    /** Last error from `upload` or `cancelUpload`. */
+    error: ApiError$1 | null;
+    /** True while an upload is in progress. */
+    uploading: boolean;
+}
+/**
+ * Opinionated, MIME-aware media upload hook.
+ *
+ * `useMedia()` is the canonical upload primitive for chat / progressive
+ * media use. It branches by MIME type:
+ *   - `image/*` → `client.photo.uploadViaStorage()` — upload to storage,
+ *     then register with the photo service so the on-demand transform
+ *     endpoint resolves to optimized variants. The returned
+ *     `optimized_url_promise` resolves once the optimizer finishes.
+ *   - everything else → `client.storage.uploadPrivate()` — a private,
+ *     uncompressed, fail-closed upload to generic storage.
+ *
+ * **Default visibility is `is_public: false`.** Public is opt-in per call.
+ * `useMedia()` does not expose `is_public` via app-level config — visibility
+ * is always an explicit per-call surface choice.
+ *
+ * Compared to `useContent()`:
+ *   - `useContent()` is a thin wrapper over generic storage and does not
+ *     register photos / videos with their typed services. Use it for plain
+ *     file uploads where you don't need optimization or transcoding.
+ *   - `useMedia()` defaults to private + no compression, integrates with the
+ *     typed media services automatically, and is the right primitive for
+ *     anything chat- or media-shaped.
+ *
+ * @example
+ * ```tsx
+ * 'use client';
+ *
+ * import { useMedia, ScaleMuleMedia } from '@scalemule/nextjs';
+ *
+ * function ChatComposer({ onAttach }) {
+ *   const { upload, uploading } = useMedia();
+ *
+ *   async function handlePick(file: File) {
+ *     const result = await upload(file);
+ *     onAttach({
+ *       file_id: result.file_id,
+ *       mime_type: result.mime_type,
+ *       optimized_url_promise: result.optimized_url_promise,
+ *     });
+ *   }
+ *
+ *   return <input type="file" disabled={uploading}
+ *     onChange={(e) => e.target.files?.[0] && handlePick(e.target.files[0])} />;
+ * }
+ * ```
+ *
+ * See `docs/MEDIA-UPLOADS.md` in the platform repo for the decision
+ * tree and the full anti-patterns list.
+ */
+declare function useMedia(): UseMediaReturn;
 
 declare const useMoney: typeof useMoneyClient;
 
@@ -347,6 +473,125 @@ interface UseShareReturn {
 declare function useShare(options?: UseShareOptions): UseShareReturn;
 
 /**
+ * Public types for the feedback hook + widget.
+ *
+ * Mirrors the JSON shape returned by `scalemule-feedback`'s public endpoints
+ * (`/v1/feedback/submit`, `/v1/feedback/items`). Dashboard/admin shapes live
+ * server-side and are not exported here — customer apps interact with the
+ * SDK only through the end-user surface.
+ */
+type FeedbackType = 'bug_report' | 'feature_request' | 'improvement' | 'other';
+type FeedbackStatus = 'new' | 'reviewed' | 'planned' | 'in_progress' | 'completed' | 'declined';
+type FeedbackPriority = 'low' | 'medium' | 'high' | 'urgent';
+/**
+ * The end-user-visible shape of a feedback item. Excludes staff-only fields
+ * (assigned_to, internal_notes, email of OTHER users, etc.) that the service
+ * never returns through `/items`.
+ */
+interface FeedbackItem {
+    id: string;
+    type: FeedbackType;
+    title: string;
+    description: string;
+    status: FeedbackStatus;
+    priority: FeedbackPriority;
+    tags: string[] | null;
+    created_at: string;
+    updated_at: string;
+}
+/**
+ * Public widget configuration returned by `GET /v1/feedback/widget-config`.
+ * The SDK uses this to drive runtime widget behavior per application.
+ */
+interface FeedbackWidgetConfig {
+    enabled: boolean;
+    allow_anonymous: boolean;
+    widget_theme: 'light' | 'dark' | 'auto';
+    widget_position: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+    allowed_types: FeedbackType[] | null;
+}
+/**
+ * Body for `POST /v1/feedback/submit`.
+ *
+ * `email` is required when no end-user session is present — the gateway omits
+ * `x-user-id` in that case and the service rejects with 400 unless email is
+ * given. When a session exists, email is optional.
+ */
+interface FeedbackItemInput {
+    type: FeedbackType;
+    title: string;
+    description: string;
+    email?: string;
+    tags?: string[];
+}
+
+interface UseFeedbackOptions {
+    /** Optional status filter applied to the list call. */
+    status?: FeedbackStatus;
+    /** Optional type filter. */
+    type?: FeedbackType;
+    /** When false, suppress the initial list fetch (the widget submits without listing). */
+    enabled?: boolean;
+}
+interface UseFeedbackResult {
+    /** End-user's own feedback items for the current tenant. Empty when not signed in. */
+    items: FeedbackItem[];
+    loading: boolean;
+    error: ApiError | null;
+    /** Submit a new feedback item. Returns the persisted item on success. */
+    submit: (input: FeedbackItemInput) => Promise<FeedbackItem>;
+    /** Re-fetch the list. */
+    refresh: () => Promise<void>;
+}
+/**
+ * Hook for end-user feedback submission and read-own.
+ *
+ * Calls go through `client` from `ScaleMuleProvider`, which attaches the
+ * configured API key and (when present) the user session token. Tenancy
+ * (`x-app-id`) is derived by the gateway from the API key — never set
+ * client-side.
+ */
+declare function useFeedback(options?: UseFeedbackOptions): UseFeedbackResult;
+
+interface FeedbackWidgetProps {
+    /** Floating-button corner. Default `bottom-right`. */
+    position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+    /** Default selected type when the modal opens. Default `feature_request`. */
+    defaultType?: FeedbackType;
+    /** Restrict the type select to this subset. Default: all four types. */
+    allowedTypes?: FeedbackType[];
+    /** Trigger button label. Default `Feedback`. */
+    triggerLabel?: string;
+    /** `light`/`dark`/`auto` (matches OS). Default `auto`. */
+    theme?: 'light' | 'dark' | 'auto';
+    /** Optional class for the trigger button (use to override styling). */
+    className?: string;
+    /** Show the 1–5 star rating row. Default `true`. Rating is stored as a
+     *  `rating:N` tag on the feedback item — staff can filter on it from the
+     *  dashboard inbox. Optional per submission; users who skip it just submit
+     *  without a rating. */
+    enableRating?: boolean;
+    /** Label for the rating row when enabled. Default `How would you rate
+     *  your experience?`. */
+    ratingLabel?: string;
+    /** Called after a successful submit. */
+    onSubmitted?: (item: FeedbackItem) => void;
+}
+/**
+ * Floating feedback widget. Renders nothing until the trigger is clicked,
+ * then opens a small modal with type / title / description fields. Submits
+ * via `useFeedback().submit()` — inherits identity from `ScaleMuleProvider`.
+ *
+ * If the end-user is not signed in, the widget shows an additional `email`
+ * field (required by the service for anonymous submissions).
+ *
+ * Tenant must have `feedback_app_config.enabled = TRUE` for `/submit` to
+ * accept submissions; otherwise the service responds with 404
+ * `FEEDBACK_DISABLED` and the widget surfaces the error message.
+ */
+declare function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null;
+
+/**
  * Client-side validation helpers
  *
  * These validators match ScaleMule backend validation rules exactly.
@@ -504,4 +749,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, ListFilesParams, LoginResponse, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };

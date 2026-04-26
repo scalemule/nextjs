@@ -2099,6 +2099,40 @@ var StorageService = class extends ServiceModule {
       return { data: null, error: { code: "upload_error", message, status: 0 } };
     }
   }
+  /**
+   * Upload a file as a private attachment (e.g. chat / DM attachment).
+   *
+   * Same browser→S3 pipeline as {@link upload}, but enforces:
+   *   - `is_public: false` — caller cannot opt out
+   *   - no client-side compression — preserve the original bytes
+   *   - fail-closed if storage returns `is_public: true` for any reason
+   *
+   * The shared primitive used by `@scalemule/chat`'s chat-attachment uploader
+   * and by `@scalemule/nextjs`'s `useMedia()` when an app's media policy is
+   * `fast_trusted`. Both packages call this method via `@scalemule/sdk` —
+   * `@scalemule/nextjs` does not depend on `@scalemule/chat`.
+   *
+   * See ADR-2026-04-26 (realtime-chat media pipeline) and
+   * docs/MEDIA-UPLOADS.md for the full pattern.
+   */
+  async uploadPrivate(file, options) {
+    const result = await this.upload(file, {
+      ...options,
+      isPublic: false,
+      skipCompression: true
+    });
+    if (result.data && result.data.is_public === true) {
+      return {
+        data: null,
+        error: {
+          code: "visibility_violation",
+          message: "Storage returned is_public=true for an uploadPrivate() call. This usually indicates a server-side bug or an admin override; the caller asked for a private upload.",
+          status: 0
+        }
+      };
+    }
+    return result;
+  }
   // --------------------------------------------------------------------------
   // Direct Upload (3-step with retry + stall)
   // --------------------------------------------------------------------------
@@ -3788,6 +3822,18 @@ var ChatService = class extends ServiceModule {
     return this.post(`/messages/${messageId}/reactions`, data, options);
   }
   // --------------------------------------------------------------------------
+  // Pins
+  // --------------------------------------------------------------------------
+  async pinMessage(messageId, options) {
+    return this.post(`/messages/${messageId}/pin`, void 0, options);
+  }
+  async unpinMessage(messageId, options) {
+    return this.del(`/messages/${messageId}/pin`, options);
+  }
+  async getPinnedMessages(conversationId, options) {
+    return this._get(`/conversations/${conversationId}/pins`, options);
+  }
+  // --------------------------------------------------------------------------
   // Typing & Read Receipts
   // --------------------------------------------------------------------------
   async sendTyping(conversationId, options) {
@@ -3998,13 +4044,78 @@ var BillingService = class extends ServiceModule {
     );
   }
   // --------------------------------------------------------------------------
-  // Customers
+  // Customers (legacy user-scoped — deprecated in favor of account-scoped)
   // --------------------------------------------------------------------------
+  /** @deprecated Use `getAccountCustomer({ account_id })`. Targets the user-scoped legacy endpoint. */
   async createCustomer(data, options) {
     return this.post("/customers", data, options);
   }
+  /** @deprecated Use `attachAccountPaymentMethod({ account_id }, ...)`. Targets the user-scoped legacy endpoint. */
   async addPaymentMethod(data, options) {
     return this.post("/payment-methods", data, options);
+  }
+  // --------------------------------------------------------------------------
+  // Account-Scoped Billing (v2 — ADR-2026-04-25)
+  //
+  // The customer/payment-method/invoice record set belongs to an `app_account`
+  // (typically a `customer_org`), not to a single user. These methods target
+  // the `/v1/billing/accounts/{account_id}/*` endpoints described in
+  // openapi/scalemule-money-billing-v1.yaml.
+  // --------------------------------------------------------------------------
+  accountBase(accountId) {
+    return `/v1/billing/accounts/${encodeURIComponent(accountId)}`;
+  }
+  async getAccountCustomer(req, options) {
+    const path = this.withQuery(`${this.accountBase(req.account_id)}/customer`, {
+      billing_mode: req.billing_mode
+    });
+    return this.client.get(path, options);
+  }
+  async listAccountPaymentMethods(req, options) {
+    const path = this.withQuery(`${this.accountBase(req.account_id)}/payment-methods`, {
+      billing_mode: req.billing_mode
+    });
+    return this.client.get(path, options);
+  }
+  async attachAccountPaymentMethod(req, body, options) {
+    const path = this.withQuery(`${this.accountBase(req.account_id)}/payment-methods`, {
+      billing_mode: req.billing_mode
+    });
+    return this.client.post(path, body, options);
+  }
+  async detachAccountPaymentMethod(req, paymentMethodId, options) {
+    const path = this.withQuery(
+      `${this.accountBase(req.account_id)}/payment-methods/${encodeURIComponent(paymentMethodId)}`,
+      { billing_mode: req.billing_mode }
+    );
+    return this.client.del(path, options);
+  }
+  async setDefaultAccountPaymentMethod(req, paymentMethodId, options) {
+    const path = this.withQuery(
+      `${this.accountBase(req.account_id)}/payment-methods/${encodeURIComponent(paymentMethodId)}/default`,
+      { billing_mode: req.billing_mode }
+    );
+    return this.client.put(path, void 0, options);
+  }
+  async listAccountInvoices(req, params, options) {
+    const path = this.withQuery(`${this.accountBase(req.account_id)}/invoices`, {
+      billing_mode: req.billing_mode,
+      limit: params?.limit,
+      cursor: params?.cursor
+    });
+    return this.client.get(path, options);
+  }
+  async getAccountInvoice(req, invoiceId, options) {
+    const path = this.withQuery(`${this.accountBase(req.account_id)}/invoices/${encodeURIComponent(invoiceId)}`, {
+      billing_mode: req.billing_mode
+    });
+    return this.client.get(path, options);
+  }
+  async createAccountPortalSession(req, body, options) {
+    const path = this.withQuery(`${this.accountBase(req.account_id)}/portal-session`, {
+      billing_mode: req.billing_mode
+    });
+    return this.client.post(path, body ?? {}, options);
   }
   // --------------------------------------------------------------------------
   // Subscriptions
@@ -5167,8 +5278,14 @@ var SearchService = class extends ServiceModule {
 };
 var PHOTO_BREAKPOINTS = [36, 150, 320, 640, 1080];
 var PhotoService = class extends ServiceModule {
-  constructor() {
-    super(...arguments);
+  /**
+   * @param storage Required for {@link uploadViaStorage}. Wired up by the
+   *   top-level {@link ScaleMule} constructor — most call sites should not
+   *   instantiate `PhotoService` directly.
+   */
+  constructor(client, storage) {
+    super(client);
+    this.storage = storage;
     this.basePath = "/v1/photos";
   }
   async upload(file, uploadOptions, requestOptions) {
@@ -5307,6 +5424,87 @@ var PhotoService = class extends ServiceModule {
         status: 202
       }
     };
+  }
+  /**
+   * Upload a file to storage (browser → S3 direct, private, uncompressed) and
+   * register it with the photo service so optimization + transform URLs work.
+   *
+   * The canonical chat-attachment / progressive-image upload primitive. Same
+   * presigned-direct-to-S3 path as `storage.uploadPrivate()`, plus a follow-up
+   * `photo.register()` call so `getTransformUrl()` / `getOptimalUrl()` return
+   * usable URLs.
+   *
+   * The returned `optimized_url_promise` resolves once the photo's
+   * `optimization_status` flips to `completed` (or once a 10s timeout fires;
+   * the caller can still use `getTransformUrl()` directly — the on-demand
+   * transform path produces a variant even before pre-rendered breakpoints
+   * are cached). Phase 3 of ADR-2026-04-26 replaces the poll with a realtime
+   * subscription.
+   *
+   * If `register()` fails after a successful storage upload (e.g. scan times
+   * out), the file is *not* lost: the returned `file_id` is still valid as a
+   * generic storage file. The SDK logs a warning and resolves
+   * `optimized_url_promise` to `null`.
+   */
+  async uploadViaStorage(file, uploadOptions, requestOptions) {
+    const uploadResult = await this.storage.uploadPrivate(file, {
+      filename: uploadOptions?.filename,
+      metadata: uploadOptions?.metadata,
+      onProgress: uploadOptions?.onProgress,
+      signal: uploadOptions?.signal
+    });
+    if (uploadResult.error || !uploadResult.data) {
+      return { data: null, error: uploadResult.error };
+    }
+    const fileInfo = uploadResult.data;
+    const fileId = fileInfo.id;
+    const originalViewUrl = fileInfo.url ?? null;
+    const registerResult = await this.register({ fileId, userId: uploadOptions?.userId }, requestOptions);
+    if (registerResult.error || !registerResult.data) {
+      console.warn(
+        "[scalemule-sdk] photo.register() failed after storage upload; optimized variants unavailable.",
+        registerResult.error
+      );
+      return {
+        data: {
+          file_id: fileId,
+          photo_id: null,
+          original_view_url: originalViewUrl,
+          optimized_url_promise: Promise.resolve(null)
+        },
+        error: null
+      };
+    }
+    const photoId = registerResult.data.id;
+    const optimizedUrlPromise = this.pollOptimizationComplete(photoId, requestOptions);
+    return {
+      data: {
+        file_id: fileId,
+        photo_id: photoId,
+        original_view_url: originalViewUrl,
+        optimized_url_promise: optimizedUrlPromise
+      },
+      error: null
+    };
+  }
+  /**
+   * Poll {@link get} until the photo's `optimization_status` is `completed`
+   * or the 10s timeout fires. Resolves to a usable transform URL on success;
+   * `null` on timeout (caller should fall back to {@link getTransformUrl}
+   * which uses the on-demand transform path).
+   */
+  async pollOptimizationComplete(photoId, requestOptions) {
+    const intervalMs = 250;
+    const maxAttempts = 40;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const result = await this.get(photoId, requestOptions);
+      const status = result.data?.optimization_status;
+      if (status === "completed") {
+        return this.getOptimalUrl(photoId, 1080);
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return null;
   }
   /** @deprecated Use upload() instead */
   async uploadPhoto(file, options) {
@@ -6139,7 +6337,7 @@ var ScaleMule = class {
     this.events = new EventsService(this._client);
     this.graph = new GraphService(this._client);
     this.functions = new FunctionsService(this._client);
-    this.photo = new PhotoService(this._client);
+    this.photo = new PhotoService(this._client, this.storage);
     this.flagContent = new FlagContentService(this._client);
     this.creatorMaker = new CreatorMakerService(this._client);
     this.compliance = new ComplianceService(this._client);
@@ -7224,6 +7422,8 @@ function ScaleMuleProvider({
       client,
       money: money$1,
       realtime: baseClient.realtime,
+      storage: baseClient.storage,
+      photo: baseClient.photo,
       user,
       setUser: handleSetUser,
       initializing,
@@ -8536,6 +8736,101 @@ function useContent(options = {}) {
     ]
   );
 }
+function useMedia() {
+  const { storage, photo } = useScaleMule();
+  const [uploading, setUploading] = react.useState(false);
+  const [error, setError] = react.useState(null);
+  const upload = react.useCallback(
+    async (file, options) => {
+      setUploading(true);
+      setError(null);
+      const isPublic = options?.is_public ?? false;
+      const mimeType = file.type || "application/octet-stream";
+      const sharedOpts = {
+        filename: options?.filename,
+        metadata: options?.metadata,
+        onProgress: options?.onProgress,
+        signal: options?.signal
+      };
+      try {
+        if (mimeType.startsWith("image/") && !options?.skipPhotoRegister && !isPublic) {
+          const r2 = await photo.uploadViaStorage(file, sharedOpts);
+          if (r2.error || !r2.data) {
+            throw r2.error ?? { code: "upload_error", message: "Upload failed", status: 0 };
+          }
+          return {
+            file_id: r2.data.file_id,
+            photo_id: r2.data.photo_id,
+            original_view_url: r2.data.original_view_url,
+            optimized_url_promise: r2.data.optimized_url_promise,
+            hls_url_promise: Promise.resolve(null),
+            mime_type: mimeType,
+            is_public: false
+          };
+        }
+        if (mimeType.startsWith("image/") && isPublic) {
+          const r2 = await storage.upload(file, {
+            ...sharedOpts,
+            isPublic: true,
+            skipCompression: true
+          });
+          if (r2.error || !r2.data) {
+            throw r2.error ?? { code: "upload_error", message: "Upload failed", status: 0 };
+          }
+          const f2 = r2.data;
+          return {
+            file_id: f2.id,
+            photo_id: null,
+            original_view_url: f2.url ?? null,
+            optimized_url_promise: Promise.resolve(null),
+            hls_url_promise: Promise.resolve(null),
+            mime_type: mimeType,
+            is_public: f2.is_public ?? true
+          };
+        }
+        const r = isPublic ? await storage.upload(file, { ...sharedOpts, isPublic: true, skipCompression: true }) : await storage.uploadPrivate(file, sharedOpts);
+        if (r.error || !r.data) {
+          throw r.error ?? { code: "upload_error", message: "Upload failed", status: 0 };
+        }
+        const f = r.data;
+        return {
+          file_id: f.id,
+          photo_id: null,
+          original_view_url: f.url ?? null,
+          optimized_url_promise: Promise.resolve(null),
+          hls_url_promise: Promise.resolve(null),
+          mime_type: mimeType,
+          is_public: f.is_public ?? isPublic
+        };
+      } catch (err) {
+        const e = err;
+        setError(e);
+        throw e;
+      } finally {
+        setUploading(false);
+      }
+    },
+    [storage, photo]
+  );
+  const cancelUpload = react.useCallback(
+    async (fileId) => {
+      setError(null);
+      try {
+        const r = await storage.delete(fileId);
+        if (r.error) {
+          if (r.error.status === 404) return;
+          throw r.error;
+        }
+      } catch (err) {
+        const e = err;
+        setError(e);
+        throw e;
+      }
+    },
+    [storage]
+  );
+  return { upload, cancelUpload, error, uploading };
+}
 
 // src/hooks/useMoney.ts
 var useMoney = useMoneyClient;
@@ -9602,6 +9897,434 @@ function useShare(options) {
   }, [shareUrl]);
   return { shareUrl, referralCode, copyLink, copied, loading };
 }
+function toApiError2(error) {
+  if (error instanceof ScaleMuleApiError) {
+    return {
+      code: error.code,
+      message: error.message,
+      field: error.field
+    };
+  }
+  return {
+    code: "UNKNOWN",
+    message: error instanceof Error ? error.message : "Feedback request failed"
+  };
+}
+function useFeedback(options = {}) {
+  const { client } = useScaleMule();
+  const { status, type, enabled = true } = options;
+  const [items, setItems] = react.useState([]);
+  const [loading, setLoading] = react.useState(enabled);
+  const [error, setError] = react.useState(null);
+  const refresh = react.useCallback(async () => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (status) params.append("status", status);
+      if (type) params.append("type", type);
+      const qs = params.toString();
+      const path = `/v1/feedback/items${qs ? "?" + qs : ""}`;
+      const result = await client.get(path);
+      setItems(Array.isArray(result) ? result : []);
+      setError(null);
+    } catch (err) {
+      setError(toApiError2(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [client, enabled, status, type]);
+  react.useEffect(() => {
+    refresh();
+  }, [refresh]);
+  const submit = react.useCallback(
+    async (input) => {
+      try {
+        const created = await client.post("/v1/feedback/submit", input);
+        setItems((prev) => [created, ...prev]);
+        setError(null);
+        return created;
+      } catch (err) {
+        const apiErr = toApiError2(err);
+        setError(apiErr);
+        throw err;
+      }
+    },
+    [client]
+  );
+  return { items, loading, error, submit, refresh };
+}
+var TYPE_LABELS = {
+  bug_report: "Bug",
+  feature_request: "Feature request",
+  improvement: "Improvement",
+  other: "Other"
+};
+var POSITION_STYLES = {
+  "bottom-right": { bottom: 24, right: 24 },
+  "bottom-left": { bottom: 24, left: 24 },
+  "top-right": { top: 24, right: 24 },
+  "top-left": { top: 24, left: 24 }
+};
+var STYLES = {
+  trigger: {
+    position: "fixed",
+    zIndex: 999998,
+    padding: "10px 16px",
+    fontSize: 14,
+    fontWeight: 600,
+    border: "none",
+    borderRadius: 999,
+    cursor: "pointer",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    background: "#1f2937",
+    color: "#fff"
+  },
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15, 23, 42, 0.5)",
+    zIndex: 999999,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16
+  },
+  modal: {
+    width: "min(440px, 100%)",
+    background: "#fff",
+    color: "#0f172a",
+    borderRadius: 12,
+    boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+    padding: 20,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12
+  },
+  modalDark: {
+    background: "#0f172a",
+    color: "#f8fafc"
+  },
+  label: {
+    fontSize: 12,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    opacity: 0.7
+  },
+  field: {
+    width: "100%",
+    padding: "8px 10px",
+    fontSize: 14,
+    border: "1px solid #e2e8f0",
+    borderRadius: 6,
+    boxSizing: "border-box",
+    background: "transparent",
+    color: "inherit"
+  },
+  textarea: {
+    minHeight: 96,
+    resize: "vertical"
+  },
+  rowEnd: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 8
+  },
+  primaryBtn: {
+    padding: "8px 14px",
+    fontSize: 14,
+    fontWeight: 600,
+    border: "none",
+    borderRadius: 6,
+    background: "#2563eb",
+    color: "#fff",
+    cursor: "pointer"
+  },
+  secondaryBtn: {
+    padding: "8px 14px",
+    fontSize: 14,
+    border: "1px solid #cbd5e1",
+    borderRadius: 6,
+    background: "transparent",
+    color: "inherit",
+    cursor: "pointer"
+  },
+  error: {
+    fontSize: 13,
+    color: "#dc2626"
+  },
+  note: {
+    fontSize: 13,
+    color: "#475569"
+  },
+  success: {
+    fontSize: 14,
+    fontWeight: 500,
+    textAlign: "center",
+    padding: "24px 8px"
+  }
+};
+var ALL_TYPES = ["bug_report", "feature_request", "improvement", "other"];
+function FeedbackWidget(props) {
+  const sm = useScaleMule();
+  const { client } = sm;
+  const { submit } = useFeedback({ enabled: false });
+  const [serverConfig, setServerConfig] = react.useState(null);
+  const [configLoaded, setConfigLoaded] = react.useState(false);
+  const [open, setOpen] = react.useState(false);
+  const [type, setType] = react.useState("feature_request");
+  const [title, setTitle] = react.useState("");
+  const [description, setDescription] = react.useState("");
+  const [email, setEmail] = react.useState("");
+  const [rating, setRating] = react.useState(null);
+  const [hoverRating, setHoverRating] = react.useState(null);
+  const [submitting, setSubmitting] = react.useState(false);
+  const [errMsg, setErrMsg] = react.useState(null);
+  const [done, setDone] = react.useState(false);
+  const signedIn = Boolean(sm.user);
+  const resolvedAllowedTypes = props.allowedTypes ?? serverConfig?.allowed_types ?? ALL_TYPES;
+  const resolvedDefaultType = (props.defaultType && resolvedAllowedTypes.includes(props.defaultType) ? props.defaultType : resolvedAllowedTypes[0]) ?? "feature_request";
+  const resolvedPosition = props.position ?? serverConfig?.widget_position ?? "bottom-right";
+  const resolvedTheme = props.theme ?? serverConfig?.widget_theme ?? "auto";
+  const allowAnonymous = serverConfig?.allow_anonymous ?? true;
+  const anonymousBlocked = !signedIn && !allowAnonymous;
+  react.useEffect(() => {
+    let active = true;
+    client.get("/v1/feedback/widget-config").then((config) => {
+      if (active) setServerConfig(config);
+    }).catch(() => {
+      if (active) setServerConfig(null);
+    }).finally(() => {
+      if (active) setConfigLoaded(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [client]);
+  react.useEffect(() => {
+    setType(
+      (current) => resolvedAllowedTypes.includes(current) ? current : resolvedDefaultType
+    );
+  }, [resolvedAllowedTypes, resolvedDefaultType]);
+  if (!configLoaded) {
+    return null;
+  }
+  if (serverConfig && !serverConfig.enabled) {
+    return null;
+  }
+  function reset() {
+    setType(resolvedDefaultType);
+    setTitle("");
+    setDescription("");
+    setEmail("");
+    setRating(null);
+    setHoverRating(null);
+    setErrMsg(null);
+    setDone(false);
+  }
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!title.trim() || !description.trim()) return;
+    if (anonymousBlocked) {
+      setErrMsg("Please sign in to send feedback for this app");
+      return;
+    }
+    if (!signedIn && !email.trim()) {
+      setErrMsg("email is required when not signed in");
+      return;
+    }
+    setSubmitting(true);
+    setErrMsg(null);
+    try {
+      const tags = rating != null ? [`rating:${rating}`] : void 0;
+      const item = await submit({
+        type,
+        title: title.trim(),
+        description: description.trim(),
+        email: signedIn ? void 0 : email.trim() || void 0,
+        tags
+      });
+      setDone(true);
+      props.onSubmitted?.(item);
+    } catch (err) {
+      const message = err && typeof err === "object" && "message" in err ? String(err.message) : "Submit failed";
+      setErrMsg(message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+  function handleClose() {
+    setOpen(false);
+    setTimeout(reset, 200);
+  }
+  const dark = resolvedTheme === "dark" || resolvedTheme === "auto" && typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  return /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntime.jsx(
+      "button",
+      {
+        type: "button",
+        onClick: () => setOpen(true),
+        className: props.className,
+        style: { ...STYLES.trigger, ...POSITION_STYLES[resolvedPosition] },
+        children: props.triggerLabel ?? "Feedback"
+      }
+    ),
+    open && /* @__PURE__ */ jsxRuntime.jsx("div", { role: "dialog", "aria-modal": "true", style: STYLES.overlay, onClick: handleClose, children: /* @__PURE__ */ jsxRuntime.jsx(
+      "form",
+      {
+        onSubmit: handleSubmit,
+        onClick: (e) => e.stopPropagation(),
+        style: { ...STYLES.modal, ...dark ? STYLES.modalDark : null },
+        children: done ? /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntime.jsxs("div", { style: STYLES.success, children: [
+            /* @__PURE__ */ jsxRuntime.jsx("div", { style: { fontSize: 32, marginBottom: 8 }, children: "\u{1F389}" }),
+            /* @__PURE__ */ jsxRuntime.jsx("div", { children: "Thanks \u2014 we got it." })
+          ] }),
+          /* @__PURE__ */ jsxRuntime.jsx("div", { style: STYLES.rowEnd, children: /* @__PURE__ */ jsxRuntime.jsx("button", { type: "button", style: STYLES.primaryBtn, onClick: handleClose, children: "Close" }) })
+        ] }) : /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", justifyContent: "space-between" }, children: [
+            /* @__PURE__ */ jsxRuntime.jsx("strong", { style: { fontSize: 16 }, children: "Send feedback" }),
+            /* @__PURE__ */ jsxRuntime.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: handleClose,
+                "aria-label": "Close",
+                style: {
+                  background: "transparent",
+                  border: "none",
+                  fontSize: 18,
+                  cursor: "pointer",
+                  color: "inherit"
+                },
+                children: "\xD7"
+              }
+            )
+          ] }),
+          props.enableRating !== false && /* @__PURE__ */ jsxRuntime.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntime.jsx("div", { style: STYLES.label, children: props.ratingLabel ?? "How would you rate your experience?" }),
+            /* @__PURE__ */ jsxRuntime.jsxs("div", { style: { display: "flex", gap: 4, marginTop: 4 }, children: [
+              [1, 2, 3, 4, 5].map((n) => {
+                const active = (hoverRating ?? rating ?? 0) >= n;
+                return /* @__PURE__ */ jsxRuntime.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": `${n} star${n === 1 ? "" : "s"}`,
+                    onClick: () => setRating(rating === n ? null : n),
+                    onMouseEnter: () => setHoverRating(n),
+                    onMouseLeave: () => setHoverRating(null),
+                    style: {
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 2,
+                      fontSize: 24,
+                      lineHeight: 1,
+                      color: active ? "#f59e0b" : "#cbd5e1",
+                      transition: "color 80ms ease"
+                    },
+                    children: active ? "\u2605" : "\u2606"
+                  },
+                  n
+                );
+              }),
+              rating != null && /* @__PURE__ */ jsxRuntime.jsx(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => setRating(null),
+                  style: {
+                    marginLeft: 8,
+                    background: "transparent",
+                    border: "none",
+                    color: "inherit",
+                    opacity: 0.6,
+                    fontSize: 12,
+                    cursor: "pointer"
+                  },
+                  children: "clear"
+                }
+              )
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntime.jsxs("label", { children: [
+            /* @__PURE__ */ jsxRuntime.jsx("div", { style: STYLES.label, children: "Type" }),
+            /* @__PURE__ */ jsxRuntime.jsx(
+              "select",
+              {
+                style: STYLES.field,
+                value: type,
+                onChange: (e) => setType(e.target.value),
+                children: resolvedAllowedTypes.map((t) => /* @__PURE__ */ jsxRuntime.jsx("option", { value: t, children: TYPE_LABELS[t] }, t))
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntime.jsxs("label", { children: [
+            /* @__PURE__ */ jsxRuntime.jsx("div", { style: STYLES.label, children: "Title" }),
+            /* @__PURE__ */ jsxRuntime.jsx(
+              "input",
+              {
+                style: STYLES.field,
+                type: "text",
+                value: title,
+                onChange: (e) => setTitle(e.target.value),
+                placeholder: "One-line summary",
+                maxLength: 255,
+                required: true
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntime.jsxs("label", { children: [
+            /* @__PURE__ */ jsxRuntime.jsx("div", { style: STYLES.label, children: "Details" }),
+            /* @__PURE__ */ jsxRuntime.jsx(
+              "textarea",
+              {
+                style: { ...STYLES.field, ...STYLES.textarea },
+                value: description,
+                onChange: (e) => setDescription(e.target.value),
+                placeholder: "What happened, what you expected, anything else helpful\u2026",
+                required: true
+              }
+            )
+          ] }),
+          !signedIn && allowAnonymous && /* @__PURE__ */ jsxRuntime.jsxs("label", { children: [
+            /* @__PURE__ */ jsxRuntime.jsx("div", { style: STYLES.label, children: "Email" }),
+            /* @__PURE__ */ jsxRuntime.jsx(
+              "input",
+              {
+                style: STYLES.field,
+                type: "email",
+                value: email,
+                onChange: (e) => setEmail(e.target.value),
+                placeholder: "you@example.com",
+                required: true
+              }
+            )
+          ] }),
+          anonymousBlocked && /* @__PURE__ */ jsxRuntime.jsx("div", { style: STYLES.note, children: "This app only accepts feedback from signed-in users." }),
+          errMsg && /* @__PURE__ */ jsxRuntime.jsx("div", { style: STYLES.error, children: errMsg }),
+          /* @__PURE__ */ jsxRuntime.jsxs("div", { style: STYLES.rowEnd, children: [
+            /* @__PURE__ */ jsxRuntime.jsx("button", { type: "button", style: STYLES.secondaryBtn, onClick: handleClose, children: "Cancel" }),
+            /* @__PURE__ */ jsxRuntime.jsx(
+              "button",
+              {
+                type: "submit",
+                style: STYLES.primaryBtn,
+                disabled: submitting || anonymousBlocked,
+                children: submitting ? "Sending\u2026" : "Send"
+              }
+            )
+          ] })
+        ] })
+      }
+    ) })
+  ] });
+}
 
 // src/validation.ts
 var phoneCountries = [
@@ -9902,6 +10625,7 @@ Object.defineProperty(exports, "createMoneyClient", {
   enumerable: true,
   get: function () { return money.createMoneyClient; }
 });
+exports.FeedbackWidget = FeedbackWidget;
 exports.ScaleMuleApiError = ScaleMuleApiError;
 exports.ScaleMuleClient = ScaleMuleClient2;
 exports.ScaleMuleProvider = ScaleMuleProvider;
@@ -9916,6 +10640,8 @@ exports.useAuth = useAuth;
 exports.useBilling = useBilling;
 exports.useContent = useContent;
 exports.useFeatureFlags = useFeatureFlags;
+exports.useFeedback = useFeedback;
+exports.useMedia = useMedia;
 exports.useMoney = useMoney;
 exports.useMoneyClient = useMoneyClient;
 exports.usePushNotifications = usePushNotifications;

@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createMoneyClient, type MoneyClient } from '@scalemule/money'
-import { ScaleMule, type RealtimeService } from '@scalemule/sdk'
+import { ScaleMule, type RealtimeService, type StorageService, type PhotoService } from '@scalemule/sdk'
 import { ScaleMuleClient, createClient } from './client'
 import type { User, ScaleMuleConfig, ApiError, LoginResponse } from './types'
 
@@ -52,6 +52,10 @@ interface ScaleMuleContextValue {
   money: MoneyClient
   /** Base SDK realtime service — shared singleton for WebSocket connections */
   realtime: RealtimeService
+  /** Base SDK storage service — exposed for `useMedia()` and direct chat-attachment uploads */
+  storage: StorageService
+  /** Base SDK photo service — exposed for `useMedia()` and `photo.uploadViaStorage()` */
+  photo: PhotoService
   /** Current authenticated user */
   user: User | null
   /** Set the current user */
@@ -303,6 +307,8 @@ export function ScaleMuleProvider({
       client,
       money,
       realtime: baseClient.realtime,
+      storage: baseClient.storage,
+      photo: baseClient.photo,
       user,
       setUser: handleSetUser,
       initializing,
