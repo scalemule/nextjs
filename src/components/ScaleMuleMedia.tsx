@@ -29,9 +29,17 @@ export interface ScaleMuleMediaProps {
   alt?: string
   /**
    * Polling interval while waiting for the media pipeline to complete.
-   * Defaults to 2000ms; set to `null` to disable polling. Polling stops
-   * automatically once scan is clean. When `conversationId` is set the
-   * component receives push updates and you can usually pass `null`.
+   *
+   * Default behaviour:
+   *   - With `conversationId` set: polling **off** (the realtime
+   *     conversation channel pushes `file_status_changed` events;
+   *     a poll loop on top would just be wasted requests).
+   *   - Without `conversationId`: 2000ms.
+   *
+   * Override either way by passing a number (belt-and-suspenders if you
+   * don't trust your websocket) or `null` (disable explicitly).
+   * Polling stops automatically once both scan and any expected
+   * pipeline (optimize / transcode) have settled.
    */
   pollIntervalMs?: number | null
   /**
@@ -107,7 +115,7 @@ export function ScaleMuleMedia(props: ScaleMuleMediaProps): React.ReactElement |
     className,
     style,
     alt,
-    pollIntervalMs = 2000,
+    pollIntervalMs,
     conversationId = null,
     conversationKind,
     renderPlaceholder,
@@ -115,10 +123,16 @@ export function ScaleMuleMedia(props: ScaleMuleMediaProps): React.ReactElement |
     renderOverride,
   } = props
 
+  // Default polling off when push is wired (conversationId set); 2s
+  // otherwise. `null` and explicit numbers from the caller win — they
+  // come through as `pollIntervalMs !== undefined`.
+  const effectivePollIntervalMs: number | null =
+    pollIntervalMs !== undefined ? pollIntervalMs : conversationId ? null : 2000
+
   const { gatewayUrl } = useScaleMule()
   const { status, isReady } = useFileStatus({
     fileId,
-    pollIntervalMs,
+    pollIntervalMs: effectivePollIntervalMs,
     conversationId,
     conversationKind,
   })
