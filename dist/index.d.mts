@@ -185,12 +185,43 @@ interface MediaUploadResult {
     /** Whether the resulting storage object is public-readable. */
     is_public: boolean;
 }
+/**
+ * Per-app media-pipeline policy. Drives release-gating + processing
+ * behavior. **Orthogonal to `is_public`.** See
+ * `docs/MEDIA-UPLOADS.md` and ADR-2026-04-26 for the full taxonomy.
+ *
+ * Today's behavior (Phase 4 v1):
+ *   - `fast_trusted` / `safe_visible` (default): upload promise resolves
+ *     as soon as the file is uploaded + registered. The post-processing
+ *     (scan, optimize, transcode) runs async; callers can observe via
+ *     `useFileStatus`.
+ *   - `safe_public` / `moderated`: upload promise *waits* for the
+ *     optimized image variant (image MIME) or HLS playlist (video MIME)
+ *     to become ready before resolving. Acts as the release-gate for
+ *     UGC-style apps that should not publish raw bytes.
+ *   - `compliance`: today behaves as `safe_public`; Phase 4+ adds the
+ *     audit-log + signed-with-purpose URL semantics.
+ */
+type MediaPolicy = 'fast_trusted' | 'safe_visible' | 'safe_public' | 'moderated' | 'compliance';
 interface UseMediaUploadOptions {
     /** Whether the resulting storage object should be public-readable.
      * Default: `false` (private). Public is opt-in for surfaces that
      * genuinely need it (avatars, public listings). Chat / DM uploads
      * should always be private. */
     is_public?: boolean;
+    /**
+     * Per-call media-policy override. Defaults to `safe_visible` (visible
+     * immediately at original fidelity; optimized variants swap in async).
+     * Set to `safe_public` to make the upload promise *await* the optimized
+     * variant (image) or HLS playlist (video) before resolving — useful for
+     * broadcast / UGC apps that gate publication on processing complete.
+     *
+     * The per-app default lives in `application_storage_settings.media_policy`
+     * (Phase 4 / P3, live in prod 2026-04-26). Reading the per-app default
+     * into `useMedia` defaults lands in a follow-up; today the option is
+     * caller-provided per call.
+     */
+    policy?: MediaPolicy;
     /** Display filename (sanitized server-side). */
     filename?: string;
     /** Custom metadata attached to the file. */
@@ -895,4 +926,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { ApiError, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };

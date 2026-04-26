@@ -32,12 +32,49 @@ export interface MediaUploadResult {
   is_public: boolean
 }
 
+/**
+ * Per-app media-pipeline policy. Drives release-gating + processing
+ * behavior. **Orthogonal to `is_public`.** See
+ * `docs/MEDIA-UPLOADS.md` and ADR-2026-04-26 for the full taxonomy.
+ *
+ * Today's behavior (Phase 4 v1):
+ *   - `fast_trusted` / `safe_visible` (default): upload promise resolves
+ *     as soon as the file is uploaded + registered. The post-processing
+ *     (scan, optimize, transcode) runs async; callers can observe via
+ *     `useFileStatus`.
+ *   - `safe_public` / `moderated`: upload promise *waits* for the
+ *     optimized image variant (image MIME) or HLS playlist (video MIME)
+ *     to become ready before resolving. Acts as the release-gate for
+ *     UGC-style apps that should not publish raw bytes.
+ *   - `compliance`: today behaves as `safe_public`; Phase 4+ adds the
+ *     audit-log + signed-with-purpose URL semantics.
+ */
+export type MediaPolicy =
+  | 'fast_trusted'
+  | 'safe_visible'
+  | 'safe_public'
+  | 'moderated'
+  | 'compliance'
+
 export interface UseMediaUploadOptions {
   /** Whether the resulting storage object should be public-readable.
    * Default: `false` (private). Public is opt-in for surfaces that
    * genuinely need it (avatars, public listings). Chat / DM uploads
    * should always be private. */
   is_public?: boolean
+  /**
+   * Per-call media-policy override. Defaults to `safe_visible` (visible
+   * immediately at original fidelity; optimized variants swap in async).
+   * Set to `safe_public` to make the upload promise *await* the optimized
+   * variant (image) or HLS playlist (video) before resolving — useful for
+   * broadcast / UGC apps that gate publication on processing complete.
+   *
+   * The per-app default lives in `application_storage_settings.media_policy`
+   * (Phase 4 / P3, live in prod 2026-04-26). Reading the per-app default
+   * into `useMedia` defaults lands in a follow-up; today the option is
+   * caller-provided per call.
+   */
+  policy?: MediaPolicy
   /** Display filename (sanitized server-side). */
   filename?: string
   /** Custom metadata attached to the file. */
@@ -130,6 +167,15 @@ export function useMedia(): UseMediaReturn {
       const isPublic = options?.is_public ?? false
       const mimeType = (file as File).type || 'application/octet-stream'
 
+      // Policies that gate release on pipeline completion. The upload
+      // promise awaits the optimize/transcode result before resolving.
+      // Default `safe_visible` and `fast_trusted` resolve immediately.
+      const policy: MediaPolicy = options?.policy ?? 'safe_visible'
+      const gateOnPipeline =
+        policy === 'safe_public' ||
+        policy === 'moderated' ||
+        policy === 'compliance'
+
       // Common UploadOptions for all branches.
       const sharedOpts: UploadOptions = {
         filename: options?.filename,
@@ -147,6 +193,11 @@ export function useMedia(): UseMediaReturn {
           const r = await photo.uploadViaStorage(file, sharedOpts)
           if (r.error || !r.data) {
             throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
+          }
+          // Release-gating policies: wait for the optimized variant
+          // before resolving the upload promise.
+          if (gateOnPipeline) {
+            await r.data.optimized_url_promise
           }
           return {
             file_id: r.data.file_id,
@@ -171,6 +222,11 @@ export function useMedia(): UseMediaReturn {
           const r = await video.uploadViaStorage(file, sharedOpts)
           if (r.error || !r.data) {
             throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
+          }
+          // Release-gating policies: wait for the HLS playlist before
+          // resolving the upload promise.
+          if (gateOnPipeline) {
+            await r.data.hls_url_promise
           }
           return {
             file_id: r.data.file_id,
