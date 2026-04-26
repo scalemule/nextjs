@@ -56,7 +56,7 @@ export interface AudioUploadResult {
 export interface UseAudioReturn {
   upload: (file: File | Blob, opts?: UseAudioUploadOptions) => Promise<AudioUploadResult>
   list: () => Promise<AudioFile[]>
-  remove: (id: string) => Promise<void>
+  remove: (fileId: string) => Promise<void>
   error: ApiError | null
   loading: boolean
 }
@@ -82,6 +82,64 @@ function toStorageBackedAudioFile(file: StorageFile): AudioFile {
   }
 }
 
+function isNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false
+  }
+
+  const candidate = error as {
+    status?: number
+    statusCode?: number
+    code?: string
+    message?: string
+    response?: { status?: number }
+  }
+
+  return (
+    candidate.status === 404 ||
+    candidate.statusCode === 404 ||
+    candidate.response?.status === 404 ||
+    candidate.code === 'not_found' ||
+    candidate.message?.toLowerCase().includes('not found') === true
+  )
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    error instanceof DOMException && error.name === 'AbortError'
+  ) || (
+    !!error &&
+    typeof error === 'object' &&
+    'name' in error &&
+    (error as { name?: string }).name === 'AbortError'
+  )
+}
+
+async function waitForPollInterval(signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) {
+    return false
+  }
+
+  return new Promise((resolve) => {
+    const timeoutId = window.setTimeout(() => {
+      cleanup()
+      resolve(true)
+    }, AUDIO_POLL_INTERVAL_MS)
+
+    const onAbort = () => {
+      cleanup()
+      resolve(false)
+    }
+
+    const cleanup = () => {
+      window.clearTimeout(timeoutId)
+      signal?.removeEventListener('abort', onAbort)
+    }
+
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
 export function useAudio(): UseAudioReturn {
   const { client, audio } = useScaleMule()
 
@@ -89,8 +147,12 @@ export function useAudio(): UseAudioReturn {
   const [error, setError] = useState<ApiError | null>(null)
 
   const pollTranscodedUrl = useCallback(
-    async (audioId: string): Promise<string | null> => {
+    async (audioId: string, signal?: AbortSignal): Promise<string | null> => {
       for (let attempt = 0; attempt < AUDIO_POLL_MAX_ATTEMPTS; attempt++) {
+        if (signal?.aborted) {
+          return null
+        }
+
         try {
           const details = await client.get<AudioDetailsResponse>(`/v1/audios/${audioId}`)
           if (details.status === 'ready' && details.url) {
@@ -99,10 +161,17 @@ export function useAudio(): UseAudioReturn {
           if (details.status === 'failed') {
             return null
           }
-        } catch {
-          // The row can race visibility very briefly after register; keep polling.
+        } catch (err) {
+          if (isAbortError(err) || signal?.aborted) {
+            return null
+          }
+          if (!isNotFoundError(err)) {
+            throw err
+          }
         }
-        await new Promise((resolve) => setTimeout(resolve, AUDIO_POLL_INTERVAL_MS))
+        if (!(await waitForPollInterval(signal))) {
+          return null
+        }
       }
       return null
     },
@@ -130,7 +199,7 @@ export function useAudio(): UseAudioReturn {
           audio_id: result.data.audio_id,
           original_view_url: result.data.original_view_url,
           transcoded_url_promise: result.data.audio_id
-            ? pollTranscodedUrl(result.data.audio_id)
+            ? pollTranscodedUrl(result.data.audio_id, opts?.signal)
             : Promise.resolve(null),
         }
       } catch (err) {
@@ -188,21 +257,28 @@ export function useAudio(): UseAudioReturn {
   }, [client])
 
   const remove = useCallback(
-    async (id: string): Promise<void> => {
+    async (fileId: string): Promise<void> => {
       setLoading(true)
       setError(null)
 
       try {
-        const results = await Promise.allSettled([
-          client.delete<unknown>(`/v1/audios/${id}`),
-          client.delete<unknown>(`/v1/storage/files/${id}`),
+        const [audioDeleteResult, storageDeleteResult] = await Promise.allSettled([
+          client.delete<unknown>(`/v1/audios/${fileId}`),
+          client.delete<unknown>(`/v1/storage/files/${fileId}`),
         ])
 
-        if (results.every((result) => result.status === 'rejected')) {
-          const firstRejected = results.find(
-            (result): result is PromiseRejectedResult => result.status === 'rejected'
-          )
-          throw firstRejected?.reason ?? new Error('Audio delete failed')
+        if (
+          storageDeleteResult.status === 'rejected' &&
+          !isNotFoundError(storageDeleteResult.reason)
+        ) {
+          throw storageDeleteResult.reason ?? new Error('Storage delete failed')
+        }
+
+        if (
+          audioDeleteResult.status === 'rejected' &&
+          !isNotFoundError(audioDeleteResult.reason)
+        ) {
+          console.warn('Audio record delete failed after storage delete', audioDeleteResult.reason)
         }
       } catch (err) {
         const apiError = err as ApiError
