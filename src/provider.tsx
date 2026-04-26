@@ -58,6 +58,12 @@ interface ScaleMuleContextValue {
   photo: PhotoService
   /** Base SDK video service — exposed for `useMedia()` and `video.uploadViaStorage()` */
   video: VideoService
+  /**
+   * Default media policy for `useMedia()` calls. Set via
+   * `<ScaleMuleProvider mediaPolicy="…">`; per-call overrides win.
+   * Undefined falls back to `useMedia()`'s built-in `safe_visible` default.
+   */
+  mediaPolicy?: import('./hooks/useMedia').MediaPolicy
   /** Current authenticated user */
   user: User | null
   /** Set the current user */
@@ -106,6 +112,22 @@ export interface ScaleMuleProviderProps extends ScaleMuleConfig {
   onAuthError?: (error: ApiError) => void
   /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
   bootstrapFlags?: Record<string, unknown>
+  /**
+   * Default media-pipeline policy applied to `useMedia()` calls when no
+   * per-call `policy` override is given. Five modes — see
+   * `docs/MEDIA-UPLOADS.md` and the {@link import('./hooks/useMedia').MediaPolicy} type.
+   *
+   * The platform stores the per-app policy in
+   * `application_storage_settings.media_policy` (Phase 4 / P3, live in
+   * prod). That endpoint is `MemberOnly` admin-auth, so end-user-context
+   * provider can't fetch it directly — apps that want policy-driven
+   * defaults should declare the value here, mirroring whatever the
+   * platform admin set.
+   *
+   * Default: undefined → `useMedia()` falls back to its built-in
+   * `safe_visible` default.
+   */
+  mediaPolicy?: import('./hooks/useMedia').MediaPolicy
 }
 
 // ============================================================================
@@ -129,6 +151,7 @@ export function ScaleMuleProvider({
   onLogout,
   onAuthError,
   bootstrapFlags,
+  mediaPolicy,
 }: ScaleMuleProviderProps) {
   const [user, setUser] = useState<User | null>(null)
   const [initializing, setInitializing] = useState(true)
@@ -312,6 +335,7 @@ export function ScaleMuleProvider({
       storage: baseClient.storage,
       photo: baseClient.photo,
       video: baseClient.video,
+      mediaPolicy,
       user,
       setUser: handleSetUser,
       initializing,
@@ -326,7 +350,7 @@ export function ScaleMuleProvider({
       accountSwitcherPrivacy,
       bootstrapFlags,
     }),
-    [client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags]
+    [client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, mediaPolicy]
   )
 
   return (

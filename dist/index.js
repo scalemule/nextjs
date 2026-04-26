@@ -7445,7 +7445,8 @@ function ScaleMuleProvider({
   onLogin,
   onLogout,
   onAuthError,
-  bootstrapFlags
+  bootstrapFlags,
+  mediaPolicy
 }) {
   const [user, setUser] = React.useState(null);
   const [initializing, setInitializing] = React.useState(true);
@@ -7584,6 +7585,7 @@ function ScaleMuleProvider({
       storage: baseClient.storage,
       photo: baseClient.photo,
       video: baseClient.video,
+      mediaPolicy,
       user,
       setUser: handleSetUser,
       initializing,
@@ -7598,7 +7600,7 @@ function ScaleMuleProvider({
       accountSwitcherPrivacy,
       bootstrapFlags
     }),
-    [client, money$1, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags]
+    [client, money$1, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, mediaPolicy]
   );
   return /* @__PURE__ */ jsxRuntime.jsx(ScaleMuleContext.Provider, { value, children });
 }
@@ -8897,7 +8899,7 @@ function useContent(options = {}) {
   );
 }
 function useMedia() {
-  const { storage, photo, video } = useScaleMule();
+  const { storage, photo, video, mediaPolicy: providerDefaultPolicy } = useScaleMule();
   const [uploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState(null);
   const upload = React.useCallback(
@@ -8906,7 +8908,7 @@ function useMedia() {
       setError(null);
       const isPublic = options?.is_public ?? false;
       const mimeType = file.type || "application/octet-stream";
-      const policy = options?.policy ?? "safe_visible";
+      const policy = options?.policy ?? providerDefaultPolicy ?? "safe_visible";
       const gateOnPipeline = policy === "safe_public" || policy === "moderated" || policy === "compliance";
       const sharedOpts = {
         filename: options?.filename,
@@ -8993,7 +8995,7 @@ function useMedia() {
         setUploading(false);
       }
     },
-    [storage, photo]
+    [storage, photo, video, providerDefaultPolicy]
   );
   const cancelUpload = React.useCallback(
     async (fileId) => {

@@ -154,7 +154,7 @@ export interface UseMediaReturn {
  * tree and the full anti-patterns list.
  */
 export function useMedia(): UseMediaReturn {
-  const { storage, photo, video } = useScaleMule()
+  const { storage, photo, video, mediaPolicy: providerDefaultPolicy } = useScaleMule()
 
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
@@ -167,10 +167,12 @@ export function useMedia(): UseMediaReturn {
       const isPublic = options?.is_public ?? false
       const mimeType = (file as File).type || 'application/octet-stream'
 
-      // Policies that gate release on pipeline completion. The upload
-      // promise awaits the optimize/transcode result before resolving.
-      // Default `safe_visible` and `fast_trusted` resolve immediately.
-      const policy: MediaPolicy = options?.policy ?? 'safe_visible'
+      // Policy precedence: per-call override > provider default >
+      // built-in safe_visible default. Policies that gate release on
+      // pipeline completion (safe_public / moderated / compliance) await
+      // optimize/transcode before resolving the upload promise.
+      const policy: MediaPolicy =
+        options?.policy ?? providerDefaultPolicy ?? 'safe_visible'
       const gateOnPipeline =
         policy === 'safe_public' ||
         policy === 'moderated' ||
@@ -297,7 +299,7 @@ export function useMedia(): UseMediaReturn {
         setUploading(false)
       }
     },
-    [storage, photo]
+    [storage, photo, video, providerDefaultPolicy]
   )
 
   const cancelUpload = useCallback(
