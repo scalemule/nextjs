@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { useEffect, useMemo } from 'react'
 import { useFileStatus, type ConversationKind } from '../hooks/useFileStatus'
+import { useScaleMule } from '../provider'
 
 export interface ScaleMuleMediaProps {
   /** Storage `file_id` of the media to render. Required. */
@@ -114,12 +115,31 @@ export function ScaleMuleMedia(props: ScaleMuleMediaProps): React.ReactElement |
     renderOverride,
   } = props
 
+  const { gatewayUrl } = useScaleMule()
   const { status, isReady } = useFileStatus({
     fileId,
     pollIntervalMs,
     conversationId,
     conversationKind,
   })
+
+  // Resolve relative URLs (e.g. `/v1/photos/{id}/transform`) against the
+  // configured gateway origin. Customer apps that don't proxy /v1/* would
+  // otherwise hit their own origin and 404 (Finding 3 from the
+  // realtime-chat media pipeline review).
+  const absoluteUrl = React.useCallback(
+    (url: string | null | undefined): string | null => {
+      if (!url) return null
+      if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:')) {
+        return url
+      }
+      if (!gatewayUrl) return url
+      const base = gatewayUrl.endsWith('/') ? gatewayUrl.slice(0, -1) : gatewayUrl
+      const path = url.startsWith('/') ? url : `/${url}`
+      return `${base}${path}`
+    },
+    [gatewayUrl]
+  )
 
   // ──────────────────────────────────────────────────────────────────────
   // State machine
@@ -140,27 +160,40 @@ export function ScaleMuleMedia(props: ScaleMuleMediaProps): React.ReactElement |
     const scan = status?.scan.status
     if (scan === 'threat' || scan === 'quarantined') return null
 
-    if (status && isReady) {
-      if (isImage && status.urls.optimized) return status.urls.optimized
-      if (isVideo && status.urls.hls) return status.urls.hls
-      return status.urls.original ?? null
+    // Pre-status (first render) — fall back to a sender-side blob preview
+    // if available. After F1, status returns a presigned `urls.original`
+    // immediately (no scan gate), so this branch only fires for the
+    // ~one frame before the first fetch completes.
+    if (!status) {
+      return blobPreview ?? null
     }
 
-    // Pre-clean: prefer original if scan is in progress AND status returned
-    // a URL (the storage view URL itself works once the file row exists,
-    // even before scan completes — gateway gates content on scan status).
-    if (blobPreview) return blobPreview
+    // status.urls.optimized / .hls are now only set when the typed-service
+    // pipeline reports done (storage status gate, F1+F2 server). When
+    // present, they're always preferable. Otherwise, render the
+    // presigned `urls.original` — which is direct-to-CDN and not
+    // scan-gated, so it works pre-scan-clean.
+    if (isImage && status.urls.optimized) return absoluteUrl(status.urls.optimized)
+    if (isVideo && status.urls.hls) return absoluteUrl(status.urls.hls)
+    if (status.urls.original) return absoluteUrl(status.urls.original)
 
-    return null
-  }, [status, isReady, isImage, isVideo, blobPreview])
+    // Last resort: still no URLs. Show blob preview if we have one.
+    return blobPreview ?? null
+  }, [status, isImage, isVideo, blobPreview, absoluteUrl])
 
   const renderState: 'preview' | 'pending' | 'ready' | 'blocked' | 'error' = useMemo(() => {
     const scan = status?.scan.status
     if (scan === 'threat' || scan === 'quarantined') return 'blocked'
+    // "ready" once we have any usable server URL — original is fine for
+    // the first paint, optimized/hls swap in later when the pipeline
+    // finishes. The earlier scan-clean gate over-blocked: it kept the
+    // component on the loading placeholder even when status had a
+    // presigned original URL ready to render.
+    if (status?.urls.original) return 'ready'
     if (isReady) return 'ready'
     if (blobPreview) return 'preview'
     return 'pending'
-  }, [status?.scan.status, isReady, blobPreview])
+  }, [status?.scan.status, status?.urls.original, isReady, blobPreview])
 
   // ──────────────────────────────────────────────────────────────────────
   // HLS lazy-load (video only, non-Safari)

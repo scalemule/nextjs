@@ -330,12 +330,32 @@ export function useMedia(): UseMediaReturn {
   const cancelUpload = useCallback(
     async (fileId: string): Promise<void> => {
       setError(null)
+      // Cascade tear-down so an upload that already went through
+      // `photo.register()` doesn't leave a photo-namespace S3 copy +
+      // photo-DB row behind when the user discards before sending
+      // (Finding 6 from the realtime-chat media pipeline review).
+      //
+      // Photo's DELETE accepts the storage `file_id` directly via the
+      // dual-lookup invariant (P0.1) — we don't need to track the
+      // photo_id separately. 404 means the photo wasn't registered
+      // (non-image uploads), which is fine.
+      //
+      // Video / audio delete cascades aren't wired yet:
+      //   - scalemule-video has no DELETE endpoint today.
+      //   - scalemule-audio's delete isn't surfaced on the SDK.
+      // Both are tracked as platform follow-ups; storage's TTL sweeper
+      // is the backstop for both.
       try {
-        const r = await storage.delete(fileId)
-        if (r.error) {
-          // 404 = already gone, treat as success (idempotent).
-          if (r.error.status === 404) return
-          throw r.error
+        // Run photo cascade and storage delete in parallel. Storage
+        // delete is the source-of-truth row, so we surface its error.
+        const [, storageResult] = await Promise.all([
+          photo.delete(fileId).catch(() => undefined),
+          storage.delete(fileId),
+        ])
+        if (storageResult.error) {
+          // 404 on storage = already gone, treat as success (idempotent).
+          if (storageResult.error.status === 404) return
+          throw storageResult.error
         }
       } catch (err) {
         const e = err as ApiError
@@ -343,7 +363,7 @@ export function useMedia(): UseMediaReturn {
         throw e
       }
     },
-    [storage]
+    [storage, photo]
   )
 
   return { upload, cancelUpload, error, uploading }

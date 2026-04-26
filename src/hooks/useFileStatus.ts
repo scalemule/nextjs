@@ -153,16 +153,40 @@ export function useFileStatus(options: UseFileStatusOptions): UseFileStatusRetur
     void fetchStatus()
   }, [fetchStatus])
 
-  // Optional polling. Stops when scan is clean.
+  // Optional polling. Stops only when both scan AND any expected pipeline
+  // (optimize for images, transcode for videos) have settled — otherwise a
+  // poll-stop on scan-clean would leave the caller stuck on the original
+  // URL even after the optimized variant becomes available.
   useEffect(() => {
     if (!pollIntervalMs || disabled || !fileId) return
-    const isClean = status?.scan.status === 'clean'
-    if (isClean) return
+    const scan = status?.scan.status
+    if (scan === 'threat' || scan === 'quarantined' || scan === 'error') return
+
+    // If the upstream pipeline is in flight, keep polling regardless of
+    // scan state. `optimize` / `transcode` are `null` when not applicable
+    // (audio, generic files), in which case scan-clean alone is enough.
+    const optimizePending =
+      status?.optimize != null && status.optimize.status !== 'done'
+    const transcodePending =
+      status?.transcode != null && status.transcode.status !== 'done'
+    const pipelinePending = optimizePending || transcodePending
+
+    const isSettled = scan === 'clean' && !pipelinePending
+    if (isSettled) return
+
     const id = setInterval(() => {
       void fetchStatus()
     }, pollIntervalMs)
     return () => clearInterval(id)
-  }, [pollIntervalMs, disabled, fileId, status?.scan.status, fetchStatus])
+  }, [
+    pollIntervalMs,
+    disabled,
+    fileId,
+    status?.scan.status,
+    status?.optimize,
+    status?.transcode,
+    fetchStatus,
+  ])
 
   // Chat-surface push subscription. Re-fetch when a file_status_changed
   // event arrives for our file_id on the conversation channel.
