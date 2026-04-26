@@ -154,7 +154,7 @@ export interface UseMediaReturn {
  * tree and the full anti-patterns list.
  */
 export function useMedia(): UseMediaReturn {
-  const { storage, photo, video, mediaPolicy: providerDefaultPolicy } = useScaleMule()
+  const { storage, photo, video, audio, mediaPolicy: providerDefaultPolicy } = useScaleMule()
 
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
@@ -242,6 +242,31 @@ export function useMedia(): UseMediaReturn {
         }
 
         // ────────────────────────────────────────────────────────────────
+        // Audio branch: upload + register with audio service.
+        // audio.uploadViaStorage handles the storage upload and follows
+        // up with /v1/audios/register so the audio service tracks
+        // ownership + status. Bytes are immediately playable via the
+        // storage view URL — codec normalization / waveform peaks land
+        // in a future phase. No release-gating today (audio's pipeline
+        // is metadata-only, no transcoding to wait on).
+        // ────────────────────────────────────────────────────────────────
+        if (mimeType.startsWith('audio/') && !isPublic) {
+          const r = await audio.uploadViaStorage(file, sharedOpts)
+          if (r.error || !r.data) {
+            throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
+          }
+          return {
+            file_id: r.data.file_id,
+            photo_id: null,
+            original_view_url: r.data.original_view_url,
+            optimized_url_promise: Promise.resolve(null),
+            hls_url_promise: Promise.resolve(null),
+            mime_type: mimeType,
+            is_public: false,
+          }
+        }
+
+        // ────────────────────────────────────────────────────────────────
         // Public-image branch: a public surface (e.g. avatar) doesn't go
         // through uploadViaStorage (which forces is_public: false). Fall
         // through to a regular storage.upload() and skip photo register
@@ -270,10 +295,10 @@ export function useMedia(): UseMediaReturn {
         }
 
         // ────────────────────────────────────────────────────────────────
-        // Generic fallthrough (videos, audio, files): private storage
-        // upload via uploadPrivate (or storage.upload with isPublic: true).
-        // Video / audio branches arrive in Phase 2 / Phase 5 once
-        // video.uploadViaStorage and audio.uploadViaStorage land.
+        // Generic fallthrough (files, public audio, etc.): private
+        // storage upload via uploadPrivate (or storage.upload with
+        // isPublic: true). Image / video / audio branches above pick
+        // up the typed services; everything else lands here.
         // ────────────────────────────────────────────────────────────────
         const r = isPublic
           ? await storage.upload(file, { ...sharedOpts, isPublic: true, skipCompression: true })
@@ -299,7 +324,7 @@ export function useMedia(): UseMediaReturn {
         setUploading(false)
       }
     },
-    [storage, photo, video, providerDefaultPolicy]
+    [storage, photo, video, audio, providerDefaultPolicy]
   )
 
   const cancelUpload = useCallback(

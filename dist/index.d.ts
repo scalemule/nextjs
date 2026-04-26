@@ -1,5 +1,5 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
-import { ApiError, RealtimeService, StorageService, PhotoService, VideoService, FileStatus } from '@scalemule/sdk';
+import { ApiError, RealtimeService, StorageService, PhotoService, VideoService, AudioService, FileStatus } from '@scalemule/sdk';
 import * as React from 'react';
 import { ReactNode, ReactElement } from 'react';
 import { MoneyClient } from '@scalemule/money';
@@ -164,6 +164,8 @@ interface ScaleMuleContextValue {
     photo: PhotoService;
     /** Base SDK video service — exposed for `useMedia()` and `video.uploadViaStorage()` */
     video: VideoService;
+    /** Base SDK audio service — exposed for `useMedia()` and `audio.uploadViaStorage()` */
+    audio: AudioService;
     /**
      * Default media policy for `useMedia()` calls. Set via
      * `<ScaleMuleProvider mediaPolicy="…">`; per-call overrides win.
