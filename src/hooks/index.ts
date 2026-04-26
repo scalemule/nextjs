@@ -5,7 +5,11 @@ export { useContent } from './useContent'
 export { useMedia } from './useMedia'
 export type { MediaUploadResult, UseMediaUploadOptions, UseMediaReturn, MediaPolicy } from './useMedia'
 export { useFileStatus } from './useFileStatus'
-export type { UseFileStatusOptions, UseFileStatusReturn } from './useFileStatus'
+export type {
+  ConversationKind,
+  UseFileStatusOptions,
+  UseFileStatusReturn,
+} from './useFileStatus'
 export { useFeatureFlags } from './useFeatureFlags'
 export { useMoney } from './useMoney'
 export { useUser } from './useUser'
