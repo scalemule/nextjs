@@ -7684,8 +7684,12 @@ function ScaleMuleProvider({
               }
             }
           } catch {
-            if (mounted && debug) {
-              console.debug("[ScaleMule] Auth proxy session check failed");
+            if (mounted) {
+              setUser(null);
+              setCachedUser(null);
+              if (debug) {
+                console.debug("[ScaleMule] Auth proxy session check failed; clearing cached user");
+              }
             }
           } finally {
             client.resolveSessionPending();
