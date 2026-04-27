@@ -12,6 +12,7 @@ import {
 import { createMoneyClient, type MoneyClient } from '@scalemule/money'
 import { ScaleMule, type RealtimeService, type StorageService, type PhotoService, type VideoService, type AudioService } from '@scalemule/sdk'
 import { ScaleMuleClient, createClient } from './client'
+import { setSdkTelemetryEndpoint } from './sdk-telemetry'
 import type { User, ScaleMuleConfig, ApiError, LoginResponse } from './types'
 
 // ============================================================================
@@ -145,6 +146,7 @@ export function ScaleMuleProvider({
   storage,
   analyticsProxyUrl,
   authProxyUrl,
+  telemetryEndpoint,
   publishableKey,
   enableAccountSwitcher,
   accountSwitcherPrivacy,
@@ -158,6 +160,15 @@ export function ScaleMuleProvider({
   const [user, setUser] = useState<User | null>(null)
   const [initializing, setInitializing] = useState(true)
   const [error, setError] = useState<ApiError | null>(null)
+
+  // Wire SDK-level error telemetry: every non-2xx auth-proxy response
+  // ships a structured log entry to this endpoint, so caught-and-
+  // displayed errors show up in the host platform's logger alongside
+  // uncaught crashes.
+  useEffect(() => {
+    setSdkTelemetryEndpoint(telemetryEndpoint)
+    return () => setSdkTelemetryEndpoint(undefined)
+  }, [telemetryEndpoint])
   const resolvedGatewayUrl =
     gatewayUrl ||
     (environment === 'dev' ? 'https://api-dev.scalemule.com' : 'https://api.scalemule.com')

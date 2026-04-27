@@ -1,6 +1,6 @@
-import { S as ServerConfig } from '../webhook-handler-BjFbqZuq.js';
-export { a as ScaleMuleServer, V as VideoFailedEvent, b as VideoReadyEvent, c as VideoTranscodedEvent, d as VideoUploadedEvent, W as WebhookEvent, e as WebhookRoutesConfig, f as createServerClient, g as createWebhookHandler, h as createWebhookRoutes, p as parseWebhookEvent, r as registerVideoWebhook, i as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-BjFbqZuq.js';
-import { p as ClientContext, A as ApiError } from '../index-BIIUrnPr.js';
+import { S as ServerConfig } from '../webhook-handler-C07AK4QB.js';
+export { a as ScaleMuleServer, V as VideoFailedEvent, b as VideoReadyEvent, c as VideoTranscodedEvent, d as VideoUploadedEvent, W as WebhookEvent, e as WebhookRoutesConfig, f as createServerClient, g as createWebhookHandler, h as createWebhookRoutes, p as parseWebhookEvent, r as registerVideoWebhook, i as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-C07AK4QB.js';
+import { p as ClientContext, A as ApiError } from '../index-DTWyUcyd.js';
 import { NextRequest, NextResponse } from 'next/server';
 import '@scalemule/money';
 

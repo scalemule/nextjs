@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState, useEffect } from 'react'
 import { useScaleMule } from '../provider'
 import { ScaleMuleApiError } from '../types'
+import { reportSdkError } from '../sdk-telemetry'
 import type {
   User,
   UseAuthReturn,
@@ -128,7 +129,7 @@ async function proxyFetch<T>(
   proxyUrl: string,
   path: string,
   options: { method?: string; body?: unknown } = {}
-): Promise<{ success: boolean; data?: T; error?: ApiError }> {
+): Promise<{ success: boolean; data?: T; error?: ScaleMuleApiError }> {
   const method = options.method || 'POST'
   const headers: Record<string, string> = {}
 
@@ -152,6 +153,31 @@ async function proxyFetch<T>(
   })
 
   const data = await response.json()
+
+  // Coerce the server's plain `{code, message}` error object into a
+  // real Error subclass so callers' `throw err` always throws an
+  // `instanceof Error` value with a usable stack trace. This is what
+  // makes `err instanceof Error` checks in client apps work — without
+  // it the original message gets dropped behind a fallback string
+  // ("Could not resend code", "Something went wrong", etc.).
+  if (data && data.error && !(data.error instanceof ScaleMuleApiError)) {
+    data.error = new ScaleMuleApiError(data.error as ApiError, response.status)
+  }
+
+  // Ship every auth-proxy failure to the host app's telemetry endpoint
+  // so caught-and-displayed errors show up alongside uncaught crashes.
+  // No-op when telemetryEndpoint isn't configured.
+  if (data && data.success === false && data.error) {
+    reportSdkError({
+      code: data.error.code,
+      message: data.error.message,
+      status: response.status,
+      op: path,
+      path: `${proxyUrl}/${path}`,
+      field: data.error.field,
+    })
+  }
+
   return data
 }
 

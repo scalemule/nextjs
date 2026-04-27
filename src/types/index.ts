@@ -60,6 +60,27 @@ export interface ScaleMuleConfig {
    */
   authProxyUrl?: string
   /**
+   * Endpoint to ship SDK error logs to (fire-and-forget POST).
+   *
+   * When set, every non-2xx response from the auth proxy (and any other
+   * SDK call that throws a ScaleMuleApiError) will be reported to this
+   * URL as a structured log entry, alongside the regular setError() and
+   * thrown ScaleMuleApiError. This makes API failures visible in your
+   * platform's error logger even when the calling code catches the
+   * error and surfaces a UI message — the case the global window.onerror
+   * / unhandledrejection / React error-boundary collectors all miss by
+   * design.
+   *
+   * Recommended value: '/api/telemetry/errors' (the same endpoint your
+   * host-app's client-side error collector already POSTs to). The body
+   * shape matches what `createTelemetryRoutes()` expects:
+   * `{ logs: [{ message, metadata, timestamp }] }`.
+   *
+   * @example
+   * telemetryEndpoint: '/api/telemetry/errors'
+   */
+  telemetryEndpoint?: string
+  /**
    * Publishable API key for browser-safe operations (e.g., analytics)
    *
    * Publishable keys (sm_pb_*) are origin-locked and safe to expose in
@@ -113,11 +134,12 @@ export class ScaleMuleApiError extends Error {
   field?: string
   details?: unknown
 
-  constructor(error: ApiError) {
+  constructor(error: ApiError, status?: number) {
     super(error.message)
     this.name = 'ScaleMuleApiError'
     this.code = error.code
     this.field = error.field
+    this.status = status
   }
 }
 
