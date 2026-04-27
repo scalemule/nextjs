@@ -1918,11 +1918,12 @@ var require_semver2 = __commonJS({
 
 // src/types/index.ts
 var ScaleMuleApiError = class extends Error {
-  constructor(error) {
+  constructor(error, status) {
     super(error.message);
     this.name = "ScaleMuleApiError";
     this.code = error.code;
     this.field = error.field;
+    this.status = status;
   }
 };
 

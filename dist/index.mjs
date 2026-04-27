@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { createContext, useState, useMemo, useEffect, useCallback, useContext, useRef } from 'react';
+import { createContext, useState, useEffect, useMemo, useCallback, useContext, useRef } from 'react';
 import { createMoneyClient } from '@scalemule/money';
 export { MoneyClient, createMoneyClient } from '@scalemule/money';
 import { jsx, Fragment, jsxs } from 'react/jsx-runtime';
@@ -4866,16 +4866,16 @@ var WebPushManager = class {
       userVisibleOnly: true,
       applicationServerKey: applicationServerKey.buffer
     });
-    const endpoint = pushSubscription.endpoint;
+    const endpoint2 = pushSubscription.endpoint;
     const p256dh = arrayBufferToBase64url(pushSubscription.getKey("p256dh"));
     const auth = arrayBufferToBase64url(pushSubscription.getKey("auth"));
     const subscription = {
-      endpoint,
+      endpoint: endpoint2,
       keys: { p256dh, auth }
     };
     const resolvedDeviceId = deviceId || this.state?.deviceId || generateDeviceId();
     const result = await this.fetcher.registerToken({
-      token: endpoint,
+      token: endpoint2,
       platform: "web",
       device_id: resolvedDeviceId,
       subscription,
@@ -4887,12 +4887,12 @@ var WebPushManager = class {
       registration_source: this.registrationSource
     });
     this.state = {
-      endpoint,
+      endpoint: endpoint2,
       tokenId: result.id,
       deviceId: resolvedDeviceId
     };
     this.persistState();
-    return { tokenId: result.id, endpoint };
+    return { tokenId: result.id, endpoint: endpoint2 };
   }
   /** Unsubscribe from browser push and deregister token */
   async unsubscribe() {
@@ -6727,11 +6727,12 @@ var ScaleMule = class {
 
 // src/types/index.ts
 var ScaleMuleApiError = class extends Error {
-  constructor(error) {
+  constructor(error, status) {
     super(error.message);
     this.name = "ScaleMuleApiError";
     this.code = error.code;
     this.field = error.field;
+    this.status = status;
   }
 };
 
@@ -7502,6 +7503,45 @@ var ScaleMuleClient2 = class {
 function createClient(config) {
   return new ScaleMuleClient2(config);
 }
+
+// src/sdk-telemetry.ts
+var endpoint;
+function setSdkTelemetryEndpoint(url) {
+  endpoint = url;
+}
+function reportSdkError(payload) {
+  if (!endpoint) return;
+  if (typeof fetch === "undefined") return;
+  const body = JSON.stringify({
+    logs: [
+      {
+        message: `${payload.code}: ${payload.message}`,
+        metadata: {
+          name: payload.code,
+          source: "scalemule-sdk",
+          kind: "sdk",
+          op: payload.op,
+          status: payload.status ?? null,
+          path: payload.path ?? null,
+          field: payload.field ?? null,
+          route: typeof window !== "undefined" ? window.location.pathname : null
+        },
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    ]
+  });
+  try {
+    void fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+      credentials: "same-origin"
+    }).catch(() => {
+    });
+  } catch {
+  }
+}
 var USER_CACHE_KEY = "scalemule_user";
 function getCachedUser() {
   if (typeof window === "undefined") return null;
@@ -7533,6 +7573,7 @@ function ScaleMuleProvider({
   storage,
   analyticsProxyUrl,
   authProxyUrl,
+  telemetryEndpoint,
   publishableKey,
   enableAccountSwitcher,
   accountSwitcherPrivacy,
@@ -7546,6 +7587,10 @@ function ScaleMuleProvider({
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState(null);
+  useEffect(() => {
+    setSdkTelemetryEndpoint(telemetryEndpoint);
+    return () => setSdkTelemetryEndpoint(void 0);
+  }, [telemetryEndpoint]);
   const resolvedGatewayUrl = gatewayUrl || (environment === "dev" ? "https://api-dev.scalemule.com" : "https://api.scalemule.com");
   const client = useMemo(
     () => createClient({
@@ -7799,6 +7844,19 @@ async function proxyFetch(proxyUrl, path, options = {}) {
     // Include cookies for session management
   });
   const data = await response.json();
+  if (data && data.error && !(data.error instanceof ScaleMuleApiError)) {
+    data.error = new ScaleMuleApiError(data.error, response.status);
+  }
+  if (data && data.success === false && data.error) {
+    reportSdkError({
+      code: data.error.code,
+      message: data.error.message,
+      status: response.status,
+      op: path,
+      path: `${proxyUrl}/${path}`,
+      field: data.error.field
+    });
+  }
   return data;
 }
 function useAuth() {
@@ -9016,6 +9074,193 @@ function useContent(options = {}) {
     ]
   );
 }
+var AUDIO_POLL_INTERVAL_MS = 1e3;
+var AUDIO_POLL_MAX_ATTEMPTS = 30;
+function isAudioFile(file) {
+  return file.content_type.startsWith("audio/");
+}
+function toStorageBackedAudioFile(file) {
+  return {
+    audio_id: file.id,
+    file_id: file.id,
+    filename: file.filename,
+    mime_type: file.content_type,
+    size_bytes: file.size_bytes,
+    status: "pending_transcode",
+    codec: null,
+    bit_rate_kbps: null,
+    duration_ms: null,
+    created_at: file.created_at,
+    original_view_url: file.url ?? null,
+    transcoded_url: null
+  };
+}
+function isNotFoundError(error) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const candidate = error;
+  return candidate.status === 404 || candidate.statusCode === 404 || candidate.response?.status === 404 || candidate.code === "not_found" || candidate.message?.toLowerCase().includes("not found") === true;
+}
+function isAbortError(error) {
+  return error instanceof DOMException && error.name === "AbortError" || !!error && typeof error === "object" && "name" in error && error.name === "AbortError";
+}
+async function waitForPollInterval(signal) {
+  if (signal?.aborted) {
+    return false;
+  }
+  return new Promise((resolve) => {
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      resolve(true);
+    }, AUDIO_POLL_INTERVAL_MS);
+    const onAbort = () => {
+      cleanup();
+      resolve(false);
+    };
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+function useAudio() {
+  const { client, audio } = useScaleMule();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const pollTranscodedUrl = useCallback(
+    async (audioId, signal) => {
+      for (let attempt = 0; attempt < AUDIO_POLL_MAX_ATTEMPTS; attempt++) {
+        if (signal?.aborted) {
+          return null;
+        }
+        try {
+          const details = await client.get(`/v1/audios/${audioId}`);
+          if (details.status === "ready" && details.url) {
+            return details.url;
+          }
+          if (details.status === "failed") {
+            return null;
+          }
+        } catch (err) {
+          if (isAbortError(err) || signal?.aborted) {
+            return null;
+          }
+          if (!isNotFoundError(err)) {
+            throw err;
+          }
+        }
+        if (!await waitForPollInterval(signal)) {
+          return null;
+        }
+      }
+      return null;
+    },
+    [client]
+  );
+  const upload = useCallback(
+    async (file, opts) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await audio.uploadViaStorage(file, {
+          filename: opts?.filename,
+          metadata: opts?.metadata,
+          onProgress: opts?.onProgress,
+          signal: opts?.signal
+        });
+        if (result.error || !result.data) {
+          throw result.error ?? { code: "upload_error", message: "Audio upload failed" };
+        }
+        return {
+          file_id: result.data.file_id,
+          audio_id: result.data.audio_id,
+          original_view_url: result.data.original_view_url,
+          transcoded_url_promise: result.data.audio_id ? pollTranscodedUrl(result.data.audio_id, opts?.signal) : Promise.resolve(null)
+        };
+      } catch (err) {
+        const apiError = err;
+        setError(apiError);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [audio, pollTranscodedUrl]
+  );
+  const list = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await client.get("/v1/storage/my-files");
+      const audioFiles = response.files.filter(isAudioFile);
+      const enriched = await Promise.all(
+        audioFiles.map(async (file) => {
+          try {
+            const details = await client.get(`/v1/audios/${file.id}`);
+            return {
+              audio_id: details.id,
+              file_id: file.id,
+              filename: file.filename,
+              mime_type: file.content_type,
+              size_bytes: details.size_bytes ?? file.size_bytes,
+              status: details.status,
+              codec: details.codec,
+              bit_rate_kbps: details.bit_rate_kbps ?? null,
+              duration_ms: details.duration_ms ?? null,
+              created_at: details.created_at,
+              original_view_url: file.url ?? null,
+              transcoded_url: details.url ?? null,
+              waveform_peaks: details.waveform_peaks
+            };
+          } catch {
+            return toStorageBackedAudioFile(file);
+          }
+        })
+      );
+      return enriched;
+    } catch (err) {
+      const apiError = err;
+      setError(apiError);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [client]);
+  const remove = useCallback(
+    async (fileId) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [audioDeleteResult, storageDeleteResult] = await Promise.allSettled([
+          client.delete(`/v1/audios/${fileId}`),
+          client.delete(`/v1/storage/files/${fileId}`)
+        ]);
+        if (storageDeleteResult.status === "rejected" && !isNotFoundError(storageDeleteResult.reason)) {
+          throw storageDeleteResult.reason ?? new Error("Storage delete failed");
+        }
+        if (audioDeleteResult.status === "rejected" && !isNotFoundError(audioDeleteResult.reason)) {
+          console.warn("Audio record delete failed after storage delete", audioDeleteResult.reason);
+        }
+      } catch (err) {
+        const apiError = err;
+        setError(apiError);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [client]
+  );
+  return {
+    upload,
+    list,
+    remove,
+    error,
+    loading
+  };
+}
 function useMedia() {
   const { storage, photo, video, audio, mediaPolicy: providerDefaultPolicy } = useScaleMule();
   const [uploading, setUploading] = useState(false);
@@ -9934,8 +10179,8 @@ function useAnalytics(options = {}) {
         return { tracked: 1, session_id: sessionIdRef.current || void 0 };
       }
       if (publishableKey && gatewayUrl) {
-        const endpoint2 = useV2 ? "/v1/analytics/v2/events" : "/v1/analytics/events";
-        fetch(`${gatewayUrl}${endpoint2}`, {
+        const endpoint3 = useV2 ? "/v1/analytics/v2/events" : "/v1/analytics/events";
+        fetch(`${gatewayUrl}${endpoint3}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -9948,8 +10193,8 @@ function useAnalytics(options = {}) {
         });
         return { tracked: 1, session_id: sessionIdRef.current || void 0 };
       }
-      const endpoint = useV2 ? "/v1/analytics/v2/events" : "/v1/analytics/events";
-      return await client.post(endpoint, fullEvent);
+      const endpoint2 = useV2 ? "/v1/analytics/v2/events" : "/v1/analytics/events";
+      return await client.post(endpoint2, fullEvent);
     },
     // Note: sessionId removed - we use ref to keep this stable
     [client, buildFullEvent, useV2, analyticsProxyUrl, publishableKey, gatewayUrl]
@@ -10025,8 +10270,8 @@ function useAnalytics(options = {}) {
           return { tracked: events.length, session_id: sessionIdRef.current || void 0 };
         }
         if (publishableKey && gatewayUrl) {
-          const endpoint2 = useV2 ? "/v1/analytics/v2/events/batch" : "/v1/analytics/events/batch";
-          fetch(`${gatewayUrl}${endpoint2}`, {
+          const endpoint3 = useV2 ? "/v1/analytics/v2/events/batch" : "/v1/analytics/events/batch";
+          fetch(`${gatewayUrl}${endpoint3}`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -10040,8 +10285,8 @@ function useAnalytics(options = {}) {
           setLoading(false);
           return { tracked: events.length, session_id: sessionIdRef.current || void 0 };
         }
-        const endpoint = useV2 ? "/v1/analytics/v2/events/batch" : "/v1/analytics/events/batch";
-        return await client.post(endpoint, {
+        const endpoint2 = useV2 ? "/v1/analytics/v2/events/batch" : "/v1/analytics/events/batch";
+        return await client.post(endpoint2, {
           events: fullEvents
         });
       } finally {
@@ -10177,10 +10422,10 @@ function useFeatureFlags(options = {}) {
     try {
       const currentKeys = keysRef.current;
       const payload = currentKeys && currentKeys.length > 0 ? { flag_keys: currentKeys, environment, context: contextRef.current } : { environment, context: contextRef.current };
-      const endpoint = currentKeys && currentKeys.length > 0 ? "/v1/flags/evaluate/batch" : "/v1/flags/evaluate/all";
+      const endpoint2 = currentKeys && currentKeys.length > 0 ? "/v1/flags/evaluate/batch" : "/v1/flags/evaluate/all";
       let result;
       if (publishableKey && gatewayUrl) {
-        const response = await fetch(`${gatewayUrl}${endpoint}`, {
+        const response = await fetch(`${gatewayUrl}${endpoint2}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -10194,7 +10439,7 @@ function useFeatureFlags(options = {}) {
         const json = await response.json();
         result = json.data || json || {};
       } else {
-        result = await client.post(endpoint, payload);
+        result = await client.post(endpoint2, payload);
       }
       setFlags(result || {});
       setError(null);
@@ -11221,4 +11466,4 @@ function createSafeLogger(prefix) {
   };
 }
 
-export { FeedbackWidget, ScaleMuleApiError, ScaleMuleClient2 as ScaleMuleClient, ScaleMuleMedia, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { FeedbackWidget, ScaleMuleApiError, ScaleMuleClient2 as ScaleMuleClient, ScaleMuleMedia, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };

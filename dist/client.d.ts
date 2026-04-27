@@ -1,4 +1,4 @@
-import { a8 as StorageAdapter } from './index-BIIUrnPr.js';
+import { a8 as StorageAdapter } from './index-DTWyUcyd.js';
 
 /**
  * ScaleMule API Client
