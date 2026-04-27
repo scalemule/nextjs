@@ -315,9 +315,18 @@ export function ScaleMuleProvider({
               }
             }
           } catch {
-            // Network error — keep cached user if available
-            if (mounted && debug) {
-              console.debug('[ScaleMule] Auth proxy session check failed')
+            // Network/parse error on /me — treat as no session. Better
+            // to briefly show the unauthenticated state than to leave
+            // a stale cached user on screen with a cookie that may
+            // already be invalid; otherwise a transient /me failure
+            // (proxy 500, parse error, mid-deploy blip) leaves the app
+            // looking logged-in even though no valid session exists.
+            if (mounted) {
+              setUser(null)
+              setCachedUser(null)
+              if (debug) {
+                console.debug('[ScaleMule] Auth proxy session check failed; clearing cached user')
+              }
             }
           } finally {
             // Always resolve the session gate so API requests can proceed,
