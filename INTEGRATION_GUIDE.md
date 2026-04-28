@@ -88,6 +88,8 @@ This automatically creates these endpoints:
 | PATCH | `/api/auth/me` | Update profile |
 | DELETE | `/api/auth/me` | Delete account |
 
+For the full proxy-vs-direct auth split, session bootstrap, cookie lifecycle, and CSRF flow, see [`docs/AUTH_PROXY_PATTERN.md`](./docs/AUTH_PROXY_PATTERN.md).
+
 ### Step 2: Create Storage API Routes (Optional)
 
 For file uploads and listing:
