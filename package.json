@@ -1,6 +1,6 @@
 {
   "name": "@scalemule/nextjs",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "ScaleMule SDK for Next.js applications - authentication, storage, and user management",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
