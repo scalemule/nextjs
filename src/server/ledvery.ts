@@ -169,9 +169,15 @@ export function createLedveryRoutes(config: LedveryRoutesConfig): { GET: RouteHa
     )
   }
 
-  function handleLogout(_request: Request): Response {
+  function handleLogout(request: Request): Response {
+    const session = getLedverySession(request)
+    const idToken = session?.idToken
+
     if (config.gatewayUrl) {
-      const rpLogoutUrl = `${config.gatewayUrl}/v1/auth/oauth/ledvery/logout?post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirect)}`
+      let rpLogoutUrl = `${config.gatewayUrl}/v1/auth/oauth/ledvery/logout?post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirect)}`
+      if (idToken) {
+        rpLogoutUrl += `&id_token_hint=${encodeURIComponent(idToken)}`
+      }
       const response = new Response(null, {
         status: 302,
         headers: { Location: rpLogoutUrl },
