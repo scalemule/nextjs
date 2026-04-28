@@ -92,6 +92,7 @@ export function setLedverySession(
   if (opts?.cookies?.secure !== undefined) cookieOpts.secure = opts.cookies.secure
 
   const sessionPayload = JSON.stringify({
+    idToken: session.idToken,
     claims: session.claims,
     expiresAt: session.expiresAt,
   })
@@ -107,9 +108,9 @@ export function getLedverySession(request: Request): LedverySessionData | null {
   if (!raw) return null
 
   try {
-    const parsed = JSON.parse(raw) as { claims: Record<string, unknown>; expiresAt: string }
+    const parsed = JSON.parse(raw) as { idToken?: string; claims: Record<string, unknown>; expiresAt: string }
     return {
-      idToken: '', // not stored in cookie for size
+      idToken: parsed.idToken || '',
       claims: parsed.claims,
       expiresAt: parsed.expiresAt,
     }

@@ -3832,6 +3832,7 @@ function setLedverySession(response, session, opts) {
   if (opts?.cookies?.sameSite) cookieOpts.sameSite = opts.cookies.sameSite;
   if (opts?.cookies?.secure !== void 0) cookieOpts.secure = opts.cookies.secure;
   const sessionPayload = JSON.stringify({
+    idToken: session.idToken,
     claims: session.claims,
     expiresAt: session.expiresAt
   });
@@ -3846,8 +3847,7 @@ function getLedverySession(request) {
   try {
     const parsed = JSON.parse(raw);
     return {
-      idToken: "",
-      // not stored in cookie for size
+      idToken: parsed.idToken || "",
       claims: parsed.claims,
       expiresAt: parsed.expiresAt
     };
@@ -4052,7 +4052,21 @@ function createLedveryRoutes(config) {
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   }
-  function handleLogout(_request) {
+  function handleLogout(request) {
+    const session = getLedverySession(request);
+    const idToken = session?.idToken;
+    if (config.gatewayUrl) {
+      let rpLogoutUrl = `${config.gatewayUrl}/v1/auth/oauth/ledvery/logout?post_logout_redirect_uri=${encodeURIComponent(postLogoutRedirect)}`;
+      if (idToken) {
+        rpLogoutUrl += `&id_token_hint=${encodeURIComponent(idToken)}`;
+      }
+      const response2 = new Response(null, {
+        status: 302,
+        headers: { Location: rpLogoutUrl }
+      });
+      clearLedverySession(response2);
+      return response2;
+    }
     const response = new Response(null, {
       status: 302,
       headers: { Location: postLogoutRedirect }
@@ -4071,7 +4085,7 @@ function createLedveryRoutes(config) {
       case "session":
         return handleSession(request);
       case "logout":
-        return handleLogout();
+        return handleLogout(request);
       default:
         return new Response(
           JSON.stringify({ error: "not_found", message: `Unknown Ledvery route: ${action}` }),
