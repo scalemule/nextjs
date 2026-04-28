@@ -1,4 +1,4 @@
-import { a8 as StorageAdapter } from './index-DTWyUcyd.js';
+import { a8 as StorageAdapter, A as ApiError } from './index-DTWyUcyd.js';
 
 /**
  * ScaleMule API Client
@@ -38,6 +38,12 @@ interface ClientConfig {
     enableAccountSwitcher?: boolean;
     /** Privacy level for account switcher */
     accountSwitcherPrivacy?: 'full' | 'masked' | 'minimal';
+    /** Optional: Callback when a 401 auto-refresh starts. */
+    onRefreshStart?: () => void;
+    /** Optional: Callback when a 401 auto-refresh finishes. */
+    onRefreshEnd?: () => void;
+    /** Optional: Callback when an automatic 401 refresh fails. */
+    onAutoRefreshFailed?: (error: ApiError) => void;
 }
 interface RequestOptions extends RequestInit {
     /** Skip adding auth headers (for public endpoints) */
@@ -48,6 +54,8 @@ interface RequestOptions extends RequestInit {
     retries?: number;
     /** Skip retries */
     skipRetry?: boolean;
+    /** Internal flag to prevent infinite refresh loops */
+    isAutoRefresh?: boolean;
 }
 /**
  * ScaleMule API Client
@@ -69,6 +77,10 @@ declare class ScaleMuleClient {
     private sessionGate;
     private resolveSessionGate;
     private workspaceId;
+    private refreshPromise;
+    private onRefreshStart?;
+    private onRefreshEnd?;
+    private onAutoRefreshFailed?;
     constructor(config: ClientConfig);
     /**
      * Sync offline queue when coming back online

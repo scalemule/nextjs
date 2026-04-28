@@ -138,15 +138,20 @@ var ScaleMuleServer = class {
       /**
        * Get current user from session token
        */
-      me: async (sessionToken) => {
-        return this.request("GET", "/v1/auth/me", { sessionToken });
+      me: async (sessionToken, options) => {
+        return this.request("GET", "/v1/auth/me", {
+          sessionToken,
+          onTokenRotated: options?.onTokenRotated
+        });
       },
       /**
        * Refresh session token
        */
-      refresh: async (sessionToken) => {
+      refresh: async (sessionToken, options) => {
         return this.request("POST", "/v1/auth/refresh", {
-          body: { session_token: sessionToken }
+          sessionToken,
+          clientContext: options?.clientContext,
+          isAutoRefresh: options?.isAutoRefresh
         });
       },
       /**
@@ -689,6 +694,9 @@ var ScaleMuleServer = class {
     this.apiKey = config.apiKey;
     this.gatewayUrl = resolveGatewayUrl(config);
     this.debug = config.debug || false;
+    this.onRefreshStart = config.onRefreshStart;
+    this.onRefreshEnd = config.onRefreshEnd;
+    this.onAutoRefreshFailed = config.onAutoRefreshFailed;
     this.money = createMoneyClient({
       apiKey: this.apiKey,
       gatewayUrl: this.gatewayUrl,
@@ -732,6 +740,10 @@ var ScaleMuleServer = class {
         headers,
         body: options.body ? JSON.stringify(options.body) : void 0
       });
+      const rotated = response.headers.get("x-rotated-session-token");
+      if (rotated && options.onTokenRotated) {
+        options.onTokenRotated(rotated);
+      }
       const text = await response.text();
       let responseData = null;
       try {
@@ -743,6 +755,33 @@ var ScaleMuleServer = class {
           code: `HTTP_${response.status}`,
           message: responseData?.message || text || response.statusText
         };
+        if (response.status === 401 && options.sessionToken && !options.isAutoRefresh) {
+          if (this.debug) console.log("[ScaleMule Server] 401 received, attempting auto-refresh...");
+          try {
+            this.onRefreshStart?.();
+            const refreshData = await this.auth.refresh(options.sessionToken, {
+              clientContext: options.clientContext,
+              isAutoRefresh: true
+              // Prevent infinite loops
+            });
+            const newToken = refreshData.session_token;
+            if (this.debug) console.log("[ScaleMule Server] Auto-refresh succeeded, retrying original request...");
+            options.onTokenRotated?.(newToken);
+            return this.request(method, path, {
+              ...options,
+              sessionToken: newToken,
+              isAutoRefresh: true
+              // Don't refresh again on this retry
+            });
+          } catch (refreshErr) {
+            if (this.debug) console.error("[ScaleMule Server] Auto-refresh failed:", refreshErr);
+            const refreshApiError = refreshErr instanceof ScaleMuleApiError ? { code: refreshErr.code, message: refreshErr.message } : { code: "REFRESH_FAILED", message: "Auto-refresh failed" };
+            this.onAutoRefreshFailed?.(refreshApiError);
+            throw new ScaleMuleApiError(error);
+          } finally {
+            this.onRefreshEnd?.();
+          }
+        }
         throw new ScaleMuleApiError(error);
       }
       const data = responseData?.data !== void 0 ? responseData.data : responseData;
@@ -1391,11 +1430,24 @@ function createAuthRoutes(config = {}) {
             return withNorm(errorResponse("UNAUTHORIZED", "Authentication required", 401));
           }
           let userData;
+          let rotated = null;
           try {
-            userData = await sm.auth.me(session.sessionToken);
+            userData = await sm.auth.me(session.sessionToken, {
+              onTokenRotated: (newToken) => {
+                rotated = newToken;
+              }
+            });
           } catch {
             return withNorm(clearSession(
               { error: { code: "SESSION_EXPIRED", message: "Session expired" } },
+              cookieOptions
+            ));
+          }
+          if (rotated) {
+            return withNorm(withRefreshedSession(
+              rotated,
+              session.userId,
+              { user: userData, sessionToken: rotated, userId: session.userId },
               cookieOptions
             ));
           }
