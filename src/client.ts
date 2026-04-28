@@ -371,6 +371,12 @@ export interface ClientConfig {
   enableAccountSwitcher?: boolean
   /** Privacy level for account switcher */
   accountSwitcherPrivacy?: 'full' | 'masked' | 'minimal'
+  /** Callback when a 401 auto-refresh starts */
+  onRefreshStart?: () => void
+  /** Callback when a 401 auto-refresh finishes */
+  onRefreshEnd?: () => void
+  /** Callback when a 401 auto-refresh fails */
+  onAutoRefreshFailed?: (error: ApiError) => void
 }
 
 /**
@@ -394,6 +400,10 @@ export interface RequestOptions extends RequestInit {
   retries?: number
   /** Skip retries */
   skipRetry?: boolean
+  /** Internal flag to prevent infinite refresh loops */
+  isAutoRefresh?: boolean
+  /** Per-request callback when auto-refresh fails */
+  onAutoRefreshFailed?: (error: ApiError) => void
 }
 
 /**
@@ -438,6 +448,10 @@ export class ScaleMuleClient {
   private sessionGate: Promise<void> | null = null
   private resolveSessionGate: (() => void) | null = null
   private workspaceId: string | null = null
+  private refreshPromise: Promise<unknown> | null = null
+  private onRefreshStart?: () => void
+  private onRefreshEnd?: () => void
+  private onAutoRefreshFailed?: (error: ApiError) => void
 
   constructor(config: ClientConfig) {
     this.apiKey = config.apiKey
@@ -447,6 +461,9 @@ export class ScaleMuleClient {
     this.storage = config.storage || createDefaultStorage()
     this.enableRateLimitQueue = config.enableRateLimitQueue || false
     this.enableOfflineQueue = config.enableOfflineQueue || false
+    this.onRefreshStart = config.onRefreshStart
+    this.onRefreshEnd = config.onRefreshEnd
+    this.onAutoRefreshFailed = config.onAutoRefreshFailed
 
     if (this.enableRateLimitQueue) {
       this.rateLimitQueue = new RateLimitQueue()
@@ -698,7 +715,6 @@ export class ScaleMuleClient {
     }
 
     const url = `${this.gatewayUrl}${path}`
-    const headers = this.buildHeaders(options)
     const maxRetries = options.skipRetry ? 0 : (options.retries ?? 2)
     const timeout = options.timeout || 30000
 
@@ -707,8 +723,10 @@ export class ScaleMuleClient {
     }
 
     let lastError: ApiError | null = null
+    let hasAutoRefreshed = false
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const headers = this.buildHeaders(options)
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), timeout)
 
@@ -736,6 +754,34 @@ export class ScaleMuleClient {
           const error: ApiError = (rawError && typeof rawError === 'object')
             ? rawError as ApiError
             : { code: `HTTP_${response.status}`, message: (typeof rawError === 'string' ? rawError : (responseData?.message as string) || text || response.statusText) }
+
+          // 401 auto-refresh: try to refresh the token once, then retry
+          if (response.status === 401 && this.sessionToken && !options.isAutoRefresh && !hasAutoRefreshed) {
+            hasAutoRefreshed = true
+            if (!this.refreshPromise) {
+              this.onRefreshStart?.()
+              this.refreshPromise = this.post('/v1/auth/refresh', {}, { isAutoRefresh: true })
+            }
+            const currentRefreshPromise = this.refreshPromise
+            try {
+              const refreshResult = await currentRefreshPromise as Record<string, unknown>
+              const newToken = refreshResult?.access_token as string || refreshResult?.session_token as string
+              if (newToken) {
+                await this.setSession(newToken, this.userId || '')
+              }
+              attempt--
+              continue
+            } catch {
+              const refreshError: ApiError = { code: 'unauthorized', message: 'Session refresh failed' }
+              ;(options.onAutoRefreshFailed ?? this.onAutoRefreshFailed)?.(refreshError)
+              throw new ScaleMuleApiError(error)
+            } finally {
+              if (this.refreshPromise === currentRefreshPromise) {
+                this.refreshPromise = null
+                this.onRefreshEnd?.()
+              }
+            }
+          }
 
           // Check if we should retry this status code
           if (attempt < maxRetries && RETRYABLE_STATUS_CODES.has(response.status)) {
