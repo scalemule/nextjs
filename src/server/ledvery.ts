@@ -8,6 +8,7 @@ import {
   clearLedverySession,
   clearLedveryFlowCookies,
 } from './ledvery-cookies'
+import { validateSafeRedirect } from './redirect'
 import type { SessionCookieOverrides, LedverySessionData } from './ledvery-cookies'
 
 export interface LedveryRoutesConfig {
@@ -44,12 +45,12 @@ export function createLedveryRoutes(config: LedveryRoutesConfig): { GET: RouteHa
   async function handleLogin(request: Request): Promise<Response> {
     const url = new URL(request.url)
     const returnTo = url.searchParams.get('returnTo')
+    const validatedReturnTo = validateSafeRedirect(returnTo, { defaultPath: postLoginRedirect })
 
     const authResult = await client.createAuthorizationUrl({
       scope: defaultScope,
     })
 
-    const redirectTarget = returnTo || postLoginRedirect
     const response = new Response(null, {
       status: 302,
       headers: { Location: authResult.url },
@@ -61,11 +62,10 @@ export function createLedveryRoutes(config: LedveryRoutesConfig): { GET: RouteHa
       nonce: authResult.nonce,
     })
 
-    // Store returnTo in a short-lived cookie so callback can use it
-    if (returnTo) {
+    if (validatedReturnTo !== postLoginRedirect) {
       response.headers.append(
         'Set-Cookie',
-        `sm_ledvery_return_to=${encodeURIComponent(returnTo)}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`
+        `sm_ledvery_return_to=${encodeURIComponent(validatedReturnTo)}; Path=/; Max-Age=600; HttpOnly; SameSite=Lax${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`
       )
     }
 
@@ -111,7 +111,7 @@ export function createLedveryRoutes(config: LedveryRoutesConfig): { GET: RouteHa
     }
 
     const returnTo = getCookieValue(request, 'sm_ledvery_return_to')
-    const redirectTo = returnTo || postLoginRedirect
+    const redirectTo = validateSafeRedirect(returnTo, { defaultPath: postLoginRedirect })
 
     const response = new Response(null, {
       status: 302,

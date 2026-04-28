@@ -115,6 +115,40 @@ describe('createLedveryRoutes', () => {
       expect(returnToCookie).toBeDefined()
       expect(returnToCookie).toContain(encodeURIComponent('/settings'))
     })
+
+    it('rejects absolute URL returnTo (open redirect)', async () => {
+      mockCreateAuthorizationUrl.mockResolvedValue({
+        url: 'https://id.ledvery.com/oidc/authorize?state=s2',
+        state: 's2',
+        codeVerifier: 'v2',
+        codeChallenge: 'c2',
+        nonce: 'n2',
+      })
+
+      const request = createRequest('login', { query: { returnTo: 'https://evil.com' } })
+      const response = await routes.GET(request, routeContext('login'))
+
+      const cookies = getSetCookies(response)
+      const returnToCookie = cookies.find(c => c.startsWith('sm_ledvery_return_to='))
+      expect(returnToCookie).toBeUndefined()
+    })
+
+    it('rejects protocol-relative returnTo (open redirect)', async () => {
+      mockCreateAuthorizationUrl.mockResolvedValue({
+        url: 'https://id.ledvery.com/oidc/authorize?state=s3',
+        state: 's3',
+        codeVerifier: 'v3',
+        codeChallenge: 'c3',
+        nonce: 'n3',
+      })
+
+      const request = createRequest('login', { query: { returnTo: '//evil.com' } })
+      const response = await routes.GET(request, routeContext('login'))
+
+      const cookies = getSetCookies(response)
+      const returnToCookie = cookies.find(c => c.startsWith('sm_ledvery_return_to='))
+      expect(returnToCookie).toBeUndefined()
+    })
   })
 
   describe('/callback', () => {
@@ -223,6 +257,32 @@ describe('createLedveryRoutes', () => {
       const cookies = getSetCookies(response)
       const atCookie = cookies.find(c => c.startsWith('sm_ledvery_access_token='))
       expect(atCookie).toBeDefined()
+    })
+
+    it('redirects to postLoginRedirect when returnTo cookie is tampered (open redirect)', async () => {
+      const expiresAt = new Date(Date.now() + 3600 * 1000)
+      mockExchangeCode.mockResolvedValue({
+        accessToken: 'at-tampered',
+        idToken: 'idt-tampered',
+        claims: { iss: 'https://id.ledvery.com', sub: 'user-789', aud: 'test-client-id', exp: Math.floor(expiresAt.getTime() / 1000), iat: Math.floor(Date.now() / 1000) },
+        expiresAt,
+        scope: 'openid',
+      })
+
+      const state = 'tampered-state'
+      const request = createRequest('callback', {
+        query: { code: 'auth-code', state },
+        cookies: {
+          sm_ledvery_state: state,
+          sm_ledvery_pkce_verifier: 'v',
+          sm_ledvery_nonce: 'n',
+          sm_ledvery_return_to: 'https://evil.com',
+        },
+      })
+      const response = await routes.GET(request, routeContext('callback'))
+
+      expect(response.status).toBe(302)
+      expect(response.headers.get('Location')).toBe('/dashboard')
     })
 
     it('returns 403 when code is missing (error from IdP)', async () => {
