@@ -545,12 +545,27 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           }
 
           let userData
+          let rotated: string | null = null
           try {
-            userData = await sm.auth.me(session.sessionToken)
+            userData = await sm.auth.me(session.sessionToken, {
+              onTokenRotated: (newToken) => {
+                rotated = newToken
+              }
+            })
           } catch {
             // Session invalid, clear cookies
             return withNorm(clearSession(
               { error: { code: 'SESSION_EXPIRED', message: 'Session expired' } },
+              cookieOptions
+            ))
+          }
+
+          // If the gateway rotated the session token, update the HTTP-only cookie
+          if (rotated) {
+            return withNorm(withRefreshedSession(
+              rotated,
+              session.userId,
+              { user: userData, sessionToken: rotated, userId: session.userId },
               cookieOptions
             ))
           }

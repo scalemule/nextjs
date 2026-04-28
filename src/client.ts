@@ -371,11 +371,11 @@ export interface ClientConfig {
   enableAccountSwitcher?: boolean
   /** Privacy level for account switcher */
   accountSwitcherPrivacy?: 'full' | 'masked' | 'minimal'
-  /** Callback when a 401 auto-refresh starts */
+  /** Optional: Callback when a 401 auto-refresh starts. */
   onRefreshStart?: () => void
-  /** Callback when a 401 auto-refresh finishes */
+  /** Optional: Callback when a 401 auto-refresh finishes. */
   onRefreshEnd?: () => void
-  /** Callback when a 401 auto-refresh fails */
+  /** Optional: Callback when an automatic 401 refresh fails. */
   onAutoRefreshFailed?: (error: ApiError) => void
 }
 
@@ -402,8 +402,6 @@ export interface RequestOptions extends RequestInit {
   skipRetry?: boolean
   /** Internal flag to prevent infinite refresh loops */
   isAutoRefresh?: boolean
-  /** Per-request callback when auto-refresh fails */
-  onAutoRefreshFailed?: (error: ApiError) => void
 }
 
 /**
@@ -448,7 +446,7 @@ export class ScaleMuleClient {
   private sessionGate: Promise<void> | null = null
   private resolveSessionGate: (() => void) | null = null
   private workspaceId: string | null = null
-  private refreshPromise: Promise<unknown> | null = null
+  private refreshPromise: Promise<any> | null = null
   private onRefreshStart?: () => void
   private onRefreshEnd?: () => void
   private onAutoRefreshFailed?: (error: ApiError) => void
@@ -715,6 +713,7 @@ export class ScaleMuleClient {
     }
 
     const url = `${this.gatewayUrl}${path}`
+    const headers = this.buildHeaders(options)
     const maxRetries = options.skipRetry ? 0 : (options.retries ?? 2)
     const timeout = options.timeout || 30000
 
@@ -723,10 +722,8 @@ export class ScaleMuleClient {
     }
 
     let lastError: ApiError | null = null
-    let hasAutoRefreshed = false
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const headers = this.buildHeaders(options)
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), timeout)
 
@@ -738,6 +735,12 @@ export class ScaleMuleClient {
         })
 
         clearTimeout(timeoutId)
+
+        // Consume rotated session token if present
+        const rotatedToken = response.headers.get('x-rotated-session-token')
+        if (rotatedToken && this.sessionToken && this.userId) {
+          this.setSession(rotatedToken, this.userId)
+        }
 
         const text = await response.text()
         let responseData: Record<string, unknown> | null = null
@@ -755,31 +758,37 @@ export class ScaleMuleClient {
             ? rawError as ApiError
             : { code: `HTTP_${response.status}`, message: (typeof rawError === 'string' ? rawError : (responseData?.message as string) || text || response.statusText) }
 
-          // 401 auto-refresh: try to refresh the token once, then retry
-          if (response.status === 401 && this.sessionToken && !options.isAutoRefresh && !hasAutoRefreshed) {
-            hasAutoRefreshed = true
+          // Handle 401 Unauthorized — trigger auto-refresh unless this is already a refresh request
+          if (response.status === 401 && this.sessionToken && !options.isAutoRefresh) {
+            if (this.debug) console.log('[ScaleMule] 401 received, attempting auto-refresh...')
+
             if (!this.refreshPromise) {
               this.onRefreshStart?.()
-              this.refreshPromise = this.post('/v1/auth/refresh', {}, { isAutoRefresh: true })
+              // Call /api/auth/refresh (Next.js auth proxy route)
+              this.refreshPromise = this.post('/api/auth/refresh', {}, { isAutoRefresh: true })
             }
-            const currentRefreshPromise = this.refreshPromise
+
             try {
-              const refreshResult = await currentRefreshPromise as Record<string, unknown>
-              const newToken = refreshResult?.access_token as string || refreshResult?.session_token as string
-              if (newToken) {
-                await this.setSession(newToken, this.userId || '')
-              }
+              await this.refreshPromise
+              if (this.debug) console.log('[ScaleMule] Auto-refresh succeeded, retrying original request...')
+              // Reset the for-loop but don't count this as a retry attempt
               attempt--
-              continue
-            } catch {
-              const refreshError: ApiError = { code: 'unauthorized', message: 'Session refresh failed' }
-              ;(options.onAutoRefreshFailed ?? this.onAutoRefreshFailed)?.(refreshError)
-              throw new ScaleMuleApiError(error)
-            } finally {
-              if (this.refreshPromise === currentRefreshPromise) {
-                this.refreshPromise = null
-                this.onRefreshEnd?.()
+              // Update Authorization header with the new token which should be in this.sessionToken now
+              // Note: headers is an object in this client, but let's be safe
+              if (this.sessionToken) {
+                headers.set('Authorization', `Bearer ${this.sessionToken}`)
               }
+              continue
+            } catch (refreshErr) {
+              if (this.debug) console.error('[ScaleMule] Auto-refresh failed:', refreshErr)
+              const refreshApiError: ApiError = refreshErr instanceof ScaleMuleApiError 
+                ? { code: refreshErr.code, message: refreshErr.message, field: refreshErr.field } 
+                : { code: 'REFRESH_FAILED', message: 'Auto-refresh failed' }
+              this.onAutoRefreshFailed?.(refreshApiError)
+              throw new ScaleMuleApiError(error) // Throw original 401 error
+            } finally {
+              this.refreshPromise = null
+              this.onRefreshEnd?.()
             }
           }
 

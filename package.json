@@ -60,7 +60,7 @@
   "dependencies": {
     "@scalemule/ledvery": "^0.0.1",
     "@scalemule/money": "^0.0.1",
-    "@scalemule/sdk": "^0.0.47"
+    "@scalemule/sdk": "^0.0.48"
   },
   "peerDependencies": {
     "next": ">=14.0.0",
