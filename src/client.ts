@@ -371,6 +371,12 @@ export interface ClientConfig {
   enableAccountSwitcher?: boolean
   /** Privacy level for account switcher */
   accountSwitcherPrivacy?: 'full' | 'masked' | 'minimal'
+  /** Optional: Callback when a 401 auto-refresh starts. */
+  onRefreshStart?: () => void
+  /** Optional: Callback when a 401 auto-refresh finishes. */
+  onRefreshEnd?: () => void
+  /** Optional: Callback when an automatic 401 refresh fails. */
+  onAutoRefreshFailed?: (error: ApiError) => void
 }
 
 /**
@@ -394,6 +400,8 @@ export interface RequestOptions extends RequestInit {
   retries?: number
   /** Skip retries */
   skipRetry?: boolean
+  /** Internal flag to prevent infinite refresh loops */
+  isAutoRefresh?: boolean
 }
 
 /**
@@ -438,6 +446,10 @@ export class ScaleMuleClient {
   private sessionGate: Promise<void> | null = null
   private resolveSessionGate: (() => void) | null = null
   private workspaceId: string | null = null
+  private refreshPromise: Promise<any> | null = null
+  private onRefreshStart?: () => void
+  private onRefreshEnd?: () => void
+  private onAutoRefreshFailed?: (error: ApiError) => void
 
   constructor(config: ClientConfig) {
     this.apiKey = config.apiKey
@@ -447,6 +459,9 @@ export class ScaleMuleClient {
     this.storage = config.storage || createDefaultStorage()
     this.enableRateLimitQueue = config.enableRateLimitQueue || false
     this.enableOfflineQueue = config.enableOfflineQueue || false
+    this.onRefreshStart = config.onRefreshStart
+    this.onRefreshEnd = config.onRefreshEnd
+    this.onAutoRefreshFailed = config.onAutoRefreshFailed
 
     if (this.enableRateLimitQueue) {
       this.rateLimitQueue = new RateLimitQueue()
@@ -721,6 +736,12 @@ export class ScaleMuleClient {
 
         clearTimeout(timeoutId)
 
+        // Consume rotated session token if present
+        const rotatedToken = response.headers.get('x-rotated-session-token')
+        if (rotatedToken && this.sessionToken && this.userId) {
+          this.setSession(rotatedToken, this.userId)
+        }
+
         const text = await response.text()
         let responseData: Record<string, unknown> | null = null
         try {
@@ -736,6 +757,38 @@ export class ScaleMuleClient {
           const error: ApiError = (rawError && typeof rawError === 'object')
             ? rawError as ApiError
             : { code: `HTTP_${response.status}`, message: (typeof rawError === 'string' ? rawError : (responseData?.message as string) || text || response.statusText) }
+
+          // Handle 401 Unauthorized — trigger auto-refresh unless this is already a refresh request
+          if (response.status === 401 && this.sessionToken && !options.isAutoRefresh) {
+            if (this.debug) console.log('[ScaleMule] 401 received, attempting auto-refresh...')
+
+            if (!this.refreshPromise) {
+              this.onRefreshStart?.()
+              // Call /api/auth/refresh (Next.js auth proxy route)
+              this.refreshPromise = this.post('/api/auth/refresh', {}, { isAutoRefresh: true })
+            }
+
+            try {
+              await this.refreshPromise
+              if (this.debug) console.log('[ScaleMule] Auto-refresh succeeded, retrying original request...')
+              // Reset the for-loop but don't count this as a retry attempt
+              attempt--
+              // Update Authorization header with the new token which should be in this.sessionToken now
+              // Note: headers is an object in this client, but let's be safe
+              if (this.sessionToken) {
+                headers.set('Authorization', `Bearer ${this.sessionToken}`)
+              }
+              continue
+            } catch (refreshErr) {
+              if (this.debug) console.error('[ScaleMule] Auto-refresh failed:', refreshErr)
+              const refreshApiError = refreshErr instanceof ScaleMuleApiError ? refreshErr.error : { code: 'REFRESH_FAILED', message: 'Auto-refresh failed' }
+              this.onAutoRefreshFailed?.(refreshApiError)
+              throw new ScaleMuleApiError(error) // Throw original 401 error
+            } finally {
+              this.refreshPromise = null
+              this.onRefreshEnd?.()
+            }
+          }
 
           // Check if we should retry this status code
           if (attempt < maxRetries && RETRYABLE_STATUS_CODES.has(response.status)) {

@@ -64,6 +64,7 @@ export class ScaleMuleServer {
   private apiKey: string
   private gatewayUrl: string
   private debug: boolean
+  lastRotatedToken: string | null = null
   money: MoneyClient
 
   constructor(config: ServerConfig) {
@@ -128,6 +129,12 @@ export class ScaleMuleServer {
         headers,
         body: options.body ? JSON.stringify(options.body) : undefined,
       })
+
+      // Capture rotated session token from gateway
+      const rotated = response.headers.get('x-rotated-session-token')
+      if (rotated) {
+        this.lastRotatedToken = rotated
+      }
 
       const text = await response.text()
       let responseData: Record<string, unknown> | null = null

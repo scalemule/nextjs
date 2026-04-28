@@ -404,6 +404,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             )
           }
 
+          sm.lastRotatedToken = null
           return withRefreshedSession(
             refreshData.session_token,
             session.userId,
@@ -551,6 +552,18 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             // Session invalid, clear cookies
             return withNorm(clearSession(
               { error: { code: 'SESSION_EXPIRED', message: 'Session expired' } },
+              cookieOptions
+            ))
+          }
+
+          // If the gateway rotated the session token, update the HTTP-only cookie
+          if (sm.lastRotatedToken) {
+            const rotated = sm.lastRotatedToken
+            sm.lastRotatedToken = null
+            return withNorm(withRefreshedSession(
+              rotated,
+              session.userId,
+              { user: userData, sessionToken: rotated, userId: session.userId },
               cookieOptions
             ))
           }
