@@ -242,9 +242,11 @@ export class ScaleMuleServer {
     /**
      * Logout user
      */
-    logout: async (sessionToken: string): Promise<void> => {
+    logout: async (sessionToken: string, options?: { onTokenRotated?: (newToken: string) => void }): Promise<void> => {
       return this.request<void>('POST', '/v1/auth/logout', {
+        sessionToken,
         body: { session_token: sessionToken },
+        onTokenRotated: options?.onTokenRotated
       })
     },
 
@@ -263,12 +265,13 @@ export class ScaleMuleServer {
      */
     refresh: async (
       sessionToken: string,
-      options?: { clientContext?: ClientContext; isAutoRefresh?: boolean }
+      options?: { clientContext?: ClientContext; isAutoRefresh?: boolean; onTokenRotated?: (newToken: string) => void }
     ): Promise<{ session_token: string; expires_at: string }> => {
       return this.request<{ session_token: string; expires_at: string }>('POST', '/v1/auth/refresh', {
         sessionToken,
         clientContext: options?.clientContext,
         isAutoRefresh: options?.isAutoRefresh,
+        onTokenRotated: options?.onTokenRotated
       })
     },
 
@@ -343,11 +346,13 @@ export class ScaleMuleServer {
      */
     update: async (
       sessionToken: string,
-      data: { full_name?: string; avatar_url?: string }
+      data: { full_name?: string; avatar_url?: string },
+      options?: { onTokenRotated?: (newToken: string) => void }
     ): Promise<User> => {
       return this.request<User>('PATCH', '/v1/auth/profile', {
         sessionToken,
         body: data,
+        onTokenRotated: options?.onTokenRotated
       })
     },
 
@@ -357,11 +362,13 @@ export class ScaleMuleServer {
     changePassword: async (
       sessionToken: string,
       currentPassword: string,
-      newPassword: string
+      newPassword: string,
+      options?: { onTokenRotated?: (newToken: string) => void }
     ): Promise<{ message: string }> => {
       return this.request('POST', '/v1/auth/change-password', {
         sessionToken,
         body: { current_password: currentPassword, new_password: newPassword },
+        onTokenRotated: options?.onTokenRotated
       })
     },
 
@@ -371,11 +378,13 @@ export class ScaleMuleServer {
     changeEmail: async (
       sessionToken: string,
       newEmail: string,
-      password: string
+      password: string,
+      options?: { onTokenRotated?: (newToken: string) => void }
     ): Promise<{ message: string }> => {
       return this.request('POST', '/v1/auth/change-email', {
         sessionToken,
         body: { new_email: newEmail, password },
+        onTokenRotated: options?.onTokenRotated
       })
     },
 
@@ -384,11 +393,13 @@ export class ScaleMuleServer {
      */
     deleteAccount: async (
       sessionToken: string,
-      password: string
+      password: string,
+      options?: { onTokenRotated?: (newToken: string) => void }
     ): Promise<{ message: string }> => {
       return this.request('DELETE', '/v1/auth/me', {
         sessionToken,
         body: { password },
+        onTokenRotated: options?.onTokenRotated
       })
     },
   }
