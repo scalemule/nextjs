@@ -2109,9 +2109,11 @@ var ScaleMuleServer = class {
       /**
        * Logout user
        */
-      logout: async (sessionToken) => {
+      logout: async (sessionToken, options) => {
         return this.request("POST", "/v1/auth/logout", {
-          body: { session_token: sessionToken }
+          sessionToken,
+          body: { session_token: sessionToken },
+          onTokenRotated: options?.onTokenRotated
         });
       },
       /**
@@ -2130,7 +2132,8 @@ var ScaleMuleServer = class {
         return this.request("POST", "/v1/auth/refresh", {
           sessionToken,
           clientContext: options?.clientContext,
-          isAutoRefresh: options?.isAutoRefresh
+          isAutoRefresh: options?.isAutoRefresh,
+          onTokenRotated: options?.onTokenRotated
         });
       },
       /**
@@ -2182,37 +2185,41 @@ var ScaleMuleServer = class {
       /**
        * Update user profile
        */
-      update: async (sessionToken, data) => {
+      update: async (sessionToken, data, options) => {
         return this.request("PATCH", "/v1/auth/profile", {
           sessionToken,
-          body: data
+          body: data,
+          onTokenRotated: options?.onTokenRotated
         });
       },
       /**
        * Change password
        */
-      changePassword: async (sessionToken, currentPassword, newPassword) => {
+      changePassword: async (sessionToken, currentPassword, newPassword, options) => {
         return this.request("POST", "/v1/auth/change-password", {
           sessionToken,
-          body: { current_password: currentPassword, new_password: newPassword }
+          body: { current_password: currentPassword, new_password: newPassword },
+          onTokenRotated: options?.onTokenRotated
         });
       },
       /**
        * Change email
        */
-      changeEmail: async (sessionToken, newEmail, password) => {
+      changeEmail: async (sessionToken, newEmail, password, options) => {
         return this.request("POST", "/v1/auth/change-email", {
           sessionToken,
-          body: { new_email: newEmail, password }
+          body: { new_email: newEmail, password },
+          onTokenRotated: options?.onTokenRotated
         });
       },
       /**
        * Delete account
        */
-      deleteAccount: async (sessionToken, password) => {
+      deleteAccount: async (sessionToken, password, options) => {
         return this.request("DELETE", "/v1/auth/me", {
           sessionToken,
-          body: { password }
+          body: { password },
+          onTokenRotated: options?.onTokenRotated
         });
       }
     };
@@ -3282,8 +3289,16 @@ function createAuthRoutes(config = {}) {
         // ==================== Logout ====================
         case "logout": {
           const session = await getSession();
+          let rotated = null;
           if (session) {
-            await sm.auth.logout(session.sessionToken);
+            try {
+              await sm.auth.logout(session.sessionToken, {
+                onTokenRotated: (newToken) => {
+                  rotated = newToken;
+                }
+              });
+            } catch {
+            }
           }
           if (config.onLogout) {
             await config.onLogout();
@@ -3408,11 +3423,17 @@ function createAuthRoutes(config = {}) {
           if (!current_password || !new_password) {
             return errorResponse("VALIDATION_ERROR", "Current and new password required", 400);
           }
+          let rotated = null;
           try {
             await sm.user.changePassword(
               session.sessionToken,
               current_password,
-              new_password
+              new_password,
+              {
+                onTokenRotated: (newToken) => {
+                  rotated = newToken;
+                }
+              }
             );
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null;
@@ -3420,6 +3441,14 @@ function createAuthRoutes(config = {}) {
               apiErr?.code || "CHANGE_FAILED",
               apiErr?.message || "Failed to change password",
               400
+            );
+          }
+          if (rotated) {
+            return withRefreshedSession(
+              rotated,
+              session.userId,
+              { success: true, data: { message: "Password changed successfully" } },
+              cookieOptions
             );
           }
           return successResponse({ message: "Password changed successfully" });
@@ -3601,14 +3630,27 @@ function createAuthRoutes(config = {}) {
           const body = await request.json().catch(() => ({}));
           const { full_name, avatar_url } = body;
           let updatedUser;
+          let rotated = null;
           try {
-            updatedUser = await sm.user.update(session.sessionToken, { full_name, avatar_url });
+            updatedUser = await sm.user.update(session.sessionToken, { full_name, avatar_url }, {
+              onTokenRotated: (newToken) => {
+                rotated = newToken;
+              }
+            });
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null;
             return errorResponse(
               apiErr?.code || "UPDATE_FAILED",
               apiErr?.message || "Failed to update profile",
               400
+            );
+          }
+          if (rotated) {
+            return withRefreshedSession(
+              rotated,
+              session.userId,
+              { success: true, data: { user: updatedUser } },
+              cookieOptions
             );
           }
           return successResponse({ user: updatedUser });

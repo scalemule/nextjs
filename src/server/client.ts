@@ -315,7 +315,7 @@ export class ScaleMuleServer {
      */
     resendVerification: async (
       sessionTokenOrEmail: string,
-      options?: { email?: string },
+      options?: { email?: string; onTokenRotated?: (newToken: string) => void },
     ): Promise<{ message: string }> => {
       // If options.email is provided, treat first arg as session token
       // If first arg looks like an email, send email-based (no session required)
@@ -323,6 +323,7 @@ export class ScaleMuleServer {
         return this.request('POST', '/v1/auth/resend-verification', {
           sessionToken: sessionTokenOrEmail,
           body: { email: options.email },
+          onTokenRotated: options?.onTokenRotated
         })
       }
       if (sessionTokenOrEmail.includes('@')) {
@@ -332,6 +333,7 @@ export class ScaleMuleServer {
       }
       return this.request('POST', '/v1/auth/resend-verification', {
         sessionToken: sessionTokenOrEmail,
+        onTokenRotated: options?.onTokenRotated
       })
     },
   }

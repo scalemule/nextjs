@@ -366,6 +366,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           const { email } = body
           const session = await getSession()
 
+          let rotated: string | null = null
           if (email) {
             // Email-based resend (no session required — e.g., post-registration)
             try {
@@ -386,13 +387,26 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           }
 
           try {
-            await sm.auth.resendVerification(session.sessionToken)
+            await sm.auth.resendVerification(session.sessionToken, {
+              onTokenRotated: (newToken) => {
+                rotated = newToken
+              }
+            })
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
               apiErr?.code || 'RESEND_FAILED',
               apiErr?.message || 'Failed to resend verification',
               400
+            )
+          }
+
+          if (rotated) {
+            return withRefreshedSession(
+              rotated,
+              session.userId,
+              { success: true, data: { message: 'Verification email sent' } },
+              cookieOptions
             )
           }
 
