@@ -48,6 +48,12 @@ export interface ServerConfig {
   gatewayUrl?: string
   /** Enable debug logging */
   debug?: boolean
+  /** Callback when a 401 auto-refresh starts */
+  onRefreshStart?: () => void
+  /** Callback when a 401 auto-refresh finishes */
+  onRefreshEnd?: () => void
+  /** Callback when a 401 auto-refresh fails */
+  onAutoRefreshFailed?: (error: ApiError) => void
 }
 
 export function resolveGatewayUrl(config: ServerConfig): string {
@@ -64,12 +70,18 @@ export class ScaleMuleServer {
   private apiKey: string
   private gatewayUrl: string
   private debug: boolean
+  private onRefreshStart?: () => void
+  private onRefreshEnd?: () => void
+  private onAutoRefreshFailed?: (error: ApiError) => void
   money: MoneyClient
 
   constructor(config: ServerConfig) {
     this.apiKey = config.apiKey
     this.gatewayUrl = resolveGatewayUrl(config)
     this.debug = config.debug || false
+    this.onRefreshStart = config.onRefreshStart
+    this.onRefreshEnd = config.onRefreshEnd
+    this.onAutoRefreshFailed = config.onAutoRefreshFailed
     this.money = createMoneyClient({
       apiKey: this.apiKey,
       gatewayUrl: this.gatewayUrl,
@@ -101,6 +113,7 @@ export class ScaleMuleServer {
       sessionToken?: string
       clientContext?: ClientContext
       onTokenRotated?: (newToken: string) => void
+      isAutoRefresh?: boolean
     } = {}
   ): Promise<T> {
     const url = `${this.gatewayUrl}${path}`
@@ -145,10 +158,49 @@ export class ScaleMuleServer {
       }
 
       if (!response.ok) {
-        const error: ApiError = responseData?.error as ApiError || {
+        const error: ApiError = (responseData?.error as ApiError) || {
           code: `HTTP_${response.status}`,
           message: (responseData?.message as string) || text || response.statusText,
         }
+
+        // Handle 401 Unauthorized — trigger auto-refresh unless this is already a refresh request
+        if (response.status === 401 && options.sessionToken && !options.isAutoRefresh) {
+          if (this.debug) console.log('[ScaleMule Server] 401 received, attempting auto-refresh...')
+          
+          try {
+            this.onRefreshStart?.()
+            
+            // Call refresh endpoint
+            const refreshData = await this.auth.refresh(options.sessionToken, {
+              clientContext: options.clientContext,
+              isAutoRefresh: true, // Prevent infinite loops
+            })
+
+            const newToken = refreshData.session_token
+            if (this.debug) console.log('[ScaleMule Server] Auto-refresh succeeded, retrying original request...')
+            
+            // Notify caller that token changed so they can update cookies
+            options.onTokenRotated?.(newToken)
+
+            // Retry the original request once with the new token
+            return this.request<T>(method, path, {
+              ...options,
+              sessionToken: newToken,
+              isAutoRefresh: true, // Don't refresh again on this retry
+            })
+          } catch (refreshErr) {
+            if (this.debug) console.error('[ScaleMule Server] Auto-refresh failed:', refreshErr)
+            const refreshApiError: ApiError = refreshErr instanceof ScaleMuleApiError 
+              ? { code: refreshErr.code, message: refreshErr.message } 
+              : { code: 'REFRESH_FAILED', message: 'Auto-refresh failed' }
+            
+            this.onAutoRefreshFailed?.(refreshApiError)
+            throw new ScaleMuleApiError(error) // Throw original 401 error
+          } finally {
+            this.onRefreshEnd?.()
+          }
+        }
+
         throw new ScaleMuleApiError(error)
       }
 
@@ -210,10 +262,13 @@ export class ScaleMuleServer {
      * Refresh session token
      */
     refresh: async (
-      sessionToken: string
+      sessionToken: string,
+      options?: { clientContext?: ClientContext; isAutoRefresh?: boolean }
     ): Promise<{ session_token: string; expires_at: string }> => {
-      return this.request('POST', '/v1/auth/refresh', {
-        body: { session_token: sessionToken },
+      return this.request<{ session_token: string; expires_at: string }>('POST', '/v1/auth/refresh', {
+        sessionToken,
+        clientContext: options?.clientContext,
+        isAutoRefresh: options?.isAutoRefresh,
       })
     },
 
