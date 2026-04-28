@@ -64,7 +64,6 @@ export class ScaleMuleServer {
   private apiKey: string
   private gatewayUrl: string
   private debug: boolean
-  lastRotatedToken: string | null = null
   money: MoneyClient
 
   constructor(config: ServerConfig) {
@@ -101,6 +100,7 @@ export class ScaleMuleServer {
       userId?: string
       sessionToken?: string
       clientContext?: ClientContext
+      onTokenRotated?: (newToken: string) => void
     } = {}
   ): Promise<T> {
     const url = `${this.gatewayUrl}${path}`
@@ -132,8 +132,8 @@ export class ScaleMuleServer {
 
       // Capture rotated session token from gateway
       const rotated = response.headers.get('x-rotated-session-token')
-      if (rotated) {
-        this.lastRotatedToken = rotated
+      if (rotated && options.onTokenRotated) {
+        options.onTokenRotated(rotated)
       }
 
       const text = await response.text()
@@ -199,8 +199,11 @@ export class ScaleMuleServer {
     /**
      * Get current user from session token
      */
-    me: async (sessionToken: string): Promise<User> => {
-      return this.request<User>('GET', '/v1/auth/me', { sessionToken })
+    me: async (sessionToken: string, options?: { onTokenRotated?: (newToken: string) => void }): Promise<User> => {
+      return this.request<User>('GET', '/v1/auth/me', {
+        sessionToken,
+        onTokenRotated: options?.onTokenRotated
+      })
     },
 
     /**

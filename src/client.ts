@@ -781,7 +781,9 @@ export class ScaleMuleClient {
               continue
             } catch (refreshErr) {
               if (this.debug) console.error('[ScaleMule] Auto-refresh failed:', refreshErr)
-              const refreshApiError = refreshErr instanceof ScaleMuleApiError ? refreshErr.error : { code: 'REFRESH_FAILED', message: 'Auto-refresh failed' }
+              const refreshApiError: ApiError = refreshErr instanceof ScaleMuleApiError 
+                ? { code: refreshErr.code, message: refreshErr.message, field: refreshErr.field } 
+                : { code: 'REFRESH_FAILED', message: 'Auto-refresh failed' }
               this.onAutoRefreshFailed?.(refreshApiError)
               throw new ScaleMuleApiError(error) // Throw original 401 error
             } finally {

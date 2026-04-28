@@ -404,7 +404,6 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             )
           }
 
-          sm.lastRotatedToken = null
           return withRefreshedSession(
             refreshData.session_token,
             session.userId,
@@ -546,8 +545,13 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           }
 
           let userData
+          let rotated: string | null = null
           try {
-            userData = await sm.auth.me(session.sessionToken)
+            userData = await sm.auth.me(session.sessionToken, {
+              onTokenRotated: (newToken) => {
+                rotated = newToken
+              }
+            })
           } catch {
             // Session invalid, clear cookies
             return withNorm(clearSession(
@@ -557,9 +561,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           }
 
           // If the gateway rotated the session token, update the HTTP-only cookie
-          if (sm.lastRotatedToken) {
-            const rotated = sm.lastRotatedToken
-            sm.lastRotatedToken = null
+          if (rotated) {
             return withNorm(withRefreshedSession(
               rotated,
               session.userId,
