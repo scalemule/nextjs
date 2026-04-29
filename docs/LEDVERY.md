@@ -45,7 +45,7 @@ LEDVERY_CLIENT_SECRET=your-client-secret
 | Method | Path | Behavior |
 |--------|------|----------|
 | GET | `/api/auth/ledvery/login` | `302` to Ledvery `/authorize` and sets flow cookies |
-| GET | `/api/auth/ledvery/callback` | Exchanges code, then `302` to `postLoginRedirect` |
+| GET | `/api/auth/ledvery/callback` | Exchanges code, then `302` to a validated `returnTo` cookie when present, otherwise `postLoginRedirect` |
 | GET | `/api/auth/ledvery/session` | 200 JSON `{session: LedverySessionDTO \| null}` |
 | GET | `/api/auth/ledvery/logout` | Clears cookies, then redirects |
 
@@ -63,6 +63,7 @@ interface LedveryRoutesConfig {
   cookies?: SessionCookieOverrides
   storeAccessToken?: boolean  // Default: false (see cookie size note)
   fetch?: typeof fetch        // Override fetch for proxies/edge runtimes
+  gatewayUrl?: string         // Optional ScaleMule gateway base URL for RP logout
 }
 ```
 
