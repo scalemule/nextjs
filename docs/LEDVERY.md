@@ -2,6 +2,9 @@
 
 Drop-in OIDC integration for Next.js apps that use Ledvery as an identity provider.
 
+For the full multi-package guide set, see:
+https://github.com/scalemule/ledvery-sdk/blob/main/docs/README.md
+
 ## Quick Start
 
 ### 1. Install
@@ -14,13 +17,13 @@ npm install @scalemule/nextjs@latest
 
 ```ts
 // app/api/auth/ledvery/[...action]/route.ts
-import { createLedveryRoutes } from '@scalemule/nextjs/server/ledvery'
+import { createLedveryRoutes } from '@scalemule/nextjs/server'
 
 export const { GET, POST } = createLedveryRoutes({
-  issuer: process.env.NEXT_PUBLIC_LEDVERY_ISSUER!,
+  issuer: process.env.LEDVERY_ISSUER!,
   clientId: process.env.LEDVERY_CLIENT_ID!,
   clientSecret: process.env.LEDVERY_CLIENT_SECRET!,
-  redirectUri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/ledvery/callback`,
+  redirectUri: `${process.env.APP_URL}/api/auth/ledvery/callback`,
   postLoginRedirect: '/dashboard',
   postLogoutRedirect: '/',
 })
@@ -29,22 +32,21 @@ export const { GET, POST } = createLedveryRoutes({
 ### 3. Environment variables
 
 ```env
-# Public (safe in browser bundle)
-NEXT_PUBLIC_LEDVERY_ISSUER=https://id.ledvery.com
-
 # Server-only (never in NEXT_PUBLIC_*)
+LEDVERY_ISSUER=https://id.ledvery.com
 LEDVERY_CLIENT_ID=your-client-id
 LEDVERY_CLIENT_SECRET=your-client-secret
+APP_URL=https://your-app.example.com
 ```
 
 ## Routes
 
 | Method | Path | Behavior |
 |--------|------|----------|
-| GET | `/api/auth/ledvery/login` | 302 → Ledvery /authorize (sets PKCE flow cookies) |
-| GET | `/api/auth/ledvery/callback` | Exchanges code, 302 → postLoginRedirect (sets session cookies) |
+| GET | `/api/auth/ledvery/login` | 302 -> Ledvery /authorize (sets PKCE flow cookies) |
+| GET | `/api/auth/ledvery/callback` | Exchanges code, then 302 -> `returnTo` or `postLoginRedirect` (sets session cookies) |
 | GET | `/api/auth/ledvery/session` | 200 JSON `{session: LedverySessionDTO \| null}` |
-| GET | `/api/auth/ledvery/logout` | 302 → postLogoutRedirect (clears cookies) |
+| GET | `/api/auth/ledvery/logout` | Clears cookies, then 302 -> `postLogoutRedirect` or the configured gateway logout bridge |
 
 ## Configuration
 
@@ -60,6 +62,7 @@ interface LedveryRoutesConfig {
   cookies?: SessionCookieOverrides
   storeAccessToken?: boolean  // Default: false (see cookie size note)
   fetch?: typeof fetch        // Override fetch for proxies/edge runtimes
+  gatewayUrl?: string         // Optional ScaleMule logout bridge for RP logout
 }
 ```
 
@@ -97,13 +100,13 @@ export async function GET(request: Request) {
 ## Cookie Design
 
 **Flow cookies** (10-minute TTL, cleared after callback):
-- `sm_ledvery_state` — CSRF protection
-- `sm_ledvery_pkce_verifier` — PKCE S256 verifier
-- `sm_ledvery_nonce` — replay protection
+- `sm_ledvery_state` - CSRF protection
+- `sm_ledvery_pkce_verifier` - PKCE S256 verifier
+- `sm_ledvery_nonce` - replay protection
 
 **Session cookies** (1-hour cap):
-- `sm_ledvery_id_token` — serialized claims + expiry
-- `sm_ledvery_access_token` — raw access token (opt-in only)
+- `sm_ledvery_id_token` - serialized ID token + claims + expiry
+- `sm_ledvery_access_token` - raw access token (opt-in only)
 
 All cookies are `httpOnly`, `sameSite=lax`, and `secure` in production.
 
@@ -124,10 +127,13 @@ is a separate integration concern.
 
 ## Limitations
 
-- **Logout is local only.** `/logout` clears the local Ledvery cookies but does
-  NOT call Ledvery's `end_session_endpoint`. Full RP-initiated logout is tracked
-  separately (requires the `end_session_endpoint` implementation on scalemule-auth).
-- **No refresh tokens.** Ledvery currently issues 1-hour tokens without refresh.
-  When refresh token support is added, this SDK will gain a `/refresh` route.
+- **Logout is local by default.** If `gatewayUrl` is unset, `/logout` only
+  clears the local Ledvery cookies and redirects to `postLogoutRedirect`. If
+  `gatewayUrl` is set, the route can redirect through ScaleMule's Ledvery RP
+  logout endpoint and forward `id_token_hint`.
+- **No packaged refresh route.** The route factory does not persist
+  `refreshToken` values or expose `/refresh`. If you need `offline_access` and
+  refresh-token rotation, layer that on top of `@scalemule/ledvery` in your
+  own server-side code.
 - **No pure-browser mode.** This SDK requires a server-side BFF. Pure SPA apps
   need their own backend or a future `@scalemule/ledvery-react` browser-only mode.
