@@ -7784,6 +7784,7 @@ function ScaleMuleProvider({
       photo: baseClient.photo,
       video: baseClient.video,
       audio: baseClient.audio,
+      tts: baseClient.tts,
       mediaPolicy: effectiveMediaPolicy,
       user,
       setUser: handleSetUser,
@@ -9172,7 +9173,7 @@ function useAudio() {
           return null;
         }
         try {
-          const details = await client.get(`/v1/audios/${audioId}`);
+          const details = await client.get(`/v1/audio/${audioId}`);
           if (details.status === "ready" && details.url) {
             return details.url;
           }
@@ -9234,7 +9235,7 @@ function useAudio() {
       const enriched = await Promise.all(
         audioFiles.map(async (file) => {
           try {
-            const details = await client.get(`/v1/audios/${file.id}`);
+            const details = await client.get(`/v1/audio/${file.id}`);
             return {
               audio_id: details.id,
               file_id: file.id,
@@ -9270,7 +9271,7 @@ function useAudio() {
       setError(null);
       try {
         const [audioDeleteResult, storageDeleteResult] = await Promise.allSettled([
-          client.delete(`/v1/audios/${fileId}`),
+          client.delete(`/v1/audio/${fileId}`),
           client.delete(`/v1/storage/files/${fileId}`)
         ]);
         if (storageDeleteResult.status === "rejected" && !isNotFoundError(storageDeleteResult.reason)) {
@@ -9296,6 +9297,63 @@ function useAudio() {
     error,
     loading
   };
+}
+var DEFAULT_POLL_INTERVAL_MS = 2e3;
+var TERMINAL_STATUSES = /* @__PURE__ */ new Set(["ready", "failed"]);
+function useTtsJob(jobId, options) {
+  const { tts } = useScaleMule();
+  const [job, setJob] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const refresh = useCallback(async () => {
+    if (!jobId) {
+      setJob(null);
+      return null;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await tts.getJob(jobId);
+      if (!result) {
+        const apiError = { code: "tts_job_error", message: "Failed to load TTS job", status: 500 };
+        setError(apiError);
+        return null;
+      }
+      if (result.error || !result.data) {
+        const apiError = result.error ?? { code: "tts_job_error", message: "Failed to load TTS job", status: 500 };
+        setError(apiError);
+        return null;
+      }
+      setJob(result.data);
+      return result.data;
+    } finally {
+      setLoading(false);
+    }
+  }, [jobId, tts]);
+  useEffect(() => {
+    if (!jobId || options?.enabled === false) {
+      setJob(null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    let timeoutId = null;
+    const poll = async () => {
+      const next = await refresh();
+      if (cancelled || !next || TERMINAL_STATUSES.has(next.status)) {
+        return;
+      }
+      timeoutId = window.setTimeout(poll, options?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS);
+    };
+    poll();
+    return () => {
+      cancelled = true;
+      if (timeoutId != null) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [jobId, options?.enabled, options?.pollIntervalMs, refresh]);
+  return { job, loading, error, refresh };
 }
 function useMedia() {
   const { storage, photo, video, audio, mediaPolicy: providerDefaultPolicy } = useScaleMule();
@@ -11502,4 +11560,4 @@ function createSafeLogger(prefix) {
   };
 }
 
-export { FeedbackWidget, ScaleMuleApiError, ScaleMuleClient2 as ScaleMuleClient, ScaleMuleMedia, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { FeedbackWidget, ScaleMuleApiError, ScaleMuleClient2 as ScaleMuleClient, ScaleMuleMedia, ScaleMuleProvider, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, validateForm, validators };

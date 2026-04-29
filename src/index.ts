@@ -55,6 +55,8 @@ export type {
   UseAudioReturn,
   UseAudioUploadOptions,
 } from './hooks/useAudio'
+export { useTtsJob } from './hooks/useTtsJob'
+export type { UseTtsJobOptions, UseTtsJobReturn } from './hooks/useTtsJob'
 export { useMedia } from './hooks/useMedia'
 export type { MediaUploadResult, UseMediaUploadOptions, UseMediaReturn, MediaPolicy } from './hooks/useMedia'
 export { useFileStatus } from './hooks/useFileStatus'

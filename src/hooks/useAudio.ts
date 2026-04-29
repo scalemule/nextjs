@@ -12,6 +12,7 @@ interface AudioDetailsResponse {
   id: string
   source: string
   status: string
+  access_mode?: 'owner_private' | 'tenant_shared' | 'public'
   codec: string | null
   bit_rate_kbps?: number | null
   sample_rate_hz?: number | null
@@ -154,7 +155,7 @@ export function useAudio(): UseAudioReturn {
         }
 
         try {
-          const details = await client.get<AudioDetailsResponse>(`/v1/audios/${audioId}`)
+          const details = await client.get<AudioDetailsResponse>(`/v1/audio/${audioId}`)
           if (details.status === 'ready' && details.url) {
             return details.url
           }
@@ -224,7 +225,7 @@ export function useAudio(): UseAudioReturn {
       const enriched = await Promise.all(
         audioFiles.map(async (file) => {
           try {
-            const details = await client.get<AudioDetailsResponse>(`/v1/audios/${file.id}`)
+            const details = await client.get<AudioDetailsResponse>(`/v1/audio/${file.id}`)
             return {
               audio_id: details.id,
               file_id: file.id,
@@ -263,7 +264,7 @@ export function useAudio(): UseAudioReturn {
 
       try {
         const [audioDeleteResult, storageDeleteResult] = await Promise.allSettled([
-          client.delete<unknown>(`/v1/audios/${fileId}`),
+          client.delete<unknown>(`/v1/audio/${fileId}`),
           client.delete<unknown>(`/v1/storage/files/${fileId}`),
         ])
 

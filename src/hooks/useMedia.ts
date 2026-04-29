@@ -244,7 +244,7 @@ export function useMedia(): UseMediaReturn {
         // ────────────────────────────────────────────────────────────────
         // Audio branch: upload + register with audio service.
         // audio.uploadViaStorage handles the storage upload and follows
-        // up with /v1/audios/register so the audio service tracks
+        // up with /v1/audio/register so the audio service tracks
         // ownership + status. Bytes are immediately playable via the
         // storage view URL — codec normalization / waveform peaks land
         // in a future phase. No release-gating today (audio's pipeline

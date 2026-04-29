@@ -12,7 +12,13 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __commonJS = (cb, mod) => function __require() {
+var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
+}) : x)(function(x) {
+  if (typeof require !== "undefined") return require.apply(this, arguments);
+  throw Error('Dynamic require of "' + x + '" is not supported');
+});
+var __commonJS = (cb, mod) => function __require2() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
 var __copyProps = (to, from, except, desc) => {
@@ -28,13 +34,13 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   // file that has been converted to a CommonJS file using a Babel-
   // compatible transform (i.e. "__esModule" has not been set), then set
   // "default" to the CommonJS "module.exports" for node compatibility.
-  __defProp(target, "default", { value: mod, enumerable: true }) ,
+  !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
 
-// node_modules/semver/internal/constants.js
+// ../sdk/node_modules/semver/internal/constants.js
 var require_constants = __commonJS({
-  "node_modules/semver/internal/constants.js"(exports$1, module) {
+  "../sdk/node_modules/semver/internal/constants.js"(exports$1, module) {
     var SEMVER_SPEC_VERSION = "2.0.0";
     var MAX_LENGTH = 256;
     var MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER || /* istanbul ignore next */
@@ -63,18 +69,18 @@ var require_constants = __commonJS({
   }
 });
 
-// node_modules/semver/internal/debug.js
+// ../sdk/node_modules/semver/internal/debug.js
 var require_debug = __commonJS({
-  "node_modules/semver/internal/debug.js"(exports$1, module) {
+  "../sdk/node_modules/semver/internal/debug.js"(exports$1, module) {
     var debug = typeof process === "object" && process.env && process.env.NODE_DEBUG && /\bsemver\b/i.test(process.env.NODE_DEBUG) ? (...args) => console.error("SEMVER", ...args) : () => {
     };
     module.exports = debug;
   }
 });
 
-// node_modules/semver/internal/re.js
+// ../sdk/node_modules/semver/internal/re.js
 var require_re = __commonJS({
-  "node_modules/semver/internal/re.js"(exports$1, module) {
+  "../sdk/node_modules/semver/internal/re.js"(exports$1, module) {
     var {
       MAX_SAFE_COMPONENT_LENGTH,
       MAX_SAFE_BUILD_LENGTH,
@@ -159,9 +165,9 @@ var require_re = __commonJS({
   }
 });
 
-// node_modules/semver/internal/parse-options.js
+// ../sdk/node_modules/semver/internal/parse-options.js
 var require_parse_options = __commonJS({
-  "node_modules/semver/internal/parse-options.js"(exports$1, module) {
+  "../sdk/node_modules/semver/internal/parse-options.js"(exports$1, module) {
     var looseOption = Object.freeze({ loose: true });
     var emptyOpts = Object.freeze({});
     var parseOptions = (options) => {
@@ -177,9 +183,9 @@ var require_parse_options = __commonJS({
   }
 });
 
-// node_modules/semver/internal/identifiers.js
+// ../sdk/node_modules/semver/internal/identifiers.js
 var require_identifiers = __commonJS({
-  "node_modules/semver/internal/identifiers.js"(exports$1, module) {
+  "../sdk/node_modules/semver/internal/identifiers.js"(exports$1, module) {
     var numeric = /^[0-9]+$/;
     var compareIdentifiers = (a, b) => {
       if (typeof a === "number" && typeof b === "number") {
@@ -201,9 +207,9 @@ var require_identifiers = __commonJS({
   }
 });
 
-// node_modules/semver/classes/semver.js
+// ../sdk/node_modules/semver/classes/semver.js
 var require_semver = __commonJS({
-  "node_modules/semver/classes/semver.js"(exports$1, module) {
+  "../sdk/node_modules/semver/classes/semver.js"(exports$1, module) {
     var debug = require_debug();
     var { MAX_LENGTH, MAX_SAFE_INTEGER } = require_constants();
     var { safeRe: re, t } = require_re();
@@ -479,9 +485,9 @@ var require_semver = __commonJS({
   }
 });
 
-// node_modules/semver/functions/parse.js
+// ../sdk/node_modules/semver/functions/parse.js
 var require_parse = __commonJS({
-  "node_modules/semver/functions/parse.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/parse.js"(exports$1, module) {
     var SemVer = require_semver();
     var parse = (version, options, throwErrors = false) => {
       if (version instanceof SemVer) {
@@ -500,9 +506,9 @@ var require_parse = __commonJS({
   }
 });
 
-// node_modules/semver/functions/valid.js
+// ../sdk/node_modules/semver/functions/valid.js
 var require_valid = __commonJS({
-  "node_modules/semver/functions/valid.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/valid.js"(exports$1, module) {
     var parse = require_parse();
     var valid = (version, options) => {
       const v = parse(version, options);
@@ -512,9 +518,9 @@ var require_valid = __commonJS({
   }
 });
 
-// node_modules/semver/functions/clean.js
+// ../sdk/node_modules/semver/functions/clean.js
 var require_clean = __commonJS({
-  "node_modules/semver/functions/clean.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/clean.js"(exports$1, module) {
     var parse = require_parse();
     var clean = (version, options) => {
       const s = parse(version.trim().replace(/^[=v]+/, ""), options);
@@ -524,9 +530,9 @@ var require_clean = __commonJS({
   }
 });
 
-// node_modules/semver/functions/inc.js
+// ../sdk/node_modules/semver/functions/inc.js
 var require_inc = __commonJS({
-  "node_modules/semver/functions/inc.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/inc.js"(exports$1, module) {
     var SemVer = require_semver();
     var inc = (version, release, options, identifier, identifierBase) => {
       if (typeof options === "string") {
@@ -547,9 +553,9 @@ var require_inc = __commonJS({
   }
 });
 
-// node_modules/semver/functions/diff.js
+// ../sdk/node_modules/semver/functions/diff.js
 var require_diff = __commonJS({
-  "node_modules/semver/functions/diff.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/diff.js"(exports$1, module) {
     var parse = require_parse();
     var diff = (version1, version2) => {
       const v1 = parse(version1, null, true);
@@ -590,36 +596,36 @@ var require_diff = __commonJS({
   }
 });
 
-// node_modules/semver/functions/major.js
+// ../sdk/node_modules/semver/functions/major.js
 var require_major = __commonJS({
-  "node_modules/semver/functions/major.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/major.js"(exports$1, module) {
     var SemVer = require_semver();
     var major = (a, loose) => new SemVer(a, loose).major;
     module.exports = major;
   }
 });
 
-// node_modules/semver/functions/minor.js
+// ../sdk/node_modules/semver/functions/minor.js
 var require_minor = __commonJS({
-  "node_modules/semver/functions/minor.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/minor.js"(exports$1, module) {
     var SemVer = require_semver();
     var minor = (a, loose) => new SemVer(a, loose).minor;
     module.exports = minor;
   }
 });
 
-// node_modules/semver/functions/patch.js
+// ../sdk/node_modules/semver/functions/patch.js
 var require_patch = __commonJS({
-  "node_modules/semver/functions/patch.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/patch.js"(exports$1, module) {
     var SemVer = require_semver();
     var patch = (a, loose) => new SemVer(a, loose).patch;
     module.exports = patch;
   }
 });
 
-// node_modules/semver/functions/prerelease.js
+// ../sdk/node_modules/semver/functions/prerelease.js
 var require_prerelease = __commonJS({
-  "node_modules/semver/functions/prerelease.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/prerelease.js"(exports$1, module) {
     var parse = require_parse();
     var prerelease = (version, options) => {
       const parsed = parse(version, options);
@@ -629,36 +635,36 @@ var require_prerelease = __commonJS({
   }
 });
 
-// node_modules/semver/functions/compare.js
+// ../sdk/node_modules/semver/functions/compare.js
 var require_compare = __commonJS({
-  "node_modules/semver/functions/compare.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/compare.js"(exports$1, module) {
     var SemVer = require_semver();
     var compare = (a, b, loose) => new SemVer(a, loose).compare(new SemVer(b, loose));
     module.exports = compare;
   }
 });
 
-// node_modules/semver/functions/rcompare.js
+// ../sdk/node_modules/semver/functions/rcompare.js
 var require_rcompare = __commonJS({
-  "node_modules/semver/functions/rcompare.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/rcompare.js"(exports$1, module) {
     var compare = require_compare();
     var rcompare = (a, b, loose) => compare(b, a, loose);
     module.exports = rcompare;
   }
 });
 
-// node_modules/semver/functions/compare-loose.js
+// ../sdk/node_modules/semver/functions/compare-loose.js
 var require_compare_loose = __commonJS({
-  "node_modules/semver/functions/compare-loose.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/compare-loose.js"(exports$1, module) {
     var compare = require_compare();
     var compareLoose = (a, b) => compare(a, b, true);
     module.exports = compareLoose;
   }
 });
 
-// node_modules/semver/functions/compare-build.js
+// ../sdk/node_modules/semver/functions/compare-build.js
 var require_compare_build = __commonJS({
-  "node_modules/semver/functions/compare-build.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/compare-build.js"(exports$1, module) {
     var SemVer = require_semver();
     var compareBuild = (a, b, loose) => {
       const versionA = new SemVer(a, loose);
@@ -669,81 +675,81 @@ var require_compare_build = __commonJS({
   }
 });
 
-// node_modules/semver/functions/sort.js
+// ../sdk/node_modules/semver/functions/sort.js
 var require_sort = __commonJS({
-  "node_modules/semver/functions/sort.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/sort.js"(exports$1, module) {
     var compareBuild = require_compare_build();
     var sort = (list, loose) => list.sort((a, b) => compareBuild(a, b, loose));
     module.exports = sort;
   }
 });
 
-// node_modules/semver/functions/rsort.js
+// ../sdk/node_modules/semver/functions/rsort.js
 var require_rsort = __commonJS({
-  "node_modules/semver/functions/rsort.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/rsort.js"(exports$1, module) {
     var compareBuild = require_compare_build();
     var rsort = (list, loose) => list.sort((a, b) => compareBuild(b, a, loose));
     module.exports = rsort;
   }
 });
 
-// node_modules/semver/functions/gt.js
+// ../sdk/node_modules/semver/functions/gt.js
 var require_gt = __commonJS({
-  "node_modules/semver/functions/gt.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/gt.js"(exports$1, module) {
     var compare = require_compare();
     var gt = (a, b, loose) => compare(a, b, loose) > 0;
     module.exports = gt;
   }
 });
 
-// node_modules/semver/functions/lt.js
+// ../sdk/node_modules/semver/functions/lt.js
 var require_lt = __commonJS({
-  "node_modules/semver/functions/lt.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/lt.js"(exports$1, module) {
     var compare = require_compare();
     var lt = (a, b, loose) => compare(a, b, loose) < 0;
     module.exports = lt;
   }
 });
 
-// node_modules/semver/functions/eq.js
+// ../sdk/node_modules/semver/functions/eq.js
 var require_eq = __commonJS({
-  "node_modules/semver/functions/eq.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/eq.js"(exports$1, module) {
     var compare = require_compare();
     var eq = (a, b, loose) => compare(a, b, loose) === 0;
     module.exports = eq;
   }
 });
 
-// node_modules/semver/functions/neq.js
+// ../sdk/node_modules/semver/functions/neq.js
 var require_neq = __commonJS({
-  "node_modules/semver/functions/neq.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/neq.js"(exports$1, module) {
     var compare = require_compare();
     var neq = (a, b, loose) => compare(a, b, loose) !== 0;
     module.exports = neq;
   }
 });
 
-// node_modules/semver/functions/gte.js
+// ../sdk/node_modules/semver/functions/gte.js
 var require_gte = __commonJS({
-  "node_modules/semver/functions/gte.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/gte.js"(exports$1, module) {
     var compare = require_compare();
     var gte = (a, b, loose) => compare(a, b, loose) >= 0;
     module.exports = gte;
   }
 });
 
-// node_modules/semver/functions/lte.js
+// ../sdk/node_modules/semver/functions/lte.js
 var require_lte = __commonJS({
-  "node_modules/semver/functions/lte.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/lte.js"(exports$1, module) {
     var compare = require_compare();
     var lte = (a, b, loose) => compare(a, b, loose) <= 0;
     module.exports = lte;
   }
 });
 
-// node_modules/semver/functions/cmp.js
+// ../sdk/node_modules/semver/functions/cmp.js
 var require_cmp = __commonJS({
-  "node_modules/semver/functions/cmp.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/cmp.js"(exports$1, module) {
     var eq = require_eq();
     var neq = require_neq();
     var gt = require_gt();
@@ -790,9 +796,9 @@ var require_cmp = __commonJS({
   }
 });
 
-// node_modules/semver/functions/coerce.js
+// ../sdk/node_modules/semver/functions/coerce.js
 var require_coerce = __commonJS({
-  "node_modules/semver/functions/coerce.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/coerce.js"(exports$1, module) {
     var SemVer = require_semver();
     var parse = require_parse();
     var { safeRe: re, t } = require_re();
@@ -835,9 +841,9 @@ var require_coerce = __commonJS({
   }
 });
 
-// node_modules/semver/internal/lrucache.js
+// ../sdk/node_modules/semver/internal/lrucache.js
 var require_lrucache = __commonJS({
-  "node_modules/semver/internal/lrucache.js"(exports$1, module) {
+  "../sdk/node_modules/semver/internal/lrucache.js"(exports$1, module) {
     var LRUCache = class {
       constructor() {
         this.max = 1e3;
@@ -872,9 +878,9 @@ var require_lrucache = __commonJS({
   }
 });
 
-// node_modules/semver/classes/range.js
+// ../sdk/node_modules/semver/classes/range.js
 var require_range = __commonJS({
-  "node_modules/semver/classes/range.js"(exports$1, module) {
+  "../sdk/node_modules/semver/classes/range.js"(exports$1, module) {
     var SPACE_CHARACTERS = /\s+/g;
     var Range = class _Range {
       constructor(range, options) {
@@ -976,9 +982,9 @@ var require_range = __commonJS({
         if (rangeMap.size > 1 && rangeMap.has("")) {
           rangeMap.delete("");
         }
-        const result2 = [...rangeMap.values()];
-        cache.set(memoKey, result2);
-        return result2;
+        const result = [...rangeMap.values()];
+        cache.set(memoKey, result);
+        return result;
       }
       intersects(range, options) {
         if (!(range instanceof _Range)) {
@@ -1032,16 +1038,16 @@ var require_range = __commonJS({
     var isNullSet = (c) => c.value === "<0.0.0-0";
     var isAny = (c) => c.value === "";
     var isSatisfiable = (comparators, options) => {
-      let result2 = true;
+      let result = true;
       const remainingComparators = comparators.slice();
       let testComparator = remainingComparators.pop();
-      while (result2 && remainingComparators.length) {
-        result2 = remainingComparators.every((otherComparator) => {
+      while (result && remainingComparators.length) {
+        result = remainingComparators.every((otherComparator) => {
           return testComparator.intersects(otherComparator, options);
         });
         testComparator = remainingComparators.pop();
       }
-      return result2;
+      return result;
     };
     var parseComparator = (comp, options) => {
       comp = comp.replace(re[t.BUILD], "");
@@ -1248,9 +1254,9 @@ var require_range = __commonJS({
   }
 });
 
-// node_modules/semver/classes/comparator.js
+// ../sdk/node_modules/semver/classes/comparator.js
 var require_comparator = __commonJS({
-  "node_modules/semver/classes/comparator.js"(exports$1, module) {
+  "../sdk/node_modules/semver/classes/comparator.js"(exports$1, module) {
     var ANY = /* @__PURE__ */ Symbol("SemVer ANY");
     var Comparator = class _Comparator {
       static get ANY() {
@@ -1360,9 +1366,9 @@ var require_comparator = __commonJS({
   }
 });
 
-// node_modules/semver/functions/satisfies.js
+// ../sdk/node_modules/semver/functions/satisfies.js
 var require_satisfies = __commonJS({
-  "node_modules/semver/functions/satisfies.js"(exports$1, module) {
+  "../sdk/node_modules/semver/functions/satisfies.js"(exports$1, module) {
     var Range = require_range();
     var satisfies = (version, range, options) => {
       try {
@@ -1376,18 +1382,18 @@ var require_satisfies = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/to-comparators.js
+// ../sdk/node_modules/semver/ranges/to-comparators.js
 var require_to_comparators = __commonJS({
-  "node_modules/semver/ranges/to-comparators.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/to-comparators.js"(exports$1, module) {
     var Range = require_range();
     var toComparators = (range, options) => new Range(range, options).set.map((comp) => comp.map((c) => c.value).join(" ").trim().split(" "));
     module.exports = toComparators;
   }
 });
 
-// node_modules/semver/ranges/max-satisfying.js
+// ../sdk/node_modules/semver/ranges/max-satisfying.js
 var require_max_satisfying = __commonJS({
-  "node_modules/semver/ranges/max-satisfying.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/max-satisfying.js"(exports$1, module) {
     var SemVer = require_semver();
     var Range = require_range();
     var maxSatisfying = (versions, range, options) => {
@@ -1413,9 +1419,9 @@ var require_max_satisfying = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/min-satisfying.js
+// ../sdk/node_modules/semver/ranges/min-satisfying.js
 var require_min_satisfying = __commonJS({
-  "node_modules/semver/ranges/min-satisfying.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/min-satisfying.js"(exports$1, module) {
     var SemVer = require_semver();
     var Range = require_range();
     var minSatisfying = (versions, range, options) => {
@@ -1441,9 +1447,9 @@ var require_min_satisfying = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/min-version.js
+// ../sdk/node_modules/semver/ranges/min-version.js
 var require_min_version = __commonJS({
-  "node_modules/semver/ranges/min-version.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/min-version.js"(exports$1, module) {
     var SemVer = require_semver();
     var Range = require_range();
     var gt = require_gt();
@@ -1499,9 +1505,9 @@ var require_min_version = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/valid.js
+// ../sdk/node_modules/semver/ranges/valid.js
 var require_valid2 = __commonJS({
-  "node_modules/semver/ranges/valid.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/valid.js"(exports$1, module) {
     var Range = require_range();
     var validRange = (range, options) => {
       try {
@@ -1514,9 +1520,9 @@ var require_valid2 = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/outside.js
+// ../sdk/node_modules/semver/ranges/outside.js
 var require_outside = __commonJS({
-  "node_modules/semver/ranges/outside.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/outside.js"(exports$1, module) {
     var SemVer = require_semver();
     var Comparator = require_comparator();
     var { ANY } = Comparator;
@@ -1582,27 +1588,27 @@ var require_outside = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/gtr.js
+// ../sdk/node_modules/semver/ranges/gtr.js
 var require_gtr = __commonJS({
-  "node_modules/semver/ranges/gtr.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/gtr.js"(exports$1, module) {
     var outside = require_outside();
     var gtr = (version, range, options) => outside(version, range, ">", options);
     module.exports = gtr;
   }
 });
 
-// node_modules/semver/ranges/ltr.js
+// ../sdk/node_modules/semver/ranges/ltr.js
 var require_ltr = __commonJS({
-  "node_modules/semver/ranges/ltr.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/ltr.js"(exports$1, module) {
     var outside = require_outside();
     var ltr = (version, range, options) => outside(version, range, "<", options);
     module.exports = ltr;
   }
 });
 
-// node_modules/semver/ranges/intersects.js
+// ../sdk/node_modules/semver/ranges/intersects.js
 var require_intersects = __commonJS({
-  "node_modules/semver/ranges/intersects.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/intersects.js"(exports$1, module) {
     var Range = require_range();
     var intersects = (r1, r2, options) => {
       r1 = new Range(r1, options);
@@ -1613,9 +1619,9 @@ var require_intersects = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/simplify.js
+// ../sdk/node_modules/semver/ranges/simplify.js
 var require_simplify = __commonJS({
-  "node_modules/semver/ranges/simplify.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/simplify.js"(exports$1, module) {
     var satisfies = require_satisfies();
     var compare = require_compare();
     module.exports = (versions, range, options) => {
@@ -1662,9 +1668,9 @@ var require_simplify = __commonJS({
   }
 });
 
-// node_modules/semver/ranges/subset.js
+// ../sdk/node_modules/semver/ranges/subset.js
 var require_subset = __commonJS({
-  "node_modules/semver/ranges/subset.js"(exports$1, module) {
+  "../sdk/node_modules/semver/ranges/subset.js"(exports$1, module) {
     var Range = require_range();
     var Comparator = require_comparator();
     var { ANY } = Comparator;
@@ -1823,9 +1829,9 @@ var require_subset = __commonJS({
   }
 });
 
-// node_modules/semver/index.js
+// ../sdk/node_modules/semver/index.js
 var require_semver2 = __commonJS({
-  "node_modules/semver/index.js"(exports$1, module) {
+  "../sdk/node_modules/semver/index.js"(exports$1, module) {
     var internalRe = require_re();
     var constants = require_constants();
     var SemVer = require_semver();
@@ -1913,6 +1919,546 @@ var require_semver2 = __commonJS({
       RELEASE_TYPES: constants.RELEASE_TYPES,
       compareIdentifiers: identifiers.compareIdentifiers,
       rcompareIdentifiers: identifiers.rcompareIdentifiers
+    };
+  }
+});
+
+// ../sdk/dist/flags/server.js
+var require_server = __commonJS({
+  "../sdk/dist/flags/server.js"(exports$1, module) {
+    var __defProp2 = Object.defineProperty;
+    var __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
+    var __getOwnPropNames2 = Object.getOwnPropertyNames;
+    var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+    var __export = (target, all) => {
+      for (var name in all)
+        __defProp2(target, name, { get: all[name], enumerable: true });
+    };
+    var __copyProps2 = (to, from, except, desc) => {
+      if (from && typeof from === "object" || typeof from === "function") {
+        for (let key of __getOwnPropNames2(from))
+          if (!__hasOwnProp2.call(to, key) && key !== except)
+            __defProp2(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc2(from, key)) || desc.enumerable });
+      }
+      return to;
+    };
+    var __toCommonJS = (mod) => __copyProps2(__defProp2({}, "__esModule", { value: true }), mod);
+    var server_exports = {};
+    __export(server_exports, {
+      FlagClient: () => FlagClient2,
+      allConditionsMatch: () => allConditionsMatch,
+      evaluateFlag: () => evaluateFlag,
+      hashToBucket: () => hashToBucket
+    });
+    module.exports = __toCommonJS(server_exports);
+    var import_node_crypto = __require("crypto");
+    function hashToBucket(flagKey, identifier, salt) {
+      const hash = (0, import_node_crypto.createHash)("sha256").update(`${salt}.${flagKey}.${identifier}`).digest();
+      return hash.readUInt32BE(0) % 1e4;
+    }
+    var import_semver = require_semver2();
+    function allConditionsMatch(conditions, context) {
+      return conditions.every((c) => conditionMatches(c, context));
+    }
+    function conditionMatches(condition, context) {
+      const attributeValue = getAttribute(context, condition.attribute);
+      const op = condition.operator;
+      if (op === "exists") return attributeValue !== void 0 && attributeValue !== null;
+      if (op === "not_exists") return attributeValue === void 0 || attributeValue === null;
+      if (attributeValue === void 0 || attributeValue === null) return false;
+      switch (op) {
+        case "eq":
+          return compareValues(attributeValue, condition.value) === 0;
+        case "neq":
+          return compareValues(attributeValue, condition.value) !== 0;
+        case "in":
+          return candidateValues(condition).some((v) => compareValues(attributeValue, v) === 0);
+        case "not_in":
+          return !candidateValues(condition).some((v) => compareValues(attributeValue, v) === 0);
+        case "contains":
+          return containsValue(attributeValue, condition.value);
+        case "starts_with":
+          return typeof attributeValue === "string" && typeof condition.value === "string" ? attributeValue.startsWith(condition.value) : false;
+        case "ends_with":
+          return typeof attributeValue === "string" && typeof condition.value === "string" ? attributeValue.endsWith(condition.value) : false;
+        case "gt":
+          return compareValues(attributeValue, condition.value) === 1;
+        case "gte": {
+          const cmp = compareValues(attributeValue, condition.value);
+          return cmp === 1 || cmp === 0;
+        }
+        case "lt":
+          return compareValues(attributeValue, condition.value) === -1;
+        case "lte": {
+          const cmp = compareValues(attributeValue, condition.value);
+          return cmp === -1 || cmp === 0;
+        }
+        case "regex": {
+          if (typeof attributeValue !== "string" || typeof condition.value !== "string") return false;
+          try {
+            return new RegExp(condition.value).test(attributeValue);
+          } catch {
+            return false;
+          }
+        }
+        case "semver_eq":
+          return semverCmp(attributeValue, condition.value) === 0;
+        case "semver_neq":
+          return semverCmp(attributeValue, condition.value) !== 0;
+        case "semver_gt":
+          return semverCmp(attributeValue, condition.value) === 1;
+        case "semver_gte": {
+          const cmp = semverCmp(attributeValue, condition.value);
+          return cmp === 1 || cmp === 0;
+        }
+        case "semver_lt":
+          return semverCmp(attributeValue, condition.value) === -1;
+        case "semver_lte": {
+          const cmp = semverCmp(attributeValue, condition.value);
+          return cmp === -1 || cmp === 0;
+        }
+        default:
+          return false;
+      }
+    }
+    function getAttribute(context, key) {
+      switch (key) {
+        case "user_id":
+          return context.user_id;
+        case "email":
+          return context.email;
+        case "session_id":
+          return context.session_id;
+        case "ip_address":
+          return context.ip_address;
+        case "user_agent":
+          return context.user_agent;
+        case "timestamp":
+          return context.timestamp ?? (/* @__PURE__ */ new Date()).toISOString();
+        default:
+          return context[key];
+      }
+    }
+    function candidateValues(condition) {
+      if (condition.values && condition.values.length > 0) return condition.values;
+      if (condition.value === void 0 || condition.value === null) return [];
+      if (Array.isArray(condition.value)) return condition.value;
+      return [condition.value];
+    }
+    function compareValues(actual, expected) {
+      if (expected === void 0 || expected === null) return null;
+      const numA = toNumber(actual);
+      const numB = toNumber(expected);
+      if (numA !== null && numB !== null) {
+        if (numA < numB) return -1;
+        if (numA > numB) return 1;
+        return 0;
+      }
+      if (typeof actual === "boolean" && typeof expected === "boolean") {
+        if (actual === expected) return 0;
+        return actual ? 1 : -1;
+      }
+      const strA = toString(actual);
+      const strB = toString(expected);
+      if (strA !== null && strB !== null) {
+        if (strA < strB) return -1;
+        if (strA > strB) return 1;
+        return 0;
+      }
+      return null;
+    }
+    function containsValue(actual, expected) {
+      if (expected === void 0 || expected === null) return false;
+      if (Array.isArray(actual)) {
+        return actual.some((item) => compareValues(item, expected) === 0);
+      }
+      if (typeof actual === "string" && typeof expected === "string") {
+        return actual.includes(expected);
+      }
+      return false;
+    }
+    function toNumber(value) {
+      if (typeof value === "number") return value;
+      if (typeof value === "string") {
+        const n = Number(value);
+        return isNaN(n) ? null : n;
+      }
+      return null;
+    }
+    function toString(value) {
+      if (typeof value === "string") return value;
+      return null;
+    }
+    function semverCmp(actual, expected) {
+      if (typeof actual !== "string" || typeof expected !== "string") return null;
+      try {
+        const a = (0, import_semver.parse)(actual);
+        const b = (0, import_semver.parse)(expected);
+        if (!a || !b) return null;
+        return (0, import_semver.compare)(a, b);
+      } catch {
+        return null;
+      }
+    }
+    function evaluateFlag(flag, config, context, segmentIndex) {
+      const effectiveDefault = flag.environment_default_value ?? flag.default_value;
+      if (flag.status !== "active") {
+        return result(flag, config.environment, effectiveDefault, "disabled");
+      }
+      if (!flag.environment_enabled) {
+        return result(flag, config.environment, effectiveDefault, "disabled");
+      }
+      const bucketIdentifier = getBucketIdentifier(context);
+      for (const rule of flag.rules) {
+        if (!rule.enabled) continue;
+        if (rule.segment_ids.length > 0) {
+          const segmentMatched = rule.segment_ids.some((segId) => {
+            const segment = segmentIndex ? segmentIndex.get(segId) : config.segments.find((s) => s.id === segId);
+            if (!segment) return false;
+            return userMatchesSegment(segment, context);
+          });
+          if (!segmentMatched) continue;
+        }
+        if (!allConditionsMatch(rule.conditions, context)) continue;
+        if (rule.rollout_percentage !== null && rule.rollout_percentage !== void 0) {
+          const bucket = hashToBucket(flag.flag_key, bucketIdentifier, config.rollout_salt);
+          if (bucket >= rule.rollout_percentage) continue;
+          return {
+            flag_id: flag.flag_id,
+            flag_key: flag.flag_key,
+            environment: config.environment,
+            value: rule.serve_value,
+            reason: "rule_match",
+            matched_rule_id: rule.id,
+            variant_key: null,
+            bucket
+          };
+        }
+        return {
+          flag_id: flag.flag_id,
+          flag_key: flag.flag_key,
+          environment: config.environment,
+          value: rule.serve_value,
+          reason: "rule_match",
+          matched_rule_id: rule.id,
+          variant_key: null,
+          bucket: null
+        };
+      }
+      if (flag.variants.length > 0) {
+        const totalWeight = flag.variants.reduce((sum, v) => sum + v.weight, 0);
+        if (totalWeight > 0) {
+          const bucket = hashToBucket(flag.flag_key, bucketIdentifier, config.rollout_salt);
+          const scaled = Math.floor(bucket * totalWeight / 1e4);
+          let cursor = 0;
+          for (const variant of flag.variants) {
+            cursor += variant.weight;
+            if (scaled < cursor) {
+              return {
+                flag_id: flag.flag_id,
+                flag_key: flag.flag_key,
+                environment: config.environment,
+                value: variant.value,
+                reason: "variant",
+                matched_rule_id: null,
+                variant_key: variant.variant_key,
+                bucket
+              };
+            }
+          }
+        }
+      }
+      return result(flag, config.environment, effectiveDefault, "default");
+    }
+    function getBucketIdentifier(context) {
+      return context.user_id ?? context.session_id ?? context.email ?? context.ip_address ?? "anonymous";
+    }
+    function userMatchesSegment(segment, context) {
+      const identifiers = [context.user_id, context.email, context.session_id].filter(
+        (v) => v !== void 0 && v !== null
+      );
+      if (identifiers.some((id) => segment.excluded_users.includes(id))) {
+        return false;
+      }
+      if (identifiers.some((id) => segment.included_users.includes(id))) {
+        return true;
+      }
+      return allConditionsMatch(segment.conditions, context);
+    }
+    function result(flag, environment, value, reason) {
+      return {
+        flag_id: flag.flag_id,
+        flag_key: flag.flag_key,
+        environment,
+        value,
+        reason,
+        matched_rule_id: null,
+        variant_key: null,
+        bucket: null
+      };
+    }
+    var FlagClient2 = class {
+      constructor(options) {
+        this.config = null;
+        this.flagIndex = /* @__PURE__ */ new Map();
+        this.segmentIndex = /* @__PURE__ */ new Map();
+        this.lastETag = "";
+        this.streamState = "idle";
+        this.pollTimer = null;
+        this.reconnectTimer = null;
+        this.telemetryTimer = null;
+        this.abortController = null;
+        this.initPromise = null;
+        this.telemetryCounters = /* @__PURE__ */ new Map();
+        this.isShuttingDown = false;
+        this.streamConnectInFlight = false;
+        this.apiKey = options.apiKey;
+        this.environment = options.environment;
+        this.gatewayUrl = options.gatewayUrl;
+      }
+      async init() {
+        this.isShuttingDown = false;
+        if (this.config) return;
+        if (this.initPromise) return this.initPromise;
+        this.initPromise = this.doInit();
+        try {
+          await this.initPromise;
+        } finally {
+          this.initPromise = null;
+        }
+      }
+      async doInit() {
+        const resp = await fetch(`${this.gatewayUrl}/v1/flags/config?environment=${encodeURIComponent(this.environment)}`, {
+          headers: { "x-api-key": this.apiKey }
+        });
+        if (resp.status === 403) throw new Error("Secret API key required for /config");
+        if (!resp.ok) throw new Error(`Config fetch failed: ${resp.status}`);
+        const json = await resp.json();
+        this.config = json.data;
+        this.buildIndexes();
+        this.lastETag = resp.headers.get("etag") || "";
+        this.connectStream();
+        this.startTelemetryFlush();
+      }
+      buildIndexes() {
+        this.flagIndex.clear();
+        this.segmentIndex.clear();
+        if (!this.config) return;
+        for (const flag of this.config.flags) {
+          this.flagIndex.set(flag.flag_key, flag);
+        }
+        for (const segment of this.config.segments) {
+          this.segmentIndex.set(segment.id, segment);
+        }
+      }
+      evaluate(flagKey, context) {
+        if (!this.config) throw new Error("FlagClient not initialized \u2014 call init() first");
+        const flagConfig = this.flagIndex.get(flagKey);
+        if (!flagConfig) {
+          return {
+            flag_id: "",
+            flag_key: flagKey,
+            environment: this.environment,
+            value: null,
+            reason: "not_found",
+            matched_rule_id: null,
+            variant_key: null,
+            bucket: null
+          };
+        }
+        const result2 = evaluateFlag(flagConfig, this.config, context, this.segmentIndex);
+        this.recordTelemetry(result2);
+        return result2;
+      }
+      evaluateBatch(flagKeys, context) {
+        if (!this.config) throw new Error("FlagClient not initialized \u2014 call init() first");
+        const results = {};
+        for (const key of flagKeys) {
+          const flagConfig = this.flagIndex.get(key);
+          if (flagConfig) {
+            const result2 = evaluateFlag(flagConfig, this.config, context, this.segmentIndex);
+            this.recordTelemetry(result2);
+            results[key] = result2;
+          }
+        }
+        return results;
+      }
+      async shutdown() {
+        this.isShuttingDown = true;
+        this.streamState = "idle";
+        this.abortController?.abort();
+        this.abortController = null;
+        if (this.pollTimer) {
+          clearInterval(this.pollTimer);
+          this.pollTimer = null;
+        }
+        if (this.reconnectTimer) {
+          clearInterval(this.reconnectTimer);
+          this.reconnectTimer = null;
+        }
+        if (this.telemetryTimer) {
+          clearInterval(this.telemetryTimer);
+          this.telemetryTimer = null;
+        }
+        await this.flushTelemetry();
+      }
+      // ======== SSE Streaming ========
+      async connectStream() {
+        if (this.isShuttingDown || this.streamState === "streaming" || this.streamConnectInFlight) return;
+        this.streamConnectInFlight = true;
+        this.abortController?.abort();
+        const abortController = new AbortController();
+        this.abortController = abortController;
+        const shouldResumePolling = this.streamState !== "polling";
+        let startPolling = shouldResumePolling;
+        try {
+          const resp = await fetch(
+            `${this.gatewayUrl}/v1/flags/stream?environment=${encodeURIComponent(this.environment)}`,
+            {
+              headers: {
+                "x-api-key": this.apiKey,
+                "Last-Event-ID": String(this.config?.version ?? 0)
+              },
+              signal: abortController.signal
+            }
+          );
+          if (resp.ok && resp.body) {
+            this.streamState = "streaming";
+            this.stopPolling();
+            startPolling = false;
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              let idx;
+              while ((idx = buffer.indexOf("\n\n")) !== -1) {
+                const frame = buffer.slice(0, idx);
+                buffer = buffer.slice(idx + 2);
+                this.handleSseFrame(frame);
+              }
+            }
+            if (this.streamState === "streaming") {
+              this.streamState = "idle";
+              startPolling = true;
+            }
+          }
+        } catch {
+          startPolling = !abortController.signal.aborted && shouldResumePolling;
+        } finally {
+          this.streamConnectInFlight = false;
+        }
+        if (!this.isShuttingDown && startPolling) {
+          this.startPolling();
+        }
+      }
+      handleSseFrame(frame) {
+        let eventType = "";
+        let data = "";
+        for (const line of frame.split("\n")) {
+          if (line.startsWith("event:")) eventType = line.slice(6).trim();
+          else if (line.startsWith("data:")) data += line.slice(5).trim();
+        }
+        if (eventType === "config" && data) {
+          try {
+            const parsed = JSON.parse(data);
+            const newConfig = parsed.data;
+            if (newConfig && newConfig.version !== void 0) {
+              this.config = newConfig;
+              this.buildIndexes();
+            }
+          } catch {
+          }
+        }
+      }
+      // ======== Polling Fallback ========
+      startPolling() {
+        if (this.streamState === "polling") return;
+        this.streamState = "polling";
+        this.pollTimer = setInterval(() => void this.pollConfig(), 6e4);
+        this.reconnectTimer = setInterval(() => void this.connectStream(), 3e5);
+      }
+      stopPolling() {
+        if (this.pollTimer) {
+          clearInterval(this.pollTimer);
+          this.pollTimer = null;
+        }
+        if (this.reconnectTimer) {
+          clearInterval(this.reconnectTimer);
+          this.reconnectTimer = null;
+        }
+      }
+      async pollConfig() {
+        try {
+          const headers2 = { "x-api-key": this.apiKey };
+          if (this.lastETag) headers2["if-none-match"] = this.lastETag;
+          const resp = await fetch(
+            `${this.gatewayUrl}/v1/flags/config?environment=${encodeURIComponent(this.environment)}`,
+            { headers: headers2 }
+          );
+          if (resp.status === 304) return;
+          if (!resp.ok) return;
+          const json = await resp.json();
+          this.config = json.data;
+          this.buildIndexes();
+          this.lastETag = resp.headers.get("etag") || "";
+        } catch {
+        }
+      }
+      // ======== Telemetry ========
+      recordTelemetry(evaluation) {
+        const key = `${evaluation.flag_key}:${evaluation.reason}:${String(evaluation.value)}`;
+        const existing = this.telemetryCounters.get(key);
+        if (existing) {
+          existing.count++;
+          if (evaluation.value === true) existing.true_count++;
+          else if (evaluation.value === false) existing.false_count++;
+        } else {
+          this.telemetryCounters.set(key, {
+            flag_key: evaluation.flag_key,
+            flag_id: evaluation.flag_id,
+            reason: evaluation.reason,
+            count: 1,
+            true_count: evaluation.value === true ? 1 : 0,
+            false_count: evaluation.value === false ? 1 : 0
+          });
+        }
+      }
+      startTelemetryFlush() {
+        this.telemetryTimer = setInterval(() => void this.flushTelemetry(), 6e4);
+      }
+      async flushTelemetry() {
+        if (this.telemetryCounters.size === 0) return;
+        const evaluations = Array.from(this.telemetryCounters.values());
+        this.telemetryCounters.clear();
+        try {
+          await fetch(`${this.gatewayUrl}/v1/flags/telemetry`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": this.apiKey
+            },
+            body: JSON.stringify({
+              environment: this.environment,
+              evaluations
+            })
+          });
+        } catch {
+          for (const counter of evaluations) {
+            const key = `${counter.flag_key}:${counter.reason}:${counter.count}`;
+            const existing = this.telemetryCounters.get(key);
+            if (existing) {
+              existing.count += counter.count;
+              existing.true_count += counter.true_count;
+              existing.false_count += counter.false_count;
+            } else {
+              this.telemetryCounters.set(key, counter);
+            }
+          }
+        }
+      }
     };
   }
 });
@@ -3315,7 +3861,7 @@ function createAuthRoutes(config = {}) {
           if (!email) {
             return errorResponse("VALIDATION_ERROR", "Email required", 400);
           }
-          const result2 = await sm.auth.forgotPassword(email, { clientContext });
+          const result = await sm.auth.forgotPassword(email, { clientContext });
           return successResponse({ message: "If an account exists, a reset email has been sent" });
         }
         // ==================== Reset Password ====================
@@ -3955,8 +4501,10 @@ function getLedverySession(request) {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
+    const accessToken = getCookie(request, SM_LEDVERY_ACCESS_TOKEN_COOKIE);
     return {
       idToken: parsed.idToken || "",
+      accessToken,
       claims: parsed.claims,
       expiresAt: parsed.expiresAt
     };
@@ -4058,9 +4606,11 @@ function createLedveryRoutes(config) {
   async function handleLogin(request) {
     const url = new URL(request.url);
     const returnTo = url.searchParams.get("returnTo");
+    const provider = url.searchParams.get("provider");
     const validatedReturnTo = validateSafeRedirect(returnTo, { defaultPath: postLoginRedirect });
     const authResult = await client.createAuthorizationUrl({
-      scope: defaultScope
+      scope: defaultScope,
+      extraParams: provider ? { upstream: provider } : void 0
     });
     const response = new Response(null, {
       status: 302,
@@ -4460,9 +5010,9 @@ var CODE_TO_STATUS = {
 function errorCodeToStatus(code) {
   return CODE_TO_STATUS[code.toLowerCase()] || 400;
 }
-function unwrap(result2) {
-  if (result2 !== null && result2 !== void 0 && typeof result2 === "object" && ("success" in result2 || "error" in result2) && "data" in result2) {
-    const envelope = result2;
+function unwrap(result) {
+  if (result !== null && result !== void 0 && typeof result === "object" && ("success" in result || "error" in result) && "data" in result) {
+    const envelope = result;
     if (envelope.error || envelope.success === false) {
       const err = envelope.error;
       const code = err?.code || "UNKNOWN_ERROR";
@@ -4476,7 +5026,7 @@ function unwrap(result2) {
     }
     return envelope.data;
   }
-  return result2;
+  return result;
 }
 
 // src/server/handler.ts
@@ -4503,10 +5053,10 @@ function apiHandler(handler, options) {
         searchParams: request.nextUrl.searchParams,
         session
       };
-      const result2 = await handler(request, context);
-      if (result2 instanceof Response) return result2;
-      if (result2 !== void 0) {
-        return Response.json({ success: true, data: result2 }, { status: 200 });
+      const result = await handler(request, context);
+      if (result instanceof Response) return result;
+      if (result !== void 0) {
+        return Response.json({ success: true, data: result }, { status: 200 });
       }
       return new Response(null, { status: 204 });
     } catch (error) {
@@ -4553,14 +5103,14 @@ function parseWebhookEvent(payload) {
 }
 async function registerVideoWebhook(url, options) {
   const sm = createServerClient(options?.clientConfig);
-  const result2 = await sm.webhooks.create({
+  const result = await sm.webhooks.create({
     webhook_name: options?.name || "Video Status Webhook",
     url,
     events: options?.events || ["video.ready", "video.failed"]
   });
   return {
-    id: result2.id,
-    secret: result2.secret
+    id: result.id,
+    secret: result.secret
   };
 }
 function createWebhookRoutes(config = {}) {
@@ -4648,517 +5198,8 @@ function createWebhookHandler(config = {}) {
   };
 }
 
-// node_modules/@scalemule/sdk/dist/flags/server.mjs
-var import_semver = __toESM(require_semver2());
-function hashToBucket(flagKey, identifier, salt) {
-  const hash = crypto$1.createHash("sha256").update(`${salt}.${flagKey}.${identifier}`).digest();
-  return hash.readUInt32BE(0) % 1e4;
-}
-function allConditionsMatch(conditions, context) {
-  return conditions.every((c) => conditionMatches(c, context));
-}
-function conditionMatches(condition, context) {
-  const attributeValue = getAttribute(context, condition.attribute);
-  const op = condition.operator;
-  if (op === "exists") return attributeValue !== void 0 && attributeValue !== null;
-  if (op === "not_exists") return attributeValue === void 0 || attributeValue === null;
-  if (attributeValue === void 0 || attributeValue === null) return false;
-  switch (op) {
-    case "eq":
-      return compareValues(attributeValue, condition.value) === 0;
-    case "neq":
-      return compareValues(attributeValue, condition.value) !== 0;
-    case "in":
-      return candidateValues(condition).some((v) => compareValues(attributeValue, v) === 0);
-    case "not_in":
-      return !candidateValues(condition).some((v) => compareValues(attributeValue, v) === 0);
-    case "contains":
-      return containsValue(attributeValue, condition.value);
-    case "starts_with":
-      return typeof attributeValue === "string" && typeof condition.value === "string" ? attributeValue.startsWith(condition.value) : false;
-    case "ends_with":
-      return typeof attributeValue === "string" && typeof condition.value === "string" ? attributeValue.endsWith(condition.value) : false;
-    case "gt":
-      return compareValues(attributeValue, condition.value) === 1;
-    case "gte": {
-      const cmp = compareValues(attributeValue, condition.value);
-      return cmp === 1 || cmp === 0;
-    }
-    case "lt":
-      return compareValues(attributeValue, condition.value) === -1;
-    case "lte": {
-      const cmp = compareValues(attributeValue, condition.value);
-      return cmp === -1 || cmp === 0;
-    }
-    case "regex": {
-      if (typeof attributeValue !== "string" || typeof condition.value !== "string") return false;
-      try {
-        return new RegExp(condition.value).test(attributeValue);
-      } catch {
-        return false;
-      }
-    }
-    case "semver_eq":
-      return semverCmp(attributeValue, condition.value) === 0;
-    case "semver_neq":
-      return semverCmp(attributeValue, condition.value) !== 0;
-    case "semver_gt":
-      return semverCmp(attributeValue, condition.value) === 1;
-    case "semver_gte": {
-      const cmp = semverCmp(attributeValue, condition.value);
-      return cmp === 1 || cmp === 0;
-    }
-    case "semver_lt":
-      return semverCmp(attributeValue, condition.value) === -1;
-    case "semver_lte": {
-      const cmp = semverCmp(attributeValue, condition.value);
-      return cmp === -1 || cmp === 0;
-    }
-    default:
-      return false;
-  }
-}
-function getAttribute(context, key) {
-  switch (key) {
-    case "user_id":
-      return context.user_id;
-    case "email":
-      return context.email;
-    case "session_id":
-      return context.session_id;
-    case "ip_address":
-      return context.ip_address;
-    case "user_agent":
-      return context.user_agent;
-    case "timestamp":
-      return context.timestamp ?? (/* @__PURE__ */ new Date()).toISOString();
-    default:
-      return context[key];
-  }
-}
-function candidateValues(condition) {
-  if (condition.values && condition.values.length > 0) return condition.values;
-  if (condition.value === void 0 || condition.value === null) return [];
-  if (Array.isArray(condition.value)) return condition.value;
-  return [condition.value];
-}
-function compareValues(actual, expected) {
-  if (expected === void 0 || expected === null) return null;
-  const numA = toNumber(actual);
-  const numB = toNumber(expected);
-  if (numA !== null && numB !== null) {
-    if (numA < numB) return -1;
-    if (numA > numB) return 1;
-    return 0;
-  }
-  if (typeof actual === "boolean" && typeof expected === "boolean") {
-    if (actual === expected) return 0;
-    return actual ? 1 : -1;
-  }
-  const strA = toString(actual);
-  const strB = toString(expected);
-  if (strA !== null && strB !== null) {
-    if (strA < strB) return -1;
-    if (strA > strB) return 1;
-    return 0;
-  }
-  return null;
-}
-function containsValue(actual, expected) {
-  if (expected === void 0 || expected === null) return false;
-  if (Array.isArray(actual)) {
-    return actual.some((item) => compareValues(item, expected) === 0);
-  }
-  if (typeof actual === "string" && typeof expected === "string") {
-    return actual.includes(expected);
-  }
-  return false;
-}
-function toNumber(value) {
-  if (typeof value === "number") return value;
-  if (typeof value === "string") {
-    const n = Number(value);
-    return isNaN(n) ? null : n;
-  }
-  return null;
-}
-function toString(value) {
-  if (typeof value === "string") return value;
-  return null;
-}
-function semverCmp(actual, expected) {
-  if (typeof actual !== "string" || typeof expected !== "string") return null;
-  try {
-    const a = (0, import_semver.parse)(actual);
-    const b = (0, import_semver.parse)(expected);
-    if (!a || !b) return null;
-    return (0, import_semver.compare)(a, b);
-  } catch {
-    return null;
-  }
-}
-function evaluateFlag(flag, config, context, segmentIndex) {
-  const effectiveDefault = flag.environment_default_value ?? flag.default_value;
-  if (flag.status !== "active") {
-    return result(flag, config.environment, effectiveDefault, "disabled");
-  }
-  if (!flag.environment_enabled) {
-    return result(flag, config.environment, effectiveDefault, "disabled");
-  }
-  const bucketIdentifier = getBucketIdentifier(context);
-  for (const rule of flag.rules) {
-    if (!rule.enabled) continue;
-    if (rule.segment_ids.length > 0) {
-      const segmentMatched = rule.segment_ids.some((segId) => {
-        const segment = segmentIndex ? segmentIndex.get(segId) : config.segments.find((s) => s.id === segId);
-        if (!segment) return false;
-        return userMatchesSegment(segment, context);
-      });
-      if (!segmentMatched) continue;
-    }
-    if (!allConditionsMatch(rule.conditions, context)) continue;
-    if (rule.rollout_percentage !== null && rule.rollout_percentage !== void 0) {
-      const bucket = hashToBucket(flag.flag_key, bucketIdentifier, config.rollout_salt);
-      if (bucket >= rule.rollout_percentage) continue;
-      return {
-        flag_id: flag.flag_id,
-        flag_key: flag.flag_key,
-        environment: config.environment,
-        value: rule.serve_value,
-        reason: "rule_match",
-        matched_rule_id: rule.id,
-        variant_key: null,
-        bucket
-      };
-    }
-    return {
-      flag_id: flag.flag_id,
-      flag_key: flag.flag_key,
-      environment: config.environment,
-      value: rule.serve_value,
-      reason: "rule_match",
-      matched_rule_id: rule.id,
-      variant_key: null,
-      bucket: null
-    };
-  }
-  if (flag.variants.length > 0) {
-    const totalWeight = flag.variants.reduce((sum, v) => sum + v.weight, 0);
-    if (totalWeight > 0) {
-      const bucket = hashToBucket(flag.flag_key, bucketIdentifier, config.rollout_salt);
-      const scaled = Math.floor(bucket * totalWeight / 1e4);
-      let cursor = 0;
-      for (const variant of flag.variants) {
-        cursor += variant.weight;
-        if (scaled < cursor) {
-          return {
-            flag_id: flag.flag_id,
-            flag_key: flag.flag_key,
-            environment: config.environment,
-            value: variant.value,
-            reason: "variant",
-            matched_rule_id: null,
-            variant_key: variant.variant_key,
-            bucket
-          };
-        }
-      }
-    }
-  }
-  return result(flag, config.environment, effectiveDefault, "default");
-}
-function getBucketIdentifier(context) {
-  return context.user_id ?? context.session_id ?? context.email ?? context.ip_address ?? "anonymous";
-}
-function userMatchesSegment(segment, context) {
-  const identifiers = [context.user_id, context.email, context.session_id].filter(
-    (v) => v !== void 0 && v !== null
-  );
-  if (identifiers.some((id) => segment.excluded_users.includes(id))) {
-    return false;
-  }
-  if (identifiers.some((id) => segment.included_users.includes(id))) {
-    return true;
-  }
-  return allConditionsMatch(segment.conditions, context);
-}
-function result(flag, environment, value, reason) {
-  return {
-    flag_id: flag.flag_id,
-    flag_key: flag.flag_key,
-    environment,
-    value,
-    reason,
-    matched_rule_id: null,
-    variant_key: null,
-    bucket: null
-  };
-}
-var FlagClient = class {
-  constructor(options) {
-    this.config = null;
-    this.flagIndex = /* @__PURE__ */ new Map();
-    this.segmentIndex = /* @__PURE__ */ new Map();
-    this.lastETag = "";
-    this.streamState = "idle";
-    this.pollTimer = null;
-    this.reconnectTimer = null;
-    this.telemetryTimer = null;
-    this.abortController = null;
-    this.initPromise = null;
-    this.telemetryCounters = /* @__PURE__ */ new Map();
-    this.isShuttingDown = false;
-    this.streamConnectInFlight = false;
-    this.apiKey = options.apiKey;
-    this.environment = options.environment;
-    this.gatewayUrl = options.gatewayUrl;
-  }
-  async init() {
-    this.isShuttingDown = false;
-    if (this.config) return;
-    if (this.initPromise) return this.initPromise;
-    this.initPromise = this.doInit();
-    try {
-      await this.initPromise;
-    } finally {
-      this.initPromise = null;
-    }
-  }
-  async doInit() {
-    const resp = await fetch(`${this.gatewayUrl}/v1/flags/config?environment=${encodeURIComponent(this.environment)}`, {
-      headers: { "x-api-key": this.apiKey }
-    });
-    if (resp.status === 403) throw new Error("Secret API key required for /config");
-    if (!resp.ok) throw new Error(`Config fetch failed: ${resp.status}`);
-    const json = await resp.json();
-    this.config = json.data;
-    this.buildIndexes();
-    this.lastETag = resp.headers.get("etag") || "";
-    this.connectStream();
-    this.startTelemetryFlush();
-  }
-  buildIndexes() {
-    this.flagIndex.clear();
-    this.segmentIndex.clear();
-    if (!this.config) return;
-    for (const flag of this.config.flags) {
-      this.flagIndex.set(flag.flag_key, flag);
-    }
-    for (const segment of this.config.segments) {
-      this.segmentIndex.set(segment.id, segment);
-    }
-  }
-  evaluate(flagKey, context) {
-    if (!this.config) throw new Error("FlagClient not initialized \u2014 call init() first");
-    const flagConfig = this.flagIndex.get(flagKey);
-    if (!flagConfig) {
-      return {
-        flag_id: "",
-        flag_key: flagKey,
-        environment: this.environment,
-        value: null,
-        reason: "not_found",
-        matched_rule_id: null,
-        variant_key: null,
-        bucket: null
-      };
-    }
-    const result2 = evaluateFlag(flagConfig, this.config, context, this.segmentIndex);
-    this.recordTelemetry(result2);
-    return result2;
-  }
-  evaluateBatch(flagKeys, context) {
-    if (!this.config) throw new Error("FlagClient not initialized \u2014 call init() first");
-    const results = {};
-    for (const key of flagKeys) {
-      const flagConfig = this.flagIndex.get(key);
-      if (flagConfig) {
-        const result2 = evaluateFlag(flagConfig, this.config, context, this.segmentIndex);
-        this.recordTelemetry(result2);
-        results[key] = result2;
-      }
-    }
-    return results;
-  }
-  async shutdown() {
-    this.isShuttingDown = true;
-    this.streamState = "idle";
-    this.abortController?.abort();
-    this.abortController = null;
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
-    if (this.reconnectTimer) {
-      clearInterval(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    if (this.telemetryTimer) {
-      clearInterval(this.telemetryTimer);
-      this.telemetryTimer = null;
-    }
-    await this.flushTelemetry();
-  }
-  // ======== SSE Streaming ========
-  async connectStream() {
-    if (this.isShuttingDown || this.streamState === "streaming" || this.streamConnectInFlight) return;
-    this.streamConnectInFlight = true;
-    this.abortController?.abort();
-    const abortController = new AbortController();
-    this.abortController = abortController;
-    const shouldResumePolling = this.streamState !== "polling";
-    let startPolling = shouldResumePolling;
-    try {
-      const resp = await fetch(
-        `${this.gatewayUrl}/v1/flags/stream?environment=${encodeURIComponent(this.environment)}`,
-        {
-          headers: {
-            "x-api-key": this.apiKey,
-            "Last-Event-ID": String(this.config?.version ?? 0)
-          },
-          signal: abortController.signal
-        }
-      );
-      if (resp.ok && resp.body) {
-        this.streamState = "streaming";
-        this.stopPolling();
-        startPolling = false;
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          let idx;
-          while ((idx = buffer.indexOf("\n\n")) !== -1) {
-            const frame = buffer.slice(0, idx);
-            buffer = buffer.slice(idx + 2);
-            this.handleSseFrame(frame);
-          }
-        }
-        if (this.streamState === "streaming") {
-          this.streamState = "idle";
-          startPolling = true;
-        }
-      }
-    } catch {
-      startPolling = !abortController.signal.aborted && shouldResumePolling;
-    } finally {
-      this.streamConnectInFlight = false;
-    }
-    if (!this.isShuttingDown && startPolling) {
-      this.startPolling();
-    }
-  }
-  handleSseFrame(frame) {
-    let eventType = "";
-    let data = "";
-    for (const line of frame.split("\n")) {
-      if (line.startsWith("event:")) eventType = line.slice(6).trim();
-      else if (line.startsWith("data:")) data += line.slice(5).trim();
-    }
-    if (eventType === "config" && data) {
-      try {
-        const parsed = JSON.parse(data);
-        const newConfig = parsed.data;
-        if (newConfig && newConfig.version !== void 0) {
-          this.config = newConfig;
-          this.buildIndexes();
-        }
-      } catch {
-      }
-    }
-  }
-  // ======== Polling Fallback ========
-  startPolling() {
-    if (this.streamState === "polling") return;
-    this.streamState = "polling";
-    this.pollTimer = setInterval(() => void this.pollConfig(), 6e4);
-    this.reconnectTimer = setInterval(() => void this.connectStream(), 3e5);
-  }
-  stopPolling() {
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
-    if (this.reconnectTimer) {
-      clearInterval(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-  }
-  async pollConfig() {
-    try {
-      const headers2 = { "x-api-key": this.apiKey };
-      if (this.lastETag) headers2["if-none-match"] = this.lastETag;
-      const resp = await fetch(
-        `${this.gatewayUrl}/v1/flags/config?environment=${encodeURIComponent(this.environment)}`,
-        { headers: headers2 }
-      );
-      if (resp.status === 304) return;
-      if (!resp.ok) return;
-      const json = await resp.json();
-      this.config = json.data;
-      this.buildIndexes();
-      this.lastETag = resp.headers.get("etag") || "";
-    } catch {
-    }
-  }
-  // ======== Telemetry ========
-  recordTelemetry(evaluation) {
-    const key = `${evaluation.flag_key}:${evaluation.reason}:${String(evaluation.value)}`;
-    const existing = this.telemetryCounters.get(key);
-    if (existing) {
-      existing.count++;
-      if (evaluation.value === true) existing.true_count++;
-      else if (evaluation.value === false) existing.false_count++;
-    } else {
-      this.telemetryCounters.set(key, {
-        flag_key: evaluation.flag_key,
-        flag_id: evaluation.flag_id,
-        reason: evaluation.reason,
-        count: 1,
-        true_count: evaluation.value === true ? 1 : 0,
-        false_count: evaluation.value === false ? 1 : 0
-      });
-    }
-  }
-  startTelemetryFlush() {
-    this.telemetryTimer = setInterval(() => void this.flushTelemetry(), 6e4);
-  }
-  async flushTelemetry() {
-    if (this.telemetryCounters.size === 0) return;
-    const evaluations = Array.from(this.telemetryCounters.values());
-    this.telemetryCounters.clear();
-    try {
-      await fetch(`${this.gatewayUrl}/v1/flags/telemetry`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": this.apiKey
-        },
-        body: JSON.stringify({
-          environment: this.environment,
-          evaluations
-        })
-      });
-    } catch {
-      for (const counter of evaluations) {
-        const key = `${counter.flag_key}:${counter.reason}:${counter.count}`;
-        const existing = this.telemetryCounters.get(key);
-        if (existing) {
-          existing.count += counter.count;
-          existing.true_count += counter.true_count;
-          existing.false_count += counter.false_count;
-        } else {
-          this.telemetryCounters.set(key, counter);
-        }
-      }
-    }
-  }
-};
-
 // src/server/bootstrap-flags.ts
+var import_server2 = __toESM(require_server());
 var _clients = /* @__PURE__ */ new Map();
 var _initPromises = /* @__PURE__ */ new Map();
 var _serverClient = null;
@@ -5186,7 +5227,7 @@ async function getFlagClient(environment) {
   const pending = _initPromises.get(key);
   if (pending) return pending;
   const promise = (async () => {
-    const client = new FlagClient({ apiKey, environment, gatewayUrl });
+    const client = new import_server2.FlagClient({ apiKey, environment, gatewayUrl });
     await Promise.race([
       client.init(),
       new Promise(
@@ -5235,8 +5276,8 @@ async function getBootstrapFlags(flagKeys, environment = "prod", extraContext = 
       const clientIp = extractClientIp(hdrs);
       const context = { ...extraContext };
       if (clientIp) context.ip_address = clientIp;
-      const result2 = await getServerClient().flags.evaluateBatch(flagKeys, context, environment);
-      return result2 || {};
+      const result = await getServerClient().flags.evaluateBatch(flagKeys, context, environment);
+      return result || {};
     } catch {
       return {};
     }
@@ -5386,15 +5427,15 @@ async function getAppSecret(key) {
   }
   try {
     const client = createServerClient();
-    const result2 = await client.secrets.get(key);
-    if (!noCache && result2) {
+    const result = await client.secrets.get(key);
+    if (!noCache && result) {
       secretsCache[key] = {
-        value: result2.value,
-        version: result2.version,
+        value: result.value,
+        version: result.version,
         cachedAt: Date.now()
       };
     }
-    return result2?.value;
+    return result?.value;
   } catch (error) {
     if (error instanceof ScaleMuleApiError && error.code === "SECRET_NOT_FOUND") {
       return void 0;
@@ -5445,17 +5486,17 @@ async function getBundle(key, resolve = true) {
   }
   try {
     const client = createServerClient();
-    const result2 = await client.bundles.get(key, resolve);
-    if (!noCache && result2) {
+    const result = await client.bundles.get(key, resolve);
+    if (!noCache && result) {
       bundlesCache[key] = {
-        type: result2.type,
-        data: result2.data,
-        version: result2.version,
-        inheritsFrom: result2.inherits_from,
+        type: result.type,
+        data: result.data,
+        version: result.version,
+        inheritsFrom: result.inherits_from,
         cachedAt: Date.now()
       };
     }
-    return result2?.data;
+    return result?.data;
   } catch (error) {
     if (error instanceof ScaleMuleApiError && error.code === "BUNDLE_NOT_FOUND") {
       return void 0;

@@ -19,6 +19,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
+      "@scalemule/sdk": ["../sdk/dist/index.d.ts"],
+      "@scalemule/sdk/*": ["../sdk/dist/*"],
       "@scalemule/money": ["../money/dist/index.d.ts"],
       "@scalemule/money/*": ["../money/dist/*"]
     }

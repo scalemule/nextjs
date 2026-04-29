@@ -10,7 +10,15 @@ import {
   type ReactNode,
 } from 'react'
 import { createMoneyClient, type MoneyClient } from '@scalemule/money'
-import { ScaleMule, type RealtimeService, type StorageService, type PhotoService, type VideoService, type AudioService } from '@scalemule/sdk'
+import {
+  ScaleMule,
+  type RealtimeService,
+  type StorageService,
+  type PhotoService,
+  type VideoService,
+  type AudioService,
+  type TtsService,
+} from '@scalemule/sdk'
 import { ScaleMuleClient, createClient } from './client'
 import { setSdkTelemetryEndpoint } from './sdk-telemetry'
 import type { User, ScaleMuleConfig, ApiError, LoginResponse } from './types'
@@ -61,6 +69,8 @@ interface ScaleMuleContextValue {
   video: VideoService
   /** Base SDK audio service — exposed for `useMedia()` and `audio.uploadViaStorage()` */
   audio: AudioService
+  /** Base SDK TTS service — exposed for `useTtsJob()` and direct narration requests */
+  tts: TtsService
   /**
    * Default media policy for `useMedia()` calls. Set via
    * `<ScaleMuleProvider mediaPolicy="…">`; per-call overrides win.
@@ -402,6 +412,7 @@ export function ScaleMuleProvider({
       photo: baseClient.photo,
       video: baseClient.video,
       audio: baseClient.audio,
+      tts: baseClient.tts,
       mediaPolicy: effectiveMediaPolicy,
       user,
       setUser: handleSetUser,
