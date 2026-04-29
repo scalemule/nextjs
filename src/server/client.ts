@@ -48,6 +48,12 @@ export interface ServerConfig {
   gatewayUrl?: string
   /** Enable debug logging */
   debug?: boolean
+  /** Callback when a 401 auto-refresh starts */
+  onRefreshStart?: () => void
+  /** Callback when a 401 auto-refresh finishes */
+  onRefreshEnd?: () => void
+  /** Callback when a 401 auto-refresh fails */
+  onAutoRefreshFailed?: (error: ApiError) => void
 }
 
 export function resolveGatewayUrl(config: ServerConfig): string {
@@ -64,12 +70,18 @@ export class ScaleMuleServer {
   private apiKey: string
   private gatewayUrl: string
   private debug: boolean
+  private onRefreshStart?: () => void
+  private onRefreshEnd?: () => void
+  private onAutoRefreshFailed?: (error: ApiError) => void
   money: MoneyClient
 
   constructor(config: ServerConfig) {
     this.apiKey = config.apiKey
     this.gatewayUrl = resolveGatewayUrl(config)
     this.debug = config.debug || false
+    this.onRefreshStart = config.onRefreshStart
+    this.onRefreshEnd = config.onRefreshEnd
+    this.onAutoRefreshFailed = config.onAutoRefreshFailed
     this.money = createMoneyClient({
       apiKey: this.apiKey,
       gatewayUrl: this.gatewayUrl,
@@ -100,6 +112,8 @@ export class ScaleMuleServer {
       userId?: string
       sessionToken?: string
       clientContext?: ClientContext
+      onTokenRotated?: (newToken: string) => void
+      isAutoRefresh?: boolean
     } = {}
   ): Promise<T> {
     const url = `${this.gatewayUrl}${path}`
@@ -129,6 +143,12 @@ export class ScaleMuleServer {
         body: options.body ? JSON.stringify(options.body) : undefined,
       })
 
+      // Capture rotated session token from gateway
+      const rotated = response.headers.get('x-rotated-session-token')
+      if (rotated && options.onTokenRotated) {
+        options.onTokenRotated(rotated)
+      }
+
       const text = await response.text()
       let responseData: Record<string, unknown> | null = null
       try {
@@ -138,10 +158,49 @@ export class ScaleMuleServer {
       }
 
       if (!response.ok) {
-        const error: ApiError = responseData?.error as ApiError || {
+        const error: ApiError = (responseData?.error as ApiError) || {
           code: `HTTP_${response.status}`,
           message: (responseData?.message as string) || text || response.statusText,
         }
+
+        // Handle 401 Unauthorized — trigger auto-refresh unless this is already a refresh request
+        if (response.status === 401 && options.sessionToken && !options.isAutoRefresh) {
+          if (this.debug) console.log('[ScaleMule Server] 401 received, attempting auto-refresh...')
+          
+          try {
+            this.onRefreshStart?.()
+            
+            // Call refresh endpoint
+            const refreshData = await this.auth.refresh(options.sessionToken, {
+              clientContext: options.clientContext,
+              isAutoRefresh: true, // Prevent infinite loops
+            })
+
+            const newToken = refreshData.session_token
+            if (this.debug) console.log('[ScaleMule Server] Auto-refresh succeeded, retrying original request...')
+            
+            // Notify caller that token changed so they can update cookies
+            options.onTokenRotated?.(newToken)
+
+            // Retry the original request once with the new token
+            return this.request<T>(method, path, {
+              ...options,
+              sessionToken: newToken,
+              isAutoRefresh: true, // Don't refresh again on this retry
+            })
+          } catch (refreshErr) {
+            if (this.debug) console.error('[ScaleMule Server] Auto-refresh failed:', refreshErr)
+            const refreshApiError: ApiError = refreshErr instanceof ScaleMuleApiError 
+              ? { code: refreshErr.code, message: refreshErr.message } 
+              : { code: 'REFRESH_FAILED', message: 'Auto-refresh failed' }
+            
+            this.onAutoRefreshFailed?.(refreshApiError)
+            throw new ScaleMuleApiError(error) // Throw original 401 error
+          } finally {
+            this.onRefreshEnd?.()
+          }
+        }
+
         throw new ScaleMuleApiError(error)
       }
 
@@ -183,27 +242,36 @@ export class ScaleMuleServer {
     /**
      * Logout user
      */
-    logout: async (sessionToken: string): Promise<void> => {
+    logout: async (sessionToken: string, options?: { onTokenRotated?: (newToken: string) => void }): Promise<void> => {
       return this.request<void>('POST', '/v1/auth/logout', {
+        sessionToken,
         body: { session_token: sessionToken },
+        onTokenRotated: options?.onTokenRotated
       })
     },
 
     /**
      * Get current user from session token
      */
-    me: async (sessionToken: string): Promise<User> => {
-      return this.request<User>('GET', '/v1/auth/me', { sessionToken })
+    me: async (sessionToken: string, options?: { onTokenRotated?: (newToken: string) => void }): Promise<User> => {
+      return this.request<User>('GET', '/v1/auth/me', {
+        sessionToken,
+        onTokenRotated: options?.onTokenRotated
+      })
     },
 
     /**
      * Refresh session token
      */
     refresh: async (
-      sessionToken: string
+      sessionToken: string,
+      options?: { clientContext?: ClientContext; isAutoRefresh?: boolean; onTokenRotated?: (newToken: string) => void }
     ): Promise<{ session_token: string; expires_at: string }> => {
-      return this.request('POST', '/v1/auth/refresh', {
-        body: { session_token: sessionToken },
+      return this.request<{ session_token: string; expires_at: string }>('POST', '/v1/auth/refresh', {
+        sessionToken,
+        clientContext: options?.clientContext,
+        isAutoRefresh: options?.isAutoRefresh,
+        onTokenRotated: options?.onTokenRotated
       })
     },
 
@@ -247,7 +315,7 @@ export class ScaleMuleServer {
      */
     resendVerification: async (
       sessionTokenOrEmail: string,
-      options?: { email?: string },
+      options?: { email?: string; onTokenRotated?: (newToken: string) => void },
     ): Promise<{ message: string }> => {
       // If options.email is provided, treat first arg as session token
       // If first arg looks like an email, send email-based (no session required)
@@ -255,6 +323,7 @@ export class ScaleMuleServer {
         return this.request('POST', '/v1/auth/resend-verification', {
           sessionToken: sessionTokenOrEmail,
           body: { email: options.email },
+          onTokenRotated: options?.onTokenRotated
         })
       }
       if (sessionTokenOrEmail.includes('@')) {
@@ -264,6 +333,7 @@ export class ScaleMuleServer {
       }
       return this.request('POST', '/v1/auth/resend-verification', {
         sessionToken: sessionTokenOrEmail,
+        onTokenRotated: options?.onTokenRotated
       })
     },
   }
@@ -278,11 +348,13 @@ export class ScaleMuleServer {
      */
     update: async (
       sessionToken: string,
-      data: { full_name?: string; avatar_url?: string }
+      data: { full_name?: string; avatar_url?: string },
+      options?: { onTokenRotated?: (newToken: string) => void }
     ): Promise<User> => {
       return this.request<User>('PATCH', '/v1/auth/profile', {
         sessionToken,
         body: data,
+        onTokenRotated: options?.onTokenRotated
       })
     },
 
@@ -292,11 +364,13 @@ export class ScaleMuleServer {
     changePassword: async (
       sessionToken: string,
       currentPassword: string,
-      newPassword: string
+      newPassword: string,
+      options?: { onTokenRotated?: (newToken: string) => void }
     ): Promise<{ message: string }> => {
       return this.request('POST', '/v1/auth/change-password', {
         sessionToken,
         body: { current_password: currentPassword, new_password: newPassword },
+        onTokenRotated: options?.onTokenRotated
       })
     },
 
@@ -306,11 +380,13 @@ export class ScaleMuleServer {
     changeEmail: async (
       sessionToken: string,
       newEmail: string,
-      password: string
+      password: string,
+      options?: { onTokenRotated?: (newToken: string) => void }
     ): Promise<{ message: string }> => {
       return this.request('POST', '/v1/auth/change-email', {
         sessionToken,
         body: { new_email: newEmail, password },
+        onTokenRotated: options?.onTokenRotated
       })
     },
 
@@ -319,11 +395,13 @@ export class ScaleMuleServer {
      */
     deleteAccount: async (
       sessionToken: string,
-      password: string
+      password: string,
+      options?: { onTokenRotated?: (newToken: string) => void }
     ): Promise<{ message: string }> => {
       return this.request('DELETE', '/v1/auth/me', {
         sessionToken,
         body: { password },
+        onTokenRotated: options?.onTokenRotated
       })
     },
   }

@@ -2,6 +2,9 @@
 
 Drop-in OIDC integration for Next.js apps that use Ledvery as an identity provider.
 
+For the full Ledvery guide set, see:
+https://github.com/scalemule/ledvery/tree/main/docs
+
 ## Quick Start
 
 ### 1. Install
@@ -41,10 +44,10 @@ LEDVERY_CLIENT_SECRET=your-client-secret
 
 | Method | Path | Behavior |
 |--------|------|----------|
-| GET | `/api/auth/ledvery/login` | 302 → Ledvery /authorize (sets PKCE flow cookies) |
-| GET | `/api/auth/ledvery/callback` | Exchanges code, 302 → postLoginRedirect (sets session cookies) |
+| GET | `/api/auth/ledvery/login` | `302` to Ledvery `/authorize` and sets flow cookies |
+| GET | `/api/auth/ledvery/callback` | Exchanges code, then `302` to a validated `returnTo` cookie when present, otherwise `postLoginRedirect` |
 | GET | `/api/auth/ledvery/session` | 200 JSON `{session: LedverySessionDTO \| null}` |
-| GET | `/api/auth/ledvery/logout` | 302 → postLogoutRedirect (clears cookies) |
+| GET | `/api/auth/ledvery/logout` | Clears cookies, then redirects |
 
 ## Configuration
 
@@ -60,6 +63,7 @@ interface LedveryRoutesConfig {
   cookies?: SessionCookieOverrides
   storeAccessToken?: boolean  // Default: false (see cookie size note)
   fetch?: typeof fetch        // Override fetch for proxies/edge runtimes
+  gatewayUrl?: string         // Optional ScaleMule gateway base URL for RP logout
 }
 ```
 
@@ -97,13 +101,13 @@ export async function GET(request: Request) {
 ## Cookie Design
 
 **Flow cookies** (10-minute TTL, cleared after callback):
-- `sm_ledvery_state` — CSRF protection
-- `sm_ledvery_pkce_verifier` — PKCE S256 verifier
-- `sm_ledvery_nonce` — replay protection
+- `sm_ledvery_state` - CSRF protection
+- `sm_ledvery_pkce_verifier` - PKCE S256 verifier
+- `sm_ledvery_nonce` - replay protection
 
 **Session cookies** (1-hour cap):
-- `sm_ledvery_id_token` — serialized claims + expiry
-- `sm_ledvery_access_token` — raw access token (opt-in only)
+- `sm_ledvery_id_token` - serialized claims plus expiry
+- `sm_ledvery_access_token` - raw access token (opt-in only)
 
 All cookies are `httpOnly`, `sameSite=lax`, and `secure` in production.
 
@@ -124,10 +128,13 @@ is a separate integration concern.
 
 ## Limitations
 
-- **Logout is local only.** `/logout` clears the local Ledvery cookies but does
-  NOT call Ledvery's `end_session_endpoint`. Full RP-initiated logout is tracked
-  separately (requires the `end_session_endpoint` implementation on scalemule-auth).
-- **No refresh tokens.** Ledvery currently issues 1-hour tokens without refresh.
-  When refresh token support is added, this SDK will gain a `/refresh` route.
+- **Logout behavior depends on `gatewayUrl`.** When `gatewayUrl` is configured,
+  `/logout` clears the local Ledvery cookies and redirects through
+  `/v1/auth/oauth/ledvery/logout`, optionally passing `id_token_hint`. Without
+  `gatewayUrl`, logout is local-only and redirects straight to
+  `postLogoutRedirect`.
+- **Refresh tokens require `offline_access`.** The core SDK supports
+  `refreshSession()`, but this BFF currently exposes only `login`, `callback`,
+  `session`, and `logout`.
 - **No pure-browser mode.** This SDK requires a server-side BFF. Pure SPA apps
-  need their own backend or a future `@scalemule/ledvery-react` browser-only mode.
+  need their own backend or a future browser-only integration.

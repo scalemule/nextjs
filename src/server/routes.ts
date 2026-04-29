@@ -267,14 +267,27 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
         case 'logout': {
           const session = await getSession()
 
+          let rotated: string | null = null
           if (session) {
-            await sm.auth.logout(session.sessionToken)
+            try {
+              await sm.auth.logout(session.sessionToken, {
+                onTokenRotated: (newToken) => {
+                  rotated = newToken
+                }
+              })
+            } catch {
+              // Ignore logout errors if session already gone
+            }
           }
 
           if (config.onLogout) {
             await config.onLogout()
           }
 
+          // If session was rotated during logout (unlikely but possible), update cookie
+          // before clearing it? Actually clearSession clears it anyway.
+          // But if we want to be super correct, we might want to pass the rotated token.
+          // However, clearSession is usually sufficient.
           return clearSession({ message: 'Logged out successfully' }, cookieOptions)
         }
 
@@ -353,6 +366,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           const { email } = body
           const session = await getSession()
 
+          let rotated: string | null = null
           if (email) {
             // Email-based resend (no session required — e.g., post-registration)
             try {
@@ -373,13 +387,26 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           }
 
           try {
-            await sm.auth.resendVerification(session.sessionToken)
+            await sm.auth.resendVerification(session.sessionToken, {
+              onTokenRotated: (newToken) => {
+                rotated = newToken
+              }
+            })
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
               apiErr?.code || 'RESEND_FAILED',
               apiErr?.message || 'Failed to resend verification',
               400
+            )
+          }
+
+          if (rotated) {
+            return withRefreshedSession(
+              rotated,
+              session.userId,
+              { success: true, data: { message: 'Verification email sent' } },
+              cookieOptions
             )
           }
 
@@ -426,11 +453,17 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('VALIDATION_ERROR', 'Current and new password required', 400)
           }
 
+          let rotated: string | null = null
           try {
             await sm.user.changePassword(
               session.sessionToken,
               current_password,
-              new_password
+              new_password,
+              {
+                onTokenRotated: (newToken) => {
+                  rotated = newToken
+                }
+              }
             )
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
@@ -438,6 +471,15 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
               apiErr?.code || 'CHANGE_FAILED',
               apiErr?.message || 'Failed to change password',
               400
+            )
+          }
+
+          if (rotated) {
+            return withRefreshedSession(
+              rotated,
+              session.userId,
+              { success: true, data: { message: 'Password changed successfully' } },
+              cookieOptions
             )
           }
 
@@ -545,12 +587,27 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           }
 
           let userData
+          let rotated: string | null = null
           try {
-            userData = await sm.auth.me(session.sessionToken)
+            userData = await sm.auth.me(session.sessionToken, {
+              onTokenRotated: (newToken) => {
+                rotated = newToken
+              }
+            })
           } catch {
             // Session invalid, clear cookies
             return withNorm(clearSession(
               { error: { code: 'SESSION_EXPIRED', message: 'Session expired' } },
+              cookieOptions
+            ))
+          }
+
+          // If the gateway rotated the session token, update the HTTP-only cookie
+          if (rotated) {
+            return withNorm(withRefreshedSession(
+              rotated,
+              session.userId,
+              { user: userData, sessionToken: rotated, userId: session.userId },
               cookieOptions
             ))
           }
@@ -652,14 +709,28 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           const { full_name, avatar_url } = body
 
           let updatedUser
+          let rotated: string | null = null
           try {
-            updatedUser = await sm.user.update(session.sessionToken, { full_name, avatar_url })
+            updatedUser = await sm.user.update(session.sessionToken, { full_name, avatar_url }, {
+              onTokenRotated: (newToken) => {
+                rotated = newToken
+              }
+            })
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
               apiErr?.code || 'UPDATE_FAILED',
               apiErr?.message || 'Failed to update profile',
               400
+            )
+          }
+
+          if (rotated) {
+            return withRefreshedSession(
+              rotated,
+              session.userId,
+              { success: true, data: { user: updatedUser } },
+              cookieOptions
             )
           }
 

@@ -7023,6 +7023,7 @@ var ScaleMuleClient2 = class {
     this.sessionGate = null;
     this.resolveSessionGate = null;
     this.workspaceId = null;
+    this.refreshPromise = null;
     this.apiKey = config.apiKey;
     this.applicationId = config.applicationId || null;
     this.gatewayUrl = resolveGatewayUrl(config);
@@ -7030,6 +7031,9 @@ var ScaleMuleClient2 = class {
     this.storage = config.storage || createDefaultStorage2();
     this.enableRateLimitQueue = config.enableRateLimitQueue || false;
     this.enableOfflineQueue = config.enableOfflineQueue || false;
+    this.onRefreshStart = config.onRefreshStart;
+    this.onRefreshEnd = config.onRefreshEnd;
+    this.onAutoRefreshFailed = config.onAutoRefreshFailed;
     if (this.enableRateLimitQueue) {
       this.rateLimitQueue = new RateLimitQueue2();
     }
@@ -7248,6 +7252,10 @@ var ScaleMuleClient2 = class {
           signal: controller.signal
         });
         clearTimeout(timeoutId);
+        const rotatedToken = response.headers.get("x-rotated-session-token");
+        if (rotatedToken && this.sessionToken && this.userId) {
+          this.setSession(rotatedToken, this.userId);
+        }
         const text = await response.text();
         let responseData = null;
         try {
@@ -7257,6 +7265,30 @@ var ScaleMuleClient2 = class {
         if (!response.ok) {
           const rawError = responseData?.error;
           const error = rawError && typeof rawError === "object" ? rawError : { code: `HTTP_${response.status}`, message: typeof rawError === "string" ? rawError : responseData?.message || text || response.statusText };
+          if (response.status === 401 && this.sessionToken && !options.isAutoRefresh) {
+            if (this.debug) console.log("[ScaleMule] 401 received, attempting auto-refresh...");
+            if (!this.refreshPromise) {
+              this.onRefreshStart?.();
+              this.refreshPromise = this.post("/api/auth/refresh", {}, { isAutoRefresh: true });
+            }
+            try {
+              await this.refreshPromise;
+              if (this.debug) console.log("[ScaleMule] Auto-refresh succeeded, retrying original request...");
+              attempt--;
+              if (this.sessionToken) {
+                headers.set("Authorization", `Bearer ${this.sessionToken}`);
+              }
+              continue;
+            } catch (refreshErr) {
+              if (this.debug) console.error("[ScaleMule] Auto-refresh failed:", refreshErr);
+              const refreshApiError = refreshErr instanceof ScaleMuleApiError ? { code: refreshErr.code, message: refreshErr.message, field: refreshErr.field } : { code: "REFRESH_FAILED", message: "Auto-refresh failed" };
+              this.onAutoRefreshFailed?.(refreshApiError);
+              throw new ScaleMuleApiError(error);
+            } finally {
+              this.refreshPromise = null;
+              this.onRefreshEnd?.();
+            }
+          }
           if (attempt < maxRetries && RETRYABLE_STATUS_CODES3.has(response.status)) {
             lastError = error;
             const delay = getBackoffDelay2(attempt);
