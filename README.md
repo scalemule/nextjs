@@ -34,6 +34,8 @@ This creates all auth endpoints automatically:
 
 API keys never reach the browser. Session tokens are HTTP-only cookies.
 
+Need the cookie/header lifecycle or the proxy-vs-direct decision tree? See [`docs/AUTH_PROXY_PATTERN.md`](./docs/AUTH_PROXY_PATTERN.md).
+
 ## Environment Variables
 
 ```bash
@@ -295,7 +297,7 @@ export const { GET, POST, DELETE, PATCH } = createAuthRoutes({
 
 ```ts
 // Read CSRF token from cookie and include in requests
-const csrfToken = document.cookie.match(/csrf_token=([^;]+)/)?.[1]
+const csrfToken = document.cookie.match(/sm_csrf=([^;]+)/)?.[1]
 
 fetch('/api/auth/login', {
   method: 'POST',
