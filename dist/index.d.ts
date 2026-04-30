@@ -1,5 +1,5 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
-import { ApiError, RealtimeService, StorageService, PhotoService, VideoService, AudioService, FileStatus } from '@scalemule/sdk';
+import { ApiError, RealtimeService, StorageService, PhotoService, VideoService, AudioService, TtsService, TtsJobStatus, FileStatus } from '@scalemule/sdk';
 import * as React from 'react';
 import { ReactNode, ReactElement } from 'react';
 import { MoneyClient } from '@scalemule/money';
@@ -166,6 +166,8 @@ interface ScaleMuleContextValue {
     video: VideoService;
     /** Base SDK audio service — exposed for `useMedia()` and `audio.uploadViaStorage()` */
     audio: AudioService;
+    /** Base SDK TTS service — exposed for `useTtsJob()` and direct narration requests */
+    tts: TtsService;
     /**
      * Default media policy for `useMedia()` calls. Set via
      * `<ScaleMuleProvider mediaPolicy="…">`; per-call overrides win.
@@ -359,6 +361,18 @@ interface UseAudioReturn {
     loading: boolean;
 }
 declare function useAudio(): UseAudioReturn;
+
+interface UseTtsJobOptions {
+    enabled?: boolean;
+    pollIntervalMs?: number;
+}
+interface UseTtsJobReturn {
+    job: TtsJobStatus | null;
+    loading: boolean;
+    error: ApiError | null;
+    refresh: () => Promise<TtsJobStatus | null>;
+}
+declare function useTtsJob(jobId: string | null | undefined, options?: UseTtsJobOptions): UseTtsJobReturn;
 
 /**
  * Conversation kinds recognized by the chat realtime channel naming scheme.
@@ -1032,4 +1046,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError$1 as ApiError, type AudioFile, type AudioUploadResult, type ConversationKind, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, type UseAudioReturn, type UseAudioUploadOptions, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useUser, validateForm, validators };
+export { ApiError$1 as ApiError, type AudioFile, type AudioUploadResult, type ConversationKind, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, type UseAudioReturn, type UseAudioUploadOptions, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, type UseTtsJobOptions, type UseTtsJobReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, validateForm, validators };

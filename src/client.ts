@@ -722,6 +722,14 @@ export class ScaleMuleClient {
     }
 
     let lastError: ApiError | null = null
+    // Bound the auto-refresh path independently of `maxRetries`. Without
+    // this, a perpetually-rejected refreshed token causes an infinite loop:
+    // every iteration creates a fresh refreshPromise (since `finally` clears
+    // it), the refresh succeeds, `attempt--` undoes the loop's increment,
+    // and we're back where we started. Cap at 1 — if the new token also
+    // returns 401, the credentials are genuinely bad and we should bail.
+    const MAX_REFRESH_ATTEMPTS = 1
+    let refreshAttempts = 0
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const controller = new AbortController()
@@ -758,8 +766,17 @@ export class ScaleMuleClient {
             ? rawError as ApiError
             : { code: `HTTP_${response.status}`, message: (typeof rawError === 'string' ? rawError : (responseData?.message as string) || text || response.statusText) }
 
-          // Handle 401 Unauthorized — trigger auto-refresh unless this is already a refresh request
-          if (response.status === 401 && this.sessionToken && !options.isAutoRefresh) {
+          // Handle 401 Unauthorized — trigger auto-refresh unless this is
+          // already a refresh request OR we've already used our refresh
+          // budget for this request. Bounding here prevents an infinite
+          // loop when the refresh succeeds but the new token still 401s.
+          if (
+            response.status === 401 &&
+            this.sessionToken &&
+            !options.isAutoRefresh &&
+            refreshAttempts < MAX_REFRESH_ATTEMPTS
+          ) {
+            refreshAttempts++
             if (this.debug) console.log('[ScaleMule] 401 received, attempting auto-refresh...')
 
             if (!this.refreshPromise) {
@@ -781,8 +798,8 @@ export class ScaleMuleClient {
               continue
             } catch (refreshErr) {
               if (this.debug) console.error('[ScaleMule] Auto-refresh failed:', refreshErr)
-              const refreshApiError: ApiError = refreshErr instanceof ScaleMuleApiError 
-                ? { code: refreshErr.code, message: refreshErr.message, field: refreshErr.field } 
+              const refreshApiError: ApiError = refreshErr instanceof ScaleMuleApiError
+                ? { code: refreshErr.code, message: refreshErr.message, field: refreshErr.field }
                 : { code: 'REFRESH_FAILED', message: 'Auto-refresh failed' }
               this.onAutoRefreshFailed?.(refreshApiError)
               throw new ScaleMuleApiError(error) // Throw original 401 error

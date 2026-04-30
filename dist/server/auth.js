@@ -188,7 +188,8 @@ var ScaleMuleServer = class {
         if (options?.email) {
           return this.request("POST", "/v1/auth/resend-verification", {
             sessionToken: sessionTokenOrEmail,
-            body: { email: options.email }
+            body: { email: options.email },
+            onTokenRotated: options?.onTokenRotated
           });
         }
         if (sessionTokenOrEmail.includes("@")) {
@@ -197,7 +198,8 @@ var ScaleMuleServer = class {
           });
         }
         return this.request("POST", "/v1/auth/resend-verification", {
-          sessionToken: sessionTokenOrEmail
+          sessionToken: sessionTokenOrEmail,
+          onTokenRotated: options?.onTokenRotated
         });
       }
     };
@@ -1293,6 +1295,7 @@ function createAuthRoutes(config = {}) {
         case "resend-verification": {
           const { email } = body;
           const session = await getSession();
+          let rotated = null;
           if (email) {
             try {
               await sm.auth.resendVerification(email);
@@ -1310,13 +1313,25 @@ function createAuthRoutes(config = {}) {
             return errorResponse("UNAUTHORIZED", "Email or session required", 401);
           }
           try {
-            await sm.auth.resendVerification(session.sessionToken);
+            await sm.auth.resendVerification(session.sessionToken, {
+              onTokenRotated: (newToken) => {
+                rotated = newToken;
+              }
+            });
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null;
             return errorResponse(
               apiErr?.code || "RESEND_FAILED",
               apiErr?.message || "Failed to resend verification",
               400
+            );
+          }
+          if (rotated) {
+            return withRefreshedSession(
+              rotated,
+              session.userId,
+              { success: true, data: { message: "Verification email sent" } },
+              cookieOptions
             );
           }
           return successResponse({ message: "Verification email sent" });
