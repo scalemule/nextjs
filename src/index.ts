@@ -74,10 +74,14 @@ export { usePushNotifications } from './hooks/usePushNotifications'
 export { useShare } from './hooks/useShare'
 export { useFeedback } from './hooks/useFeedback'
 export type { UseFeedbackOptions, UseFeedbackResult } from './hooks/useFeedback'
+export { useVote } from './hooks/useVote'
+export type { UseVoteOptions, UseVoteReturn, VoteState } from './hooks/useVote'
 
 // Components
 export { FeedbackWidget } from './components/FeedbackWidget'
 export type { FeedbackWidgetProps } from './components/FeedbackWidget'
+export { VoteButton } from './components/VoteButton'
+export type { VoteButtonProps, VoteButtonClassNames } from './components/VoteButton'
 export type {
   FeedbackItem,
   FeedbackItemInput,
