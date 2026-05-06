@@ -133,7 +133,7 @@ export interface ScaleMuleProviderProps extends ScaleMuleConfig {
    * The platform stores the per-app policy in
    * `application_storage_settings.media_policy` (Phase 4 / P3, live in
    * prod). On boot, the provider fetches `GET /v1/storage/policy` (a
-   * lightweight `EndUserOnly` endpoint added in `@scalemule/sdk@0.0.45`)
+   * lightweight `MemberOrEndUser` endpoint added in `@scalemule/sdk@0.0.45`)
    * and uses the returned policy as the effective default.
    *
    * Passing this prop overrides the auto-fetched value — useful for
@@ -141,6 +141,40 @@ export interface ScaleMuleProviderProps extends ScaleMuleConfig {
    * platform config.
    */
   mediaPolicy?: import('./hooks/useMedia').MediaPolicy
+  /**
+   * Member-auth bridge. When set, the provider runs in **member mode**:
+   *
+   *   - Skips the `/v1/auth/me` end-user lookup and the auth-proxy
+   *     `/me` flow. Identity is owned upstream (e.g. `MemberAuthProvider`
+   *     in `web/scalemule-app`).
+   *   - Calls `getToken()` on mount and propagates the returned token
+   *     to all three SDK clients (`client`, `baseClient`, `money`) as a
+   *     `Bearer` Authorization header. Returning `null` clears the token.
+   *   - Re-polls every {@link memberTokenPollMs} milliseconds (default
+   *     60s) so cookie rotation in the host platform is picked up
+   *     without a full page reload.
+   *
+   * Use {@link userResolver} alongside this prop to populate `user` from
+   * a member-auth endpoint instead of `/v1/auth/me`.
+   *
+   * Mutually exclusive with `authProxyUrl`. If both are set, `getToken`
+   * wins and the auth-proxy path is skipped.
+   */
+  getToken?: () => string | null | Promise<string | null>
+  /**
+   * Resolves the `User` shown to the app in member-auth mode. The
+   * provider calls this once after the initial token is set; the host
+   * platform typically just returns its own `MemberProfile` mapped to
+   * the SDK's `User` shape. Optional — if omitted, `user` stays `null`
+   * and the host platform is responsible for surfacing identity.
+   */
+  userResolver?: () => Promise<User | null>
+  /**
+   * Member-mode token poll interval in milliseconds. Default 60_000
+   * (1 minute). Pass `null` to disable polling (only the mount-time
+   * read happens).
+   */
+  memberTokenPollMs?: number | null
 }
 
 // ============================================================================
@@ -166,7 +200,11 @@ export function ScaleMuleProvider({
   onAuthError,
   bootstrapFlags,
   mediaPolicy,
+  getToken,
+  userResolver,
+  memberTokenPollMs,
 }: ScaleMuleProviderProps) {
+  const memberMode = typeof getToken === 'function'
   const [user, setUser] = useState<User | null>(null)
   const [initializing, setInitializing] = useState(true)
   const [error, setError] = useState<ApiError | null>(null)
@@ -195,9 +233,13 @@ export function ScaleMuleProvider({
         gatewayUrl: resolvedGatewayUrl,
         debug,
         storage,
-        pendingSessionInit: !!authProxyUrl,
+        // Make outbound API calls wait for the first token to land in any
+        // mode where the provider is responsible for populating the
+        // session asynchronously: auth-proxy fetch, or member-mode
+        // getToken() callback. Resolved in the init effect below.
+        pendingSessionInit: !!authProxyUrl || memberMode,
       }),
-    [apiKey, applicationId, environment, resolvedGatewayUrl, debug, storage, authProxyUrl]
+    [apiKey, applicationId, environment, resolvedGatewayUrl, debug, storage, authProxyUrl, memberMode]
   )
 
   const money = useMemo(
@@ -228,15 +270,23 @@ export function ScaleMuleProvider({
 
   // Auto-fetch the application's `media_policy` so customer apps don't
   // need to mirror it as a prop. Falls back to the prop if the fetch
-  // fails or the prop is set explicitly. The endpoint is `EndUserOnly`,
-  // so any API-keyed client can read it. Companion change in
-  // `@scalemule/sdk@0.0.45` exposes `storage.getPolicy()`.
+  // fails or the prop is set explicitly. The endpoint is `MemberOrEndUser`,
+  // so any API-keyed end-user *or* member-auth caller can read it.
+  // Companion change in `@scalemule/sdk@0.0.45` exposes `storage.getPolicy()`.
+  //
+  // In member mode we re-run after the init/refresh effects update the
+  // baseClient token; `tokenVersion` bumps on each token set so this
+  // effect doesn't fire its first request unauthenticated.
   const [fetchedPolicy, setFetchedPolicy] = useState<
     import('./hooks/useMedia').MediaPolicy | undefined
   >(undefined)
+  const [tokenVersion, setTokenVersion] = useState(0)
   useEffect(() => {
     // If the consumer pinned a policy explicitly, don't auto-fetch.
     if (mediaPolicy) return
+    // Member mode: hold the fetch until the first token has been
+    // applied to baseClient (signaled by tokenVersion > 0).
+    if (memberMode && tokenVersion === 0) return
     let mounted = true
     void (async () => {
       try {
@@ -267,7 +317,7 @@ export function ScaleMuleProvider({
     return () => {
       mounted = false
     }
-  }, [baseClient, mediaPolicy])
+  }, [baseClient, mediaPolicy, memberMode, tokenVersion])
   const effectiveMediaPolicy = mediaPolicy ?? fetchedPolicy
 
   // Keep realtime and money clients in sync with the NextJS session token.
@@ -294,6 +344,51 @@ export function ScaleMuleProvider({
 
         // Restore cached user for instant rendering
         const cachedUser = getCachedUser()
+
+        // Member-auth mode: token comes from a host-platform callback
+        // (e.g. a cookie read inside `MemberAuthProvider`). Identity is
+        // owned upstream — no /v1/auth/me, no auth-proxy /me. Skip
+        // straight to token sync + optional userResolver.
+        if (memberMode) {
+          try {
+            const token = (await Promise.resolve(getToken!())) ?? null
+            if (mounted) {
+              if (token) {
+                client.setSessionToken(token)
+                baseClient.setAccessToken(token)
+                money.setAccessToken(token)
+              } else {
+                client.setSessionToken(null)
+                baseClient.clearAccessToken()
+                money.setAccessToken(undefined)
+              }
+              // Signal the policy auto-fetch (and any other token-gated
+              // effects) that the first token application has happened.
+              setTokenVersion((v) => v + 1)
+            }
+
+            if (userResolver) {
+              try {
+                const resolvedUser = await userResolver()
+                if (mounted) {
+                  setUser(resolvedUser)
+                  setCachedUser(resolvedUser)
+                }
+              } catch (resolveErr) {
+                if (mounted && debug) {
+                  console.debug('[ScaleMule] userResolver() failed:', resolveErr)
+                }
+              }
+            }
+          } catch (memberErr) {
+            if (mounted && debug) {
+              console.debug('[ScaleMule] getToken() failed:', memberErr)
+            }
+          } finally {
+            client.resolveSessionPending()
+          }
+          return
+        }
 
         // Auth proxy mode: session is managed by httpOnly cookies
         if (authProxyUrl) {
@@ -388,7 +483,50 @@ export function ScaleMuleProvider({
     return () => {
       mounted = false
     }
-  }, [client, debug, onAuthError, authProxyUrl])
+  }, [client, baseClient, money, debug, onAuthError, authProxyUrl, memberMode, getToken, userResolver])
+
+  // Member-mode token refresh: re-poll `getToken()` periodically so cookie
+  // rotation in the host platform propagates to the SDK without a full
+  // page reload. Only runs in member mode; default cadence 60s; pass
+  // `memberTokenPollMs={null}` to disable.
+  useEffect(() => {
+    if (!memberMode) return
+    if (memberTokenPollMs === null) return
+    const interval = memberTokenPollMs ?? 60_000
+    if (interval <= 0) return
+
+    let cancelled = false
+    const id = setInterval(async () => {
+      try {
+        const token = (await Promise.resolve(getToken!())) ?? null
+        if (cancelled) return
+        const current = client.getSessionToken()
+        if (token === current) return
+        if (token) {
+          client.setSessionToken(token)
+          baseClient.setAccessToken(token)
+          money.setAccessToken(token)
+        } else {
+          client.setSessionToken(null)
+          baseClient.clearAccessToken()
+          money.setAccessToken(undefined)
+          if (debug) {
+            console.debug('[ScaleMule] Member token cleared on refresh')
+          }
+        }
+        setTokenVersion((v) => v + 1)
+      } catch (err) {
+        if (debug) {
+          console.debug('[ScaleMule] Member token refresh failed:', err)
+        }
+      }
+    }, interval)
+
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [memberMode, memberTokenPollMs, getToken, client, baseClient, money, debug])
 
   // Wrap setUser to trigger callbacks and sync user cache
   const handleSetUser = useCallback(

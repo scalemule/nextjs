@@ -636,6 +636,25 @@ export class ScaleMuleClient {
   }
 
   /**
+   * Token-only setter for member-auth surfaces.
+   *
+   * Unlike `setSession(token, userId)`, this does NOT persist a userId or
+   * write to local storage — useful when the host platform owns identity
+   * (e.g. ScaleMule's member dashboards use `MemberAuthProvider` and the
+   * token comes from a `${env}_member_access_token` cookie). The token is
+   * applied in-memory and used as a `Bearer` Authorization header on
+   * subsequent requests.
+   *
+   * Pass `null` to clear without touching userId/storage.
+   */
+  setSessionToken(token: string | null): void {
+    this.sessionToken = token
+    if (this.debug) {
+      console.log('[ScaleMule] Session token', token ? 'set (token-only)' : 'cleared (token-only)')
+    }
+  }
+
+  /**
    * Clear session on logout
    */
   async clearSession(): Promise<void> {
