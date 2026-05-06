@@ -691,10 +691,20 @@ export function useAuth(): UseAuthReturn {
   }, [client, setError])
 
   /**
-   * Link a new OAuth account (user must be logged in)
+   * Link a new OAuth account (user must be logged in).
+   *
+   * **Currently non-functional.** The upstream platform endpoint
+   * `POST /oauth/{provider}/link` is a stub
+   * (ms/scalemule-auth/src/handlers/oauth.rs::link) that returns an
+   * error regardless of payload, AND its expected request shape
+   * (`{ session_token }`) does not match the OAuthConfig shape this
+   * hook is built around. Fixing both ends is its own track. Until
+   * then this method throws a clear NOT_IMPLEMENTED error so consumer
+   * apps surface an actionable message instead of a confusing
+   * 404 / 422 / stub error.
    */
   const linkAccount = useCallback(
-    async (config: OAuthConfig): Promise<OAuthStartResponse> => {
+    async (_config: OAuthConfig): Promise<OAuthStartResponse> => {
       setError(null)
 
       if (!user) {
@@ -706,29 +716,16 @@ export function useAuth(): UseAuthReturn {
         throw err
       }
 
-      let linkData: OAuthStartResponse
-      try {
-        linkData = await client.post<OAuthStartResponse>(
-          `/v1/auth/oauth/${encodeURIComponent(config.provider)}/link`,
-          {
-            redirect_url: config.redirectUrl,
-            scopes: config.scopes,
-          }
-        )
-      } catch (err) {
-        if (err instanceof ScaleMuleApiError) {
-          setError(err)
-        }
-        throw err
+      const err: ApiError = {
+        code: 'NOT_IMPLEMENTED',
+        message:
+          'OAuth account linking from a logged-in session is not yet supported. ' +
+          'Use the standard OAuth sign-in flow instead.',
       }
-
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem('scalemule_oauth_state', linkData.state)
-      }
-
-      return linkData
+      setError(err)
+      throw err
     },
-    [client, user, setError]
+    [user, setError]
   )
 
   /**
