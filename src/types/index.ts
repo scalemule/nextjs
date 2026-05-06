@@ -304,7 +304,11 @@ export interface OAuthCallbackResponse {
 
 export interface LinkedAccount {
   provider: string
-  provider_user_id: string
+  /**
+   * Not returned by GET /v1/auth/oauth/providers today. Reserved for a
+   * future endpoint that exposes the external user id; treat as optional.
+   */
+  provider_user_id?: string
   provider_email?: string
   linked_at: string
 }
