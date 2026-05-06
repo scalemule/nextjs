@@ -680,8 +680,8 @@ export function useAuth(): UseAuthReturn {
     setError(null)
 
     try {
-      const data = await client.get<{ accounts: LinkedAccount[] }>('/v1/auth/oauth/accounts')
-      return data.accounts
+      const data = await client.get<{ providers: LinkedAccount[] }>('/v1/auth/oauth/providers')
+      return data.providers
     } catch (err) {
       if (err instanceof ScaleMuleApiError) {
         setError(err)
@@ -708,11 +708,13 @@ export function useAuth(): UseAuthReturn {
 
       let linkData: OAuthStartResponse
       try {
-        linkData = await client.post<OAuthStartResponse>('/v1/auth/oauth/link', {
-          provider: config.provider,
-          redirect_url: config.redirectUrl,
-          scopes: config.scopes,
-        })
+        linkData = await client.post<OAuthStartResponse>(
+          `/v1/auth/oauth/${encodeURIComponent(config.provider)}/link`,
+          {
+            redirect_url: config.redirectUrl,
+            scopes: config.scopes,
+          }
+        )
       } catch (err) {
         if (err instanceof ScaleMuleApiError) {
           setError(err)
@@ -737,7 +739,7 @@ export function useAuth(): UseAuthReturn {
       setError(null)
 
       try {
-        await client.delete(`/v1/auth/oauth/accounts/${provider}`)
+        await client.delete(`/v1/auth/oauth/providers/${encodeURIComponent(provider)}`)
       } catch (err) {
         if (err instanceof ScaleMuleApiError) {
           setError(err)
