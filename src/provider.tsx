@@ -69,6 +69,8 @@ interface ScaleMuleContextValue {
   video: VideoService
   /** Base SDK audio service — exposed for `useMedia()` and `audio.uploadViaStorage()` */
   audio: AudioService
+  /** Base SDK media facade — shared upload/list/delete surface across apps and scripts. */
+  media: unknown
   /** Base SDK TTS service — exposed for `useTtsJob()` and direct narration requests */
   tts: TtsService
   /**
@@ -550,6 +552,7 @@ export function ScaleMuleProvider({
       photo: baseClient.photo,
       video: baseClient.video,
       audio: baseClient.audio,
+      media: (baseClient as ScaleMule & { media: unknown }).media,
       tts: baseClient.tts,
       mediaPolicy: effectiveMediaPolicy,
       user,
