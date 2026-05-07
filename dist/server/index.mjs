@@ -4499,10 +4499,8 @@ function getLedverySession(request) {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
-    const accessToken = getCookie(request, SM_LEDVERY_ACCESS_TOKEN_COOKIE);
     return {
       idToken: parsed.idToken || "",
-      accessToken,
       claims: parsed.claims,
       expiresAt: parsed.expiresAt
     };
@@ -4604,11 +4602,9 @@ function createLedveryRoutes(config) {
   async function handleLogin(request) {
     const url = new URL(request.url);
     const returnTo = url.searchParams.get("returnTo");
-    const provider = url.searchParams.get("provider");
     const validatedReturnTo = validateSafeRedirect(returnTo, { defaultPath: postLoginRedirect });
     const authResult = await client.createAuthorizationUrl({
-      scope: defaultScope,
-      extraParams: provider ? { upstream: provider } : void 0
+      scope: defaultScope
     });
     const response = new Response(null, {
       status: 302,

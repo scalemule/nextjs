@@ -6,9 +6,22 @@ import { MoneyClient } from '@scalemule/money';
 export { MoneyClient, MoneyClientConfig, createMoneyClient } from '@scalemule/money';
 import { ScaleMuleClient } from './client.js';
 export { ClientConfig, RequestOptions, createClient } from './client.js';
-import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError$1, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-DTWyUcyd.js';
-export { h as AccountBalance, i as AnalyticsEvent, j as ApiResponse, B as BatchTrackRequest, k as BillingPayment, l as BillingPayout, m as BillingRefund, n as BillingTransaction, C as ChangeEmailRequest, o as ChangePasswordRequest, p as ClientContext, q as ConnectedAccount, D as DeviceFingerprint, r as DeviceInfo, E as EnhancedAnalyticsEvent, F as ForgotPasswordRequest, K as KnownAccountInfo, s as LinkedAccount, t as ListFilesResponse, u as LoginDeviceInfo, v as LoginRequest, w as LoginResponseWithMFA, x as LoginRiskInfo, M as MFAChallengeResponse, y as MFAMethod, z as MFASMSSetupResponse, G as MFASetupRequest, H as MFAStatus, I as MFATOTPSetupResponse, J as MFAVerifyRequest, O as OAuthCallbackRequest, N as OAuthCallbackResponse, P as OAuthConfig, Q as OAuthProvider, R as OAuthStartResponse, T as PageViewData, V as PayoutSchedule, W as PhoneLoginRequest, X as PhoneSendCodeRequest, Y as PhoneVerifyRequest, Z as Profile, _ as RefreshResponse, $ as RegisterRequest, a0 as ResetPasswordRequest, a1 as ScaleMuleApiError, a2 as ScaleMuleEnvironment, a3 as Session, a4 as SignedUploadCompleteRequest, a5 as SignedUploadRequest, a6 as SignedUploadResponse, a7 as SignedUploadUrl, a8 as StorageAdapter, a9 as StorageFile, aa as TrackEventResponse, ab as TransactionSummary, ac as UTMParams, ad as UpdateProfileRequest, ae as UploadOptions, af as UploadResponse, ag as VerifyEmailRequest } from './index-DTWyUcyd.js';
+import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError$1, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-zQloSkpW.js';
+export { h as AccountBalance, i as AnalyticsEvent, j as ApiResponse, B as BatchTrackRequest, k as BillingPayment, l as BillingPayout, m as BillingRefund, n as BillingTransaction, C as ChangeEmailRequest, o as ChangePasswordRequest, p as ClientContext, q as ConnectedAccount, D as DeviceFingerprint, r as DeviceInfo, E as EnhancedAnalyticsEvent, F as ForgotPasswordRequest, K as KnownAccountInfo, s as LinkedAccount, t as ListFilesResponse, u as LoginDeviceInfo, v as LoginRequest, w as LoginResponseWithMFA, x as LoginRiskInfo, M as MFAChallengeResponse, y as MFAMethod, z as MFASMSSetupResponse, G as MFASetupRequest, H as MFAStatus, I as MFATOTPSetupResponse, J as MFAVerifyRequest, O as OAuthCallbackRequest, N as OAuthCallbackResponse, P as OAuthConfig, Q as OAuthProvider, R as OAuthStartResponse, T as PageViewData, V as PayoutSchedule, W as PhoneLoginRequest, X as PhoneSendCodeRequest, Y as PhoneVerifyRequest, Z as Profile, _ as RefreshResponse, $ as RegisterRequest, a0 as ResetPasswordRequest, a1 as ScaleMuleApiError, a2 as ScaleMuleEnvironment, a3 as Session, a4 as SignedUploadCompleteRequest, a5 as SignedUploadRequest, a6 as SignedUploadResponse, a7 as SignedUploadUrl, a8 as StorageAdapter, a9 as StorageFile, aa as TrackEventResponse, ab as TransactionSummary, ac as UTMParams, ad as UpdateProfileRequest, ae as UploadOptions, af as UploadResponse, ag as VerifyEmailRequest } from './index-zQloSkpW.js';
 
+/**
+ * Tri-state file visibility — `'private' | 'app_public' | 'anonymous_visible'`.
+ *
+ * Locally redeclared here rather than imported from `@scalemule/sdk`
+ * so this package can ship before the sdk's `Visibility` export is
+ * published. Once `@scalemule/sdk` ≥ the version that exports
+ * `Visibility` is the minimum dep version, swap this for an `import
+ * type { Visibility } from '@scalemule/sdk'`.
+ *
+ * Keep the union members in lockstep with the storage migration's
+ * ENUM and the SDK's typed export.
+ */
+type Visibility = 'private' | 'app_public' | 'anonymous_visible';
 /**
  * Result of a single {@link useMedia} upload call.
  *
@@ -33,8 +46,24 @@ interface MediaUploadResult {
     hls_url_promise: Promise<string | null>;
     /** The file's MIME type — preserved from the input File / Blob. */
     mime_type: string;
-    /** Whether the resulting storage object is public-readable. */
+    /** Whether the resulting storage object is public-readable.
+     * Derived from `visibility !== 'private'` for back-compat with
+     * callers that still branch on the boolean. */
     is_public: boolean;
+    /**
+     * Resolved tri-state visibility from the storage service. Use this
+     * over `is_public` for new code — `is_public: true` covers both
+     * `'app_public'` (auth-gated CDN) and `'anonymous_visible'`
+     * (unsigned public CDN), which have different delivery contracts.
+     */
+    visibility: Visibility;
+    /**
+     * Stable unsigned public-CDN URL — populated only when
+     * `visibility === 'anonymous_visible'`. Drop directly into
+     * `<img src>` on logged-out pages. For other visibilities use
+     * `original_view_url` (signed) or the photo transform URL.
+     */
+    cdn_url: string | null;
 }
 /**
  * Per-app media-pipeline policy. Drives release-gating + processing
@@ -55,10 +84,34 @@ interface MediaUploadResult {
  */
 type MediaPolicy = 'fast_trusted' | 'safe_visible' | 'safe_public' | 'moderated' | 'compliance';
 interface UseMediaUploadOptions {
-    /** Whether the resulting storage object should be public-readable.
+    /**
+     * Tri-state visibility (preferred — see {@link Visibility} in
+     * `@scalemule/sdk`). Three modes:
+     *   - `'private'`           — owner + app members only (DEFAULT)
+     *   - `'app_public'`        — readable by any authenticated end-user
+     *                             in the same application; same semantics
+     *                             the legacy `is_public: true` flag has
+     *                             always had
+     *   - `'anonymous_visible'` — world-readable on the unsigned public
+     *                             CDN. Returned `cdn_url` is safe to drop
+     *                             into `<img src>` on a logged-out page.
+     *
+     * If both `visibility` and `is_public` are passed, `visibility`
+     * wins. `'anonymous_visible'` requires the operator to have
+     * provisioned the anonymous-delivery bucket — the storage service
+     * surfaces 503 `ANONYMOUS_DELIVERY_NOT_CONFIGURED` otherwise (the
+     * SDK never silently demotes).
+     */
+    visibility?: Visibility;
+    /**
+     * Legacy two-state visibility flag. `true` → `app_public`; `false`
+     * → `private`. Prefer the typed `visibility` field for new code —
+     * `is_public: true` cannot express `anonymous_visible`.
+     *
      * Default: `false` (private). Public is opt-in for surfaces that
      * genuinely need it (avatars, public listings). Chat / DM uploads
-     * should always be private. */
+     * should always be private.
+     */
     is_public?: boolean;
     /**
      * Per-call media-policy override. Defaults to `safe_visible` (visible
@@ -219,7 +272,7 @@ interface ScaleMuleProviderProps extends ScaleMuleConfig {
      * The platform stores the per-app policy in
      * `application_storage_settings.media_policy` (Phase 4 / P3, live in
      * prod). On boot, the provider fetches `GET /v1/storage/policy` (a
-     * lightweight `EndUserOnly` endpoint added in `@scalemule/sdk@0.0.45`)
+     * lightweight `MemberOrEndUser` endpoint added in `@scalemule/sdk@0.0.45`)
      * and uses the returned policy as the effective default.
      *
      * Passing this prop overrides the auto-fetched value — useful for
@@ -227,8 +280,42 @@ interface ScaleMuleProviderProps extends ScaleMuleConfig {
      * platform config.
      */
     mediaPolicy?: MediaPolicy;
+    /**
+     * Member-auth bridge. When set, the provider runs in **member mode**:
+     *
+     *   - Skips the `/v1/auth/me` end-user lookup and the auth-proxy
+     *     `/me` flow. Identity is owned upstream (e.g. `MemberAuthProvider`
+     *     in `web/scalemule-app`).
+     *   - Calls `getToken()` on mount and propagates the returned token
+     *     to all three SDK clients (`client`, `baseClient`, `money`) as a
+     *     `Bearer` Authorization header. Returning `null` clears the token.
+     *   - Re-polls every {@link memberTokenPollMs} milliseconds (default
+     *     60s) so cookie rotation in the host platform is picked up
+     *     without a full page reload.
+     *
+     * Use {@link userResolver} alongside this prop to populate `user` from
+     * a member-auth endpoint instead of `/v1/auth/me`.
+     *
+     * Mutually exclusive with `authProxyUrl`. If both are set, `getToken`
+     * wins and the auth-proxy path is skipped.
+     */
+    getToken?: () => string | null | Promise<string | null>;
+    /**
+     * Resolves the `User` shown to the app in member-auth mode. The
+     * provider calls this once after the initial token is set; the host
+     * platform typically just returns its own `MemberProfile` mapped to
+     * the SDK's `User` shape. Optional — if omitted, `user` stays `null`
+     * and the host platform is responsible for surfacing identity.
+     */
+    userResolver?: () => Promise<User | null>;
+    /**
+     * Member-mode token poll interval in milliseconds. Default 60_000
+     * (1 minute). Pass `null` to disable polling (only the mount-time
+     * read happens).
+     */
+    memberTokenPollMs?: number | null;
 }
-declare function ScaleMuleProvider({ apiKey, applicationId, environment, gatewayUrl, debug, storage, analyticsProxyUrl, authProxyUrl, telemetryEndpoint, publishableKey, enableAccountSwitcher, accountSwitcherPrivacy, children, onLogin, onLogout, onAuthError, bootstrapFlags, mediaPolicy, }: ScaleMuleProviderProps): react_jsx_runtime.JSX.Element;
+declare function ScaleMuleProvider({ apiKey, applicationId, environment, gatewayUrl, debug, storage, analyticsProxyUrl, authProxyUrl, telemetryEndpoint, publishableKey, enableAccountSwitcher, accountSwitcherPrivacy, children, onLogin, onLogout, onAuthError, bootstrapFlags, mediaPolicy, getToken, userResolver, memberTokenPollMs, }: ScaleMuleProviderProps): react_jsx_runtime.JSX.Element;
 declare function useScaleMule(): ScaleMuleContextValue;
 declare function useScaleMuleClient(): ScaleMuleClient;
 declare function useMoneyClient(): MoneyClient;
@@ -850,6 +937,35 @@ interface UseFeedbackResult {
  */
 declare function useFeedback(options?: UseFeedbackOptions): UseFeedbackResult;
 
+interface VoteState {
+    /** Caller's current vote: 1 = upvote, -1 = downvote, 0 = no vote. */
+    value: 1 | -1 | 0;
+    up_count: number;
+    down_count: number;
+    score: number;
+}
+interface UseVoteOptions {
+    /** Application-defined target type. e.g. "weekmob_post", "gistyo_gist". */
+    targetType: string;
+    targetId: string;
+    /** Optional seed (from SSR or list query). */
+    initialState?: VoteState | null;
+    /** Refetch even when initialState is provided. Default false. */
+    refetchOnMount?: boolean;
+    /** Skip the initial fetch entirely (anonymous viewers). Default true. */
+    enabled?: boolean;
+}
+interface UseVoteReturn {
+    state: VoteState;
+    isLoading: boolean;
+    error: Error | null;
+    /** Cast (or change/clear) the caller's vote with optimistic update. */
+    cast: (value: 1 | -1 | 0) => Promise<void>;
+    /** Refetch the canonical state from the server. */
+    refetch: () => Promise<void>;
+}
+declare function useVote({ targetType, targetId, initialState, refetchOnMount, enabled, }: UseVoteOptions): UseVoteReturn;
+
 interface FeedbackWidgetProps {
     /** Floating-button corner. Default `bottom-right`. */
     position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
@@ -887,6 +1003,33 @@ interface FeedbackWidgetProps {
  * `FEEDBACK_DISABLED` and the widget surfaces the error message.
  */
 declare function FeedbackWidget(props: FeedbackWidgetProps): ReactElement | null;
+
+interface VoteButtonClassNames {
+    root?: string;
+    upButton?: string;
+    upButtonActive?: string;
+    downButton?: string;
+    downButtonActive?: string;
+    score?: string;
+    scorePositive?: string;
+    scoreNegative?: string;
+}
+interface VoteButtonProps {
+    targetType: string;
+    targetId: string;
+    /** Server-known initial state, e.g. seeded from a list query. */
+    initialState?: VoteState | null;
+    /** Visual layout. "horizontal" = up | score | down. "stacked" = column. */
+    layout?: 'horizontal' | 'stacked';
+    size?: 'compact' | 'regular';
+    /** Called when an anonymous user clicks vote. */
+    onSignInRequired?: () => void;
+    onError?: (error: unknown) => void;
+    classNames?: VoteButtonClassNames;
+    upLabel?: string;
+    downLabel?: string;
+}
+declare function VoteButton({ targetType, targetId, initialState, layout, size, onSignInRequired, onError, classNames, upLabel, downLabel, }: VoteButtonProps): react_jsx_runtime.JSX.Element;
 
 /**
  * Client-side validation helpers
@@ -1046,4 +1189,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError$1 as ApiError, type AudioFile, type AudioUploadResult, type ConversationKind, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, type UseAudioReturn, type UseAudioUploadOptions, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, type UseTtsJobOptions, type UseTtsJobReturn, UseUserReturn, User, type UsernameValidationResult, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, validateForm, validators };
+export { ApiError$1 as ApiError, type AudioFile, type AudioUploadResult, type ConversationKind, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, type UseAudioReturn, type UseAudioUploadOptions, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, type UseTtsJobOptions, type UseTtsJobReturn, UseUserReturn, type UseVoteOptions, type UseVoteReturn, User, type UsernameValidationResult, VoteButton, type VoteButtonClassNames, type VoteButtonProps, type VoteState, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };

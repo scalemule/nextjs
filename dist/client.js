@@ -434,6 +434,24 @@ var ScaleMuleClient = class {
     }
   }
   /**
+   * Token-only setter for member-auth surfaces.
+   *
+   * Unlike `setSession(token, userId)`, this does NOT persist a userId or
+   * write to local storage — useful when the host platform owns identity
+   * (e.g. ScaleMule's member dashboards use `MemberAuthProvider` and the
+   * token comes from a `${env}_member_access_token` cookie). The token is
+   * applied in-memory and used as a `Bearer` Authorization header on
+   * subsequent requests.
+   *
+   * Pass `null` to clear without touching userId/storage.
+   */
+  setSessionToken(token) {
+    this.sessionToken = token;
+    if (this.debug) {
+      console.log("[ScaleMule] Session token", token ? "set (token-only)" : "cleared (token-only)");
+    }
+  }
+  /**
    * Clear session on logout
    */
   async clearSession() {
@@ -497,6 +515,8 @@ var ScaleMuleClient = class {
       console.log(`[ScaleMule] ${options.method || "GET"} ${path}`);
     }
     let lastError = null;
+    const MAX_REFRESH_ATTEMPTS = 1;
+    let refreshAttempts = 0;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -520,7 +540,8 @@ var ScaleMuleClient = class {
         if (!response.ok) {
           const rawError = responseData?.error;
           const error = rawError && typeof rawError === "object" ? rawError : { code: `HTTP_${response.status}`, message: typeof rawError === "string" ? rawError : responseData?.message || text || response.statusText };
-          if (response.status === 401 && this.sessionToken && !options.isAutoRefresh) {
+          if (response.status === 401 && this.sessionToken && !options.isAutoRefresh && refreshAttempts < MAX_REFRESH_ATTEMPTS) {
+            refreshAttempts++;
             if (this.debug) console.log("[ScaleMule] 401 received, attempting auto-refresh...");
             if (!this.refreshPromise) {
               this.onRefreshStart?.();

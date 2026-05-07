@@ -580,6 +580,7 @@ var ScaleMuleClient = class {
     this.anonymousId = null;
     this.sessionPool = /* @__PURE__ */ new Map();
     this.knownAccounts = /* @__PURE__ */ new Map();
+    this.refreshPromise = null;
     this.apiKey = config.apiKey;
     this.applicationId = config.applicationId || null;
     this.baseUrl = config.baseUrl || GATEWAY_URLS[config.environment || "prod"];
@@ -598,6 +599,9 @@ var ScaleMuleClient = class {
     this.multiSessionEnabled = config.enableMultiSession || false;
     this.accountSwitcherEnabled = config.enableAccountSwitcher || false;
     this.accountSwitcherPrivacy = config.accountSwitcherPrivacy || "full";
+    this.onRefreshStart = config.onRefreshStart;
+    this.onRefreshEnd = config.onRefreshEnd;
+    this.onAutoRefreshFailed = config.onAutoRefreshFailed;
   }
   // --------------------------------------------------------------------------
   // Session Management
@@ -883,34 +887,28 @@ var ScaleMuleClient = class {
     const method = (init.method || "GET").toUpperCase();
     const timeout = init.timeout || this.defaultTimeout;
     const maxRetries = init.skipRetry ? 0 : init.retries ?? this.maxRetries;
-    const headers = {
-      "x-api-key": this.apiKey,
-      "User-Agent": `ScaleMule-SDK-TypeScript/${SDK_VERSION}`,
-      ...init.headers
-    };
-    if (!init.skipAuth && this.sessionToken) {
-      headers["Authorization"] = `Bearer ${this.sessionToken}`;
-    }
-    if (this.workspaceId) {
-      headers["x-sm-workspace-id"] = this.workspaceId;
-    }
-    if (!this.sessionToken && this.anonymousId) {
-      headers["x-anonymous-id"] = this.anonymousId;
-    }
-    let bodyStr;
-    if (init.body !== void 0 && init.body !== null) {
-      bodyStr = typeof init.body === "string" ? init.body : JSON.stringify(init.body);
-      if (!headers["Content-Type"]) {
-        headers["Content-Type"] = "application/json";
-      }
-    }
-    if (this.debug) {
-      console.log(`[ScaleMule] ${method} ${path}`);
-    }
-    const idempotencyKey = method === "POST" ? generateIdempotencyKey() : void 0;
+    const bodyStr = init.body ? JSON.stringify(init.body) : void 0;
     let lastError = null;
+    let idempotencyKey = null;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      if (attempt > 0 && idempotencyKey) {
+      const headers = {
+        "x-api-key": this.apiKey,
+        "User-Agent": `ScaleMule-SDK-TypeScript/${SDK_VERSION}`,
+        ...init.headers
+      };
+      if (!init.skipAuth && this.sessionToken) {
+        headers["Authorization"] = `Bearer ${this.sessionToken}`;
+      }
+      if (this.workspaceId) {
+        headers["x-sm-workspace-id"] = this.workspaceId;
+      }
+      if (!this.sessionToken && this.anonymousId) {
+        headers["x-anonymous-id"] = this.anonymousId;
+      }
+      if (attempt > 0 && (method === "POST" || method === "PUT" || method === "PATCH")) {
+        if (!idempotencyKey) {
+          idempotencyKey = generateIdempotencyKey();
+        }
         headers["x-idempotency-key"] = idempotencyKey;
       }
       const controller = new AbortController();
@@ -930,6 +928,10 @@ var ScaleMuleClient = class {
           signal: controller.signal
         });
         clearTimeout(timeoutId);
+        const rotatedToken = response.headers.get("x-rotated-session-token");
+        if (rotatedToken && this.sessionToken && this.userId) {
+          this.setSession(rotatedToken, this.userId);
+        }
         if (this.rateLimitQueue) {
           this.rateLimitQueue.updateFromHeaders(response.headers);
         }
@@ -952,6 +954,45 @@ var ScaleMuleClient = class {
             status: response.status,
             details: responseData?.error?.details || responseData?.details
           };
+          if (response.status === 401 && this.sessionToken && !init.isAutoRefresh) {
+            if (this.debug) console.log("[ScaleMule] 401 received, attempting auto-refresh...");
+            let isPrimaryRefresh = false;
+            if (!this.refreshPromise) {
+              isPrimaryRefresh = true;
+              this.onRefreshStart?.();
+              this.refreshPromise = this.auth?.refreshSession ? this.auth.refreshSession() : this.post("/auth/refresh", {}, { isAutoRefresh: true });
+            }
+            const currentRefreshPromise = this.refreshPromise;
+            try {
+              const refreshResult = await currentRefreshPromise;
+              if (!refreshResult || refreshResult.error) {
+                if (this.debug) console.log("[ScaleMule] Auto-refresh failed:", refreshResult?.error);
+                const apiError = refreshResult?.error || {
+                  code: "refresh_failed",
+                  message: "Auto-refresh failed",
+                  status: 400
+                };
+                init.onAutoRefreshFailed?.(apiError);
+                this.onAutoRefreshFailed?.(apiError);
+                return { data: null, error };
+              }
+              if (this.debug) console.log("[ScaleMule] Auto-refresh succeeded, retrying original request...");
+              const newToken = refreshResult.data?.session_token || refreshResult.data?.access_token;
+              if (newToken) {
+                this.sessionToken = newToken;
+                if (this.userId) {
+                  await this.storage.setItem(SESSION_STORAGE_KEY, newToken);
+                }
+              }
+              attempt--;
+              continue;
+            } finally {
+              if (isPrimaryRefresh && this.refreshPromise === currentRefreshPromise) {
+                this.refreshPromise = null;
+                this.onRefreshEnd?.();
+              }
+            }
+          }
           if (response.status === 429) {
             const retryAfter = response.headers.get("Retry-After");
             if (retryAfter) {
@@ -5735,7 +5776,7 @@ var AudioService = class extends ServiceModule {
   constructor(client, storage) {
     super(client);
     this.storage = storage;
-    this.basePath = "/v1/audios";
+    this.basePath = "/v1/audio";
   }
   /**
    * Register a storage-uploaded audio asset with the audio service.
@@ -5790,6 +5831,32 @@ var AudioService = class extends ServiceModule {
       },
       error: null
     };
+  }
+};
+var TtsService = class extends ServiceModule {
+  constructor() {
+    super(...arguments);
+    this.basePath = "/v1/tts";
+  }
+  async synthesize(params, options) {
+    return this.post(
+      "/synthesize",
+      {
+        text: params.text,
+        voice: params.voice,
+        model: params.model,
+        provider: params.provider,
+        async: params.async,
+        access_mode: params.accessMode
+      },
+      options
+    );
+  }
+  async getJob(id, options) {
+    return this._get(`/jobs/${id}`, options);
+  }
+  async listVoices(params, options) {
+    return this._get(this.withQuery("/voices", { provider: params?.provider }), options);
   }
 };
 var DeadLetterApi = class extends ServiceModule {
@@ -6612,6 +6679,7 @@ var ScaleMule = class {
     this.functions = new FunctionsService(this._client);
     this.photo = new PhotoService(this._client, this.storage);
     this.audio = new AudioService(this._client, this.storage);
+    this.tts = new TtsService(this._client);
     this.flagContent = new FlagContentService(this._client);
     this.creatorMaker = new CreatorMakerService(this._client);
     this.compliance = new ComplianceService(this._client);
@@ -7179,6 +7247,24 @@ var ScaleMuleClient2 = class {
     }
   }
   /**
+   * Token-only setter for member-auth surfaces.
+   *
+   * Unlike `setSession(token, userId)`, this does NOT persist a userId or
+   * write to local storage — useful when the host platform owns identity
+   * (e.g. ScaleMule's member dashboards use `MemberAuthProvider` and the
+   * token comes from a `${env}_member_access_token` cookie). The token is
+   * applied in-memory and used as a `Bearer` Authorization header on
+   * subsequent requests.
+   *
+   * Pass `null` to clear without touching userId/storage.
+   */
+  setSessionToken(token) {
+    this.sessionToken = token;
+    if (this.debug) {
+      console.log("[ScaleMule] Session token", token ? "set (token-only)" : "cleared (token-only)");
+    }
+  }
+  /**
    * Clear session on logout
    */
   async clearSession() {
@@ -7242,6 +7328,8 @@ var ScaleMuleClient2 = class {
       console.log(`[ScaleMule] ${options.method || "GET"} ${path}`);
     }
     let lastError = null;
+    const MAX_REFRESH_ATTEMPTS = 1;
+    let refreshAttempts = 0;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -7265,7 +7353,8 @@ var ScaleMuleClient2 = class {
         if (!response.ok) {
           const rawError = responseData?.error;
           const error = rawError && typeof rawError === "object" ? rawError : { code: `HTTP_${response.status}`, message: typeof rawError === "string" ? rawError : responseData?.message || text || response.statusText };
-          if (response.status === 401 && this.sessionToken && !options.isAutoRefresh) {
+          if (response.status === 401 && this.sessionToken && !options.isAutoRefresh && refreshAttempts < MAX_REFRESH_ATTEMPTS) {
+            refreshAttempts++;
             if (this.debug) console.log("[ScaleMule] 401 received, attempting auto-refresh...");
             if (!this.refreshPromise) {
               this.onRefreshStart?.();
@@ -7634,8 +7723,12 @@ function ScaleMuleProvider({
   onLogout,
   onAuthError,
   bootstrapFlags,
-  mediaPolicy
+  mediaPolicy,
+  getToken,
+  userResolver,
+  memberTokenPollMs
 }) {
+  const memberMode = typeof getToken === "function";
   const [user, setUser] = React.useState(null);
   const [initializing, setInitializing] = React.useState(true);
   const [error, setError] = React.useState(null);
@@ -7652,9 +7745,13 @@ function ScaleMuleProvider({
       gatewayUrl: resolvedGatewayUrl,
       debug,
       storage,
-      pendingSessionInit: !!authProxyUrl
+      // Make outbound API calls wait for the first token to land in any
+      // mode where the provider is responsible for populating the
+      // session asynchronously: auth-proxy fetch, or member-mode
+      // getToken() callback. Resolved in the init effect below.
+      pendingSessionInit: !!authProxyUrl || memberMode
     }),
-    [apiKey, applicationId, environment, resolvedGatewayUrl, debug, storage, authProxyUrl]
+    [apiKey, applicationId, environment, resolvedGatewayUrl, debug, storage, authProxyUrl, memberMode]
   );
   const money$1 = React.useMemo(
     () => money.createMoneyClient({
@@ -7676,8 +7773,10 @@ function ScaleMuleProvider({
     });
   }, [apiKey, applicationId, environment, resolvedGatewayUrl, debug]);
   const [fetchedPolicy, setFetchedPolicy] = React.useState(void 0);
+  const [tokenVersion, setTokenVersion] = React.useState(0);
   React.useEffect(() => {
     if (mediaPolicy) return;
+    if (memberMode && tokenVersion === 0) return;
     let mounted = true;
     void (async () => {
       try {
@@ -7695,7 +7794,7 @@ function ScaleMuleProvider({
     return () => {
       mounted = false;
     };
-  }, [baseClient, mediaPolicy]);
+  }, [baseClient, mediaPolicy, memberMode, tokenVersion]);
   const effectiveMediaPolicy = mediaPolicy ?? fetchedPolicy;
   React.useEffect(() => {
     const token = client.getSessionToken();
@@ -7713,6 +7812,43 @@ function ScaleMuleProvider({
       try {
         await client.initialize();
         const cachedUser = getCachedUser();
+        if (memberMode) {
+          try {
+            const token = await Promise.resolve(getToken()) ?? null;
+            if (mounted) {
+              if (token) {
+                client.setSessionToken(token);
+                baseClient.setAccessToken(token);
+                money$1.setAccessToken(token);
+              } else {
+                client.setSessionToken(null);
+                baseClient.clearAccessToken();
+                money$1.setAccessToken(void 0);
+              }
+              setTokenVersion((v) => v + 1);
+            }
+            if (userResolver) {
+              try {
+                const resolvedUser = await userResolver();
+                if (mounted) {
+                  setUser(resolvedUser);
+                  setCachedUser(resolvedUser);
+                }
+              } catch (resolveErr) {
+                if (mounted && debug) {
+                  console.debug("[ScaleMule] userResolver() failed:", resolveErr);
+                }
+              }
+            }
+          } catch (memberErr) {
+            if (mounted && debug) {
+              console.debug("[ScaleMule] getToken() failed:", memberErr);
+            }
+          } finally {
+            client.resolveSessionPending();
+          }
+          return;
+        }
         if (authProxyUrl) {
           if (cachedUser && mounted) {
             setUser(cachedUser);
@@ -7784,7 +7920,43 @@ function ScaleMuleProvider({
     return () => {
       mounted = false;
     };
-  }, [client, debug, onAuthError, authProxyUrl]);
+  }, [client, baseClient, money$1, debug, onAuthError, authProxyUrl, memberMode, getToken, userResolver]);
+  React.useEffect(() => {
+    if (!memberMode) return;
+    if (memberTokenPollMs === null) return;
+    const interval = memberTokenPollMs ?? 6e4;
+    if (interval <= 0) return;
+    let cancelled = false;
+    const id = setInterval(async () => {
+      try {
+        const token = await Promise.resolve(getToken()) ?? null;
+        if (cancelled) return;
+        const current = client.getSessionToken();
+        if (token === current) return;
+        if (token) {
+          client.setSessionToken(token);
+          baseClient.setAccessToken(token);
+          money$1.setAccessToken(token);
+        } else {
+          client.setSessionToken(null);
+          baseClient.clearAccessToken();
+          money$1.setAccessToken(void 0);
+          if (debug) {
+            console.debug("[ScaleMule] Member token cleared on refresh");
+          }
+        }
+        setTokenVersion((v) => v + 1);
+      } catch (err) {
+        if (debug) {
+          console.debug("[ScaleMule] Member token refresh failed:", err);
+        }
+      }
+    }, interval);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [memberMode, memberTokenPollMs, getToken, client, baseClient, money$1, debug]);
   const handleSetUser = React.useCallback(
     (newUser) => {
       setUser(newUser);
@@ -8266,8 +8438,8 @@ function useAuth() {
   const getLinkedAccounts = React.useCallback(async () => {
     setError(null);
     try {
-      const data = await client.get("/v1/auth/oauth/accounts");
-      return data.accounts;
+      const data = await client.get("/v1/auth/oauth/providers");
+      return data.providers;
     } catch (err) {
       if (err instanceof ScaleMuleApiError) {
         setError(err);
@@ -8276,41 +8448,30 @@ function useAuth() {
     }
   }, [client, setError]);
   const linkAccount = React.useCallback(
-    async (config) => {
+    async (_config) => {
       setError(null);
       if (!user) {
-        const err = {
+        const err2 = {
           code: "NOT_AUTHENTICATED",
           message: "Must be logged in to link accounts"
         };
-        setError(err);
-        throw err;
+        setError(err2);
+        throw err2;
       }
-      let linkData;
-      try {
-        linkData = await client.post("/v1/auth/oauth/link", {
-          provider: config.provider,
-          redirect_url: config.redirectUrl,
-          scopes: config.scopes
-        });
-      } catch (err) {
-        if (err instanceof ScaleMuleApiError) {
-          setError(err);
-        }
-        throw err;
-      }
-      if (typeof sessionStorage !== "undefined") {
-        sessionStorage.setItem("scalemule_oauth_state", linkData.state);
-      }
-      return linkData;
+      const err = {
+        code: "NOT_IMPLEMENTED",
+        message: "OAuth account linking from a logged-in session is not yet supported. Use the standard OAuth sign-in flow instead."
+      };
+      setError(err);
+      throw err;
     },
-    [client, user, setError]
+    [user, setError]
   );
   const unlinkAccount = React.useCallback(
     async (provider) => {
       setError(null);
       try {
-        await client.delete(`/v1/auth/oauth/accounts/${provider}`);
+        await client.delete(`/v1/auth/oauth/providers/${encodeURIComponent(provider)}`);
       } catch (err) {
         if (err instanceof ScaleMuleApiError) {
           setError(err);
@@ -9383,7 +9544,9 @@ function useMedia() {
     async (file, options) => {
       setUploading(true);
       setError(null);
-      const isPublic = options?.is_public ?? false;
+      const visibility = options?.visibility ?? (options?.is_public === true ? "app_public" : options?.is_public === false ? "private" : "private");
+      const isPublic = visibility !== "private";
+      const isAnonymous = visibility === "anonymous_visible";
       const mimeType = file.type || "application/octet-stream";
       const policy = options?.policy ?? providerDefaultPolicy ?? "safe_visible";
       const gateOnPipeline = policy === "safe_public" || policy === "moderated" || policy === "compliance";
@@ -9393,7 +9556,31 @@ function useMedia() {
         onProgress: options?.onProgress,
         signal: options?.signal
       };
+      const storageAnon = storage;
       try {
+        if (isAnonymous) {
+          const r2 = await storageAnon.uploadAnonymous(file, sharedOpts);
+          if (r2.error || !r2.data) {
+            throw r2.error ?? { code: "upload_error", message: "Upload failed", status: 0 };
+          }
+          const f2 = r2.data;
+          return {
+            file_id: f2.id,
+            photo_id: null,
+            // For anon files, original_view_url is the same unsigned
+            // CDN URL — no signed alternative exists. Callers should
+            // prefer `cdn_url` (more specific) but `original_view_url`
+            // works too for back-compat with code that already reads
+            // that field.
+            original_view_url: f2.cdn_url ?? null,
+            optimized_url_promise: Promise.resolve(null),
+            hls_url_promise: Promise.resolve(null),
+            mime_type: mimeType,
+            is_public: true,
+            visibility: "anonymous_visible",
+            cdn_url: f2.cdn_url ?? null
+          };
+        }
         if (mimeType.startsWith("image/") && !options?.skipPhotoRegister && !isPublic) {
           const r2 = await photo.uploadViaStorage(file, sharedOpts);
           if (r2.error || !r2.data) {
@@ -9409,7 +9596,9 @@ function useMedia() {
             optimized_url_promise: r2.data.optimized_url_promise,
             hls_url_promise: Promise.resolve(null),
             mime_type: mimeType,
-            is_public: false
+            is_public: false,
+            visibility: "private",
+            cdn_url: null
           };
         }
         if (mimeType.startsWith("video/") && !isPublic) {
@@ -9427,7 +9616,9 @@ function useMedia() {
             optimized_url_promise: Promise.resolve(null),
             hls_url_promise: r2.data.hls_url_promise,
             mime_type: mimeType,
-            is_public: false
+            is_public: false,
+            visibility: "private",
+            cdn_url: null
           };
         }
         if (mimeType.startsWith("audio/") && !isPublic) {
@@ -9442,13 +9633,15 @@ function useMedia() {
             optimized_url_promise: Promise.resolve(null),
             hls_url_promise: Promise.resolve(null),
             mime_type: mimeType,
-            is_public: false
+            is_public: false,
+            visibility: "private",
+            cdn_url: null
           };
         }
         if (mimeType.startsWith("image/") && isPublic) {
           const r2 = await storage.upload(file, {
             ...sharedOpts,
-            isPublic: true,
+            visibility: "app_public",
             skipCompression: true
           });
           if (r2.error || !r2.data) {
@@ -9462,10 +9655,16 @@ function useMedia() {
             optimized_url_promise: Promise.resolve(null),
             hls_url_promise: Promise.resolve(null),
             mime_type: mimeType,
-            is_public: f2.is_public ?? true
+            is_public: f2.is_public ?? true,
+            visibility: f2.visibility ?? "app_public",
+            cdn_url: f2.cdn_url ?? null
           };
         }
-        const r = isPublic ? await storage.upload(file, { ...sharedOpts, isPublic: true, skipCompression: true }) : await storage.uploadPrivate(file, sharedOpts);
+        const r = isPublic ? await storage.upload(file, {
+          ...sharedOpts,
+          visibility: "app_public",
+          skipCompression: true
+        }) : await storage.uploadPrivate(file, sharedOpts);
         if (r.error || !r.data) {
           throw r.error ?? { code: "upload_error", message: "Upload failed", status: 0 };
         }
@@ -9477,7 +9676,9 @@ function useMedia() {
           optimized_url_promise: Promise.resolve(null),
           hls_url_promise: Promise.resolve(null),
           mime_type: mimeType,
-          is_public: f.is_public ?? isPublic
+          is_public: f.is_public ?? isPublic,
+          visibility: f.visibility ?? (isPublic ? "app_public" : "private"),
+          cdn_url: f.cdn_url ?? null
         };
       } catch (err) {
         const e = err;
@@ -10920,6 +11121,75 @@ function useFeedback(options = {}) {
   );
   return { items, loading, error, submit, refresh };
 }
+var ZERO = { value: 0, up_count: 0, down_count: 0, score: 0 };
+function useVote({
+  targetType,
+  targetId,
+  initialState,
+  refetchOnMount = false,
+  enabled = true
+}) {
+  const { client } = useScaleMule();
+  const [state, setState] = React.useState(initialState ?? ZERO);
+  const [isLoading, setIsLoading] = React.useState(!initialState && enabled);
+  const [error, setError] = React.useState(null);
+  const inFlight = React.useRef(null);
+  const path = `/v1/social/${encodeURIComponent(targetType)}/${encodeURIComponent(targetId)}/vote`;
+  const refetch = React.useCallback(async () => {
+    if (!enabled) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await client.get(path);
+      setState(data);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [client, path, enabled]);
+  React.useEffect(() => {
+    if (!enabled) return;
+    if (initialState && !refetchOnMount) return;
+    void refetch();
+  }, [enabled, refetch, initialState, refetchOnMount]);
+  const cast = React.useCallback(
+    async (value) => {
+      const prev = state;
+      const optimistic = applyVote(prev, value);
+      setState(optimistic);
+      setError(null);
+      const send = async () => {
+        try {
+          const data = await client.put(path, { value });
+          setState(data);
+        } catch (e) {
+          setState(prev);
+          setError(e);
+        }
+      };
+      const p = inFlight.current ? inFlight.current.then(send) : send();
+      inFlight.current = p;
+      await p;
+      if (inFlight.current === p) inFlight.current = null;
+    },
+    [client, path, state]
+  );
+  return { state, isLoading, error, cast, refetch };
+}
+function applyVote(prev, next) {
+  let { up_count, down_count } = prev;
+  if (prev.value === 1) up_count = Math.max(0, up_count - 1);
+  if (prev.value === -1) down_count = Math.max(0, down_count - 1);
+  if (next === 1) up_count += 1;
+  if (next === -1) down_count += 1;
+  return {
+    value: next,
+    up_count,
+    down_count,
+    score: up_count - down_count
+  };
+}
 var TYPE_LABELS = {
   bug_report: "Bug",
   feature_request: "Feature request",
@@ -11288,6 +11558,130 @@ function FeedbackWidget(props) {
     ) })
   ] });
 }
+var ARROW_UP = "\u25B2";
+var ARROW_DOWN = "\u25BC";
+var STYLES2 = {
+  root: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6
+  },
+  rootStacked: {
+    display: "inline-flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 2
+  },
+  button: {
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.04)",
+    color: "inherit",
+    cursor: "pointer",
+    borderRadius: 9999,
+    padding: "6px 10px",
+    lineHeight: 1,
+    fontSize: 14
+  },
+  buttonCompact: {
+    padding: "3px 7px",
+    fontSize: 12
+  },
+  buttonActiveUp: {
+    background: "rgba(34,197,94,0.18)",
+    borderColor: "rgba(34,197,94,0.45)",
+    color: "#86efac"
+  },
+  buttonActiveDown: {
+    background: "rgba(239,68,68,0.18)",
+    borderColor: "rgba(239,68,68,0.45)",
+    color: "#fca5a5"
+  },
+  score: {
+    minWidth: 24,
+    textAlign: "center",
+    fontVariantNumeric: "tabular-nums",
+    fontWeight: 600
+  }
+};
+function VoteButton({
+  targetType,
+  targetId,
+  initialState,
+  layout = "horizontal",
+  size = "regular",
+  onSignInRequired,
+  onError,
+  classNames,
+  upLabel = "Upvote",
+  downLabel = "Downvote"
+}) {
+  const { isAuthenticated } = useAuth();
+  const { state, cast, error } = useVote({
+    targetType,
+    targetId,
+    initialState: initialState ?? null,
+    enabled: isAuthenticated
+  });
+  const handleVote = React.useCallback(
+    async (next) => {
+      if (!isAuthenticated) {
+        onSignInRequired?.();
+        return;
+      }
+      const desired = state.value === next ? 0 : next;
+      try {
+        await cast(desired);
+      } catch (e) {
+        onError?.(e);
+      }
+    },
+    [cast, isAuthenticated, onSignInRequired, onError, state.value]
+  );
+  React.useEffect(() => {
+    if (error) onError?.(error);
+  }, [error, onError]);
+  const compactStyle = size === "compact" ? STYLES2.buttonCompact : {};
+  const upActive = state.value === 1;
+  const downActive = state.value === -1;
+  const upBtn = /* @__PURE__ */ jsxRuntime.jsx(
+    "button",
+    {
+      type: "button",
+      "aria-label": upLabel,
+      "aria-pressed": upActive,
+      title: isAuthenticated ? upLabel : "Sign in to vote",
+      className: [classNames?.upButton, upActive ? classNames?.upButtonActive : void 0].filter(Boolean).join(" ") || void 0,
+      onClick: () => void handleVote(1),
+      style: classNames?.upButton ? void 0 : { ...STYLES2.button, ...compactStyle, ...upActive ? STYLES2.buttonActiveUp : {} },
+      children: ARROW_UP
+    }
+  );
+  const downBtn = /* @__PURE__ */ jsxRuntime.jsx(
+    "button",
+    {
+      type: "button",
+      "aria-label": downLabel,
+      "aria-pressed": downActive,
+      title: isAuthenticated ? downLabel : "Sign in to vote",
+      className: [classNames?.downButton, downActive ? classNames?.downButtonActive : void 0].filter(Boolean).join(" ") || void 0,
+      onClick: () => void handleVote(-1),
+      style: classNames?.downButton ? void 0 : { ...STYLES2.button, ...compactStyle, ...downActive ? STYLES2.buttonActiveDown : {} },
+      children: ARROW_DOWN
+    }
+  );
+  const scoreClass = [
+    classNames?.score,
+    state.score > 0 ? classNames?.scorePositive : void 0,
+    state.score < 0 ? classNames?.scoreNegative : void 0
+  ].filter(Boolean).join(" ") || void 0;
+  const scoreEl = /* @__PURE__ */ jsxRuntime.jsx("span", { className: scoreClass, style: classNames?.score ? void 0 : STYLES2.score, children: state.score });
+  const rootStyle = layout === "stacked" ? STYLES2.rootStacked : STYLES2.root;
+  return /* @__PURE__ */ jsxRuntime.jsxs("div", { className: classNames?.root, style: classNames?.root ? void 0 : rootStyle, children: [
+    upBtn,
+    scoreEl,
+    downBtn
+  ] });
+}
 
 // src/validation.ts
 var phoneCountries = [
@@ -11593,6 +11987,7 @@ exports.ScaleMuleApiError = ScaleMuleApiError;
 exports.ScaleMuleClient = ScaleMuleClient2;
 exports.ScaleMuleMedia = ScaleMuleMedia;
 exports.ScaleMuleProvider = ScaleMuleProvider;
+exports.VoteButton = VoteButton;
 exports.composePhone = composePhone;
 exports.createClient = createClient;
 exports.createSafeLogger = createSafeLogger;
@@ -11617,5 +12012,6 @@ exports.useScaleMuleClient = useScaleMuleClient;
 exports.useShare = useShare;
 exports.useTtsJob = useTtsJob;
 exports.useUser = useUser;
+exports.useVote = useVote;
 exports.validateForm = validateForm;
 exports.validators = validators;
