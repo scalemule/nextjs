@@ -219,6 +219,8 @@ interface ScaleMuleContextValue {
     video: VideoService;
     /** Base SDK audio service — exposed for `useMedia()` and `audio.uploadViaStorage()` */
     audio: AudioService;
+    /** Base SDK media facade — shared upload/list/delete surface across apps and scripts. */
+    media: unknown;
     /** Base SDK TTS service — exposed for `useTtsJob()` and direct narration requests */
     tts: TtsService;
     /**

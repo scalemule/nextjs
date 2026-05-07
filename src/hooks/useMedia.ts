@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
-import type { ApiError, FileInfo, UploadOptions } from '@scalemule/sdk'
+import type { ApiError } from '@scalemule/sdk'
 
 /**
  * Tri-state file visibility — `'private' | 'app_public' | 'anonymous_visible'`.
@@ -157,6 +157,25 @@ export interface UseMediaReturn {
   uploading: boolean
 }
 
+type MediaFacade = {
+  upload: (
+    file: File | Blob,
+    options?: {
+      visibility?: Visibility
+      isPublic?: boolean
+      policy?: MediaPolicy
+      filename?: string
+      metadata?: Record<string, unknown>
+      signal?: AbortSignal
+      skipPhotoRegister?: boolean
+      onProgress?: (event: { progress?: number }) => void
+    },
+  ) => Promise<{ data: MediaUploadResult | null; error: ApiError | null }>
+  delete: (
+    fileId: string,
+  ) => Promise<{ data: { deleted: boolean } | null; error: ApiError | null }>
+}
+
 /**
  * Opinionated, MIME-aware media upload hook.
  *
@@ -208,7 +227,8 @@ export interface UseMediaReturn {
  * tree and the full anti-patterns list.
  */
 export function useMedia(): UseMediaReturn {
-  const { storage, photo, video, audio, mediaPolicy: providerDefaultPolicy } = useScaleMule()
+  const { media: rawMedia, mediaPolicy: providerDefaultPolicy } = useScaleMule()
+  const media = rawMedia as MediaFacade
 
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
@@ -218,238 +238,41 @@ export function useMedia(): UseMediaReturn {
       setUploading(true)
       setError(null)
 
-      // Resolve visibility — typed `visibility` wins; otherwise
-      // derive from legacy `is_public`; otherwise default `private`.
-      // Same precedence the storage service applies on the wire, so
-      // the SDK and server agree on the resolved value before we
-      // decide which branch to take.
-      const visibility: Visibility = options?.visibility
-        ?? (options?.is_public === true
-          ? 'app_public'
-          : options?.is_public === false
-            ? 'private'
-            : 'private')
-      const isPublic = visibility !== 'private'
-      const isAnonymous = visibility === 'anonymous_visible'
-      const mimeType = (file as File).type || 'application/octet-stream'
-
       // Policy precedence: per-call override > provider default >
       // built-in safe_visible default. Policies that gate release on
       // pipeline completion (safe_public / moderated / compliance) await
       // optimize/transcode before resolving the upload promise.
       const policy: MediaPolicy =
         options?.policy ?? providerDefaultPolicy ?? 'safe_visible'
-      const gateOnPipeline =
-        policy === 'safe_public' ||
-        policy === 'moderated' ||
-        policy === 'compliance'
-
-      // Common UploadOptions for all branches.
-      const sharedOpts: UploadOptions = {
-        filename: options?.filename,
-        metadata: options?.metadata,
-        onProgress: options?.onProgress,
-        signal: options?.signal,
-      }
-
-      // The visibility-aware fields (`uploadAnonymous`, the
-      // `visibility` UploadOption, `FileInfo.cdn_url`) are added in
-      // `@scalemule/sdk` PR #47. Until that version is the min dep
-      // here we widen the storage / FileInfo views via a small set of
-      // typed aliases so this hook can call them. Once the new SDK
-      // version is the floor, drop these and import the real types.
-      type StorageWithAnon = typeof storage & {
-        uploadAnonymous: (
-          f: File | Blob,
-          opts?: Omit<UploadOptions, 'visibility' | 'isPublic'>
-        ) => ReturnType<typeof storage.upload>
-      }
-      type UploadOptionsWithVisibility = UploadOptions & { visibility?: Visibility }
-      type FileInfoWithVisibility = FileInfo & {
-        visibility?: Visibility
-        cdn_url?: string
-      }
-      const storageAnon = storage as StorageWithAnon
 
       try {
-        // ────────────────────────────────────────────────────────────────
-        // Anonymous-visible branch (any MIME).
-        //
-        // Files uploaded with `visibility: 'anonymous_visible'` go
-        // directly to storage's anonymous bucket and are served from
-        // the unsigned public CDN. The photo / video / audio
-        // services don't need to be involved here from the client —
-        // their scan subscribers pick anon files up server-side and
-        // register them automatically (skipping the bucket-copy
-        // step). Returning `cdn_url` is the contract callers rely
-        // on — drop directly into `<img src>` / `<video src>`.
-        // ────────────────────────────────────────────────────────────────
-        if (isAnonymous) {
-          const r = await storageAnon.uploadAnonymous(file, sharedOpts)
-          if (r.error || !r.data) {
-            throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
-          }
-          const f = r.data as FileInfoWithVisibility
-          return {
-            file_id: f.id,
-            photo_id: null,
-            // For anon files, original_view_url is the same unsigned
-            // CDN URL — no signed alternative exists. Callers should
-            // prefer `cdn_url` (more specific) but `original_view_url`
-            // works too for back-compat with code that already reads
-            // that field.
-            original_view_url: f.cdn_url ?? null,
-            optimized_url_promise: Promise.resolve(null),
-            hls_url_promise: Promise.resolve(null),
-            mime_type: mimeType,
-            is_public: true,
-            visibility: 'anonymous_visible',
-            cdn_url: f.cdn_url ?? null,
-          }
+        const result = await media.upload(file, {
+          visibility: options?.visibility,
+          isPublic: options?.is_public,
+          policy,
+          filename: options?.filename,
+          metadata: options?.metadata,
+          signal: options?.signal,
+          skipPhotoRegister: options?.skipPhotoRegister,
+          onProgress: (event) => {
+            if (typeof event.progress === 'number') {
+              options?.onProgress?.(event.progress)
+            }
+          },
+        })
+        if (result.error || !result.data) {
+          throw result.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
         }
-
-        // ────────────────────────────────────────────────────────────────
-        // Image branch: upload + register with photo service.
-        // Use uploadViaStorage so the photo optimizer picks it up.
-        // ────────────────────────────────────────────────────────────────
-        if (mimeType.startsWith('image/') && !options?.skipPhotoRegister && !isPublic) {
-          const r = await photo.uploadViaStorage(file, sharedOpts)
-          if (r.error || !r.data) {
-            throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
-          }
-          // Release-gating policies: wait for the optimized variant
-          // before resolving the upload promise.
-          if (gateOnPipeline) {
-            await r.data.optimized_url_promise
-          }
-          return {
-            file_id: r.data.file_id,
-            photo_id: r.data.photo_id,
-            original_view_url: r.data.original_view_url,
-            optimized_url_promise: r.data.optimized_url_promise,
-            hls_url_promise: Promise.resolve(null),
-            mime_type: mimeType,
-            is_public: false,
-            visibility: 'private',
-            cdn_url: null,
-          }
-        }
-
-        // ────────────────────────────────────────────────────────────────
-        // Video branch: upload + register with video service.
-        // video.uploadViaStorage handles the storage upload and follows
-        // up with /v1/videos/register so the transcoder picks it up.
-        // The hls_url_promise resolves to the HLS master playlist URL
-        // once transcoding completes (or null on 30s timeout — caller
-        // falls back to original_view_url for immediate playback).
-        // ────────────────────────────────────────────────────────────────
-        if (mimeType.startsWith('video/') && !isPublic) {
-          const r = await video.uploadViaStorage(file, sharedOpts)
-          if (r.error || !r.data) {
-            throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
-          }
-          // Release-gating policies: wait for the HLS playlist before
-          // resolving the upload promise.
-          if (gateOnPipeline) {
-            await r.data.hls_url_promise
-          }
-          return {
-            file_id: r.data.file_id,
-            photo_id: null,
-            original_view_url: r.data.original_view_url,
-            optimized_url_promise: Promise.resolve(null),
-            hls_url_promise: r.data.hls_url_promise,
-            mime_type: mimeType,
-            is_public: false,
-            visibility: 'private',
-            cdn_url: null,
-          }
-        }
-
-        // ────────────────────────────────────────────────────────────────
-        // Audio branch: upload + register with audio service.
-        // audio.uploadViaStorage handles the storage upload and follows
-        // up with /v1/audio/register so the audio service tracks
-        // ownership + status. Bytes are immediately playable via the
-        // storage view URL — codec normalization / waveform peaks land
-        // in a future phase. No release-gating today (audio's pipeline
-        // is metadata-only, no transcoding to wait on).
-        // ────────────────────────────────────────────────────────────────
-        if (mimeType.startsWith('audio/') && !isPublic) {
-          const r = await audio.uploadViaStorage(file, sharedOpts)
-          if (r.error || !r.data) {
-            throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
-          }
-          return {
-            file_id: r.data.file_id,
-            photo_id: null,
-            original_view_url: r.data.original_view_url,
-            optimized_url_promise: Promise.resolve(null),
-            hls_url_promise: Promise.resolve(null),
-            mime_type: mimeType,
-            is_public: false,
-            visibility: 'private',
-            cdn_url: null,
-          }
-        }
-
-        // ────────────────────────────────────────────────────────────────
-        // Public-image branch: a public surface (e.g. avatar) doesn't go
-        // through uploadViaStorage (which forces is_public: false). Fall
-        // through to a regular storage.upload() and skip photo register
-        // for now — the public-image-with-optimization combo lands in a
-        // later phase.
-        // ────────────────────────────────────────────────────────────────
-        if (mimeType.startsWith('image/') && isPublic) {
-          const r = await storage.upload(file, {
-            ...sharedOpts,
-            visibility: 'app_public',
-            skipCompression: true,
-          } as UploadOptionsWithVisibility)
-          if (r.error || !r.data) {
-            throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
-          }
-          const f = r.data as FileInfoWithVisibility
-          return {
-            file_id: f.id,
-            photo_id: null,
-            original_view_url: f.url ?? null,
-            optimized_url_promise: Promise.resolve(null),
-            hls_url_promise: Promise.resolve(null),
-            mime_type: mimeType,
-            is_public: f.is_public ?? true,
-            visibility: f.visibility ?? 'app_public',
-            cdn_url: f.cdn_url ?? null,
-          }
-        }
-
-        // ────────────────────────────────────────────────────────────────
-        // Generic fallthrough (files, public audio, etc.): private
-        // storage upload via uploadPrivate (or storage.upload with
-        // isPublic: true). Image / video / audio branches above pick
-        // up the typed services; everything else lands here.
-        // ────────────────────────────────────────────────────────────────
-        const r = isPublic
-          ? await storage.upload(file, {
-              ...sharedOpts,
-              visibility: 'app_public',
-              skipCompression: true,
-            } as UploadOptionsWithVisibility)
-          : await storage.uploadPrivate(file, sharedOpts)
-        if (r.error || !r.data) {
-          throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
-        }
-        const f = r.data as FileInfoWithVisibility
         return {
-          file_id: f.id,
-          photo_id: null,
-          original_view_url: f.url ?? null,
-          optimized_url_promise: Promise.resolve(null),
-          hls_url_promise: Promise.resolve(null),
-          mime_type: mimeType,
-          is_public: f.is_public ?? isPublic,
-          visibility: f.visibility ?? (isPublic ? 'app_public' : 'private'),
-          cdn_url: f.cdn_url ?? null,
+          file_id: result.data.file_id,
+          photo_id: result.data.photo_id,
+          original_view_url: result.data.original_view_url,
+          optimized_url_promise: result.data.optimized_url_promise,
+          hls_url_promise: result.data.hls_url_promise,
+          mime_type: result.data.mime_type,
+          is_public: result.data.is_public,
+          visibility: result.data.visibility,
+          cdn_url: result.data.cdn_url,
         }
       } catch (err) {
         const e = err as ApiError
@@ -459,38 +282,17 @@ export function useMedia(): UseMediaReturn {
         setUploading(false)
       }
     },
-    [storage, photo, video, audio, providerDefaultPolicy]
+    [media, providerDefaultPolicy]
   )
 
   const cancelUpload = useCallback(
     async (fileId: string): Promise<void> => {
       setError(null)
-      // Cascade tear-down so an upload that already went through
-      // `photo.register()` doesn't leave a photo-namespace S3 copy +
-      // photo-DB row behind when the user discards before sending
-      // (Finding 6 from the realtime-chat media pipeline review).
-      //
-      // Photo's DELETE accepts the storage `file_id` directly via the
-      // dual-lookup invariant (P0.1) — we don't need to track the
-      // photo_id separately. 404 means the photo wasn't registered
-      // (non-image uploads), which is fine.
-      //
-      // Video / audio delete cascades aren't wired yet:
-      //   - scalemule-video has no DELETE endpoint today.
-      //   - scalemule-audio's delete isn't surfaced on the SDK.
-      // Both are tracked as platform follow-ups; storage's TTL sweeper
-      // is the backstop for both.
       try {
-        // Run photo cascade and storage delete in parallel. Storage
-        // delete is the source-of-truth row, so we surface its error.
-        const [, storageResult] = await Promise.all([
-          photo.delete(fileId).catch(() => undefined),
-          storage.delete(fileId),
-        ])
-        if (storageResult.error) {
-          // 404 on storage = already gone, treat as success (idempotent).
-          if (storageResult.error.status === 404) return
-          throw storageResult.error
+        const result = await media.delete(fileId)
+        if (result.error) {
+          if (result.error.status === 404) return
+          throw result.error
         }
       } catch (err) {
         const e = err as ApiError
@@ -498,7 +300,7 @@ export function useMedia(): UseMediaReturn {
         throw e
       }
     },
-    [storage, photo]
+    [media]
   )
 
   return { upload, cancelUpload, error, uploading }
