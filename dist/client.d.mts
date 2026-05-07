@@ -1,4 +1,4 @@
-import { a8 as StorageAdapter, A as ApiError } from './index-DTWyUcyd.mjs';
+import { a8 as StorageAdapter, A as ApiError } from './index-zQloSkpW.mjs';
 
 /**
  * ScaleMule API Client
@@ -137,6 +137,19 @@ declare class ScaleMuleClient {
      * Set session after login
      */
     setSession(token: string, userId: string): Promise<void>;
+    /**
+     * Token-only setter for member-auth surfaces.
+     *
+     * Unlike `setSession(token, userId)`, this does NOT persist a userId or
+     * write to local storage — useful when the host platform owns identity
+     * (e.g. ScaleMule's member dashboards use `MemberAuthProvider` and the
+     * token comes from a `${env}_member_access_token` cookie). The token is
+     * applied in-memory and used as a `Bearer` Authorization header on
+     * subsequent requests.
+     *
+     * Pass `null` to clear without touching userId/storage.
+     */
+    setSessionToken(token: string | null): void;
     /**
      * Clear session on logout
      */

@@ -2,6 +2,20 @@
 
 import { useCallback, useState } from 'react'
 import type { ApiError, FileInfo, UploadOptions } from '@scalemule/sdk'
+
+/**
+ * Tri-state file visibility — `'private' | 'app_public' | 'anonymous_visible'`.
+ *
+ * Locally redeclared here rather than imported from `@scalemule/sdk`
+ * so this package can ship before the sdk's `Visibility` export is
+ * published. Once `@scalemule/sdk` ≥ the version that exports
+ * `Visibility` is the minimum dep version, swap this for an `import
+ * type { Visibility } from '@scalemule/sdk'`.
+ *
+ * Keep the union members in lockstep with the storage migration's
+ * ENUM and the SDK's typed export.
+ */
+export type Visibility = 'private' | 'app_public' | 'anonymous_visible'
 import { useScaleMule } from '../provider'
 
 /**
@@ -28,8 +42,24 @@ export interface MediaUploadResult {
   hls_url_promise: Promise<string | null>
   /** The file's MIME type — preserved from the input File / Blob. */
   mime_type: string
-  /** Whether the resulting storage object is public-readable. */
+  /** Whether the resulting storage object is public-readable.
+   * Derived from `visibility !== 'private'` for back-compat with
+   * callers that still branch on the boolean. */
   is_public: boolean
+  /**
+   * Resolved tri-state visibility from the storage service. Use this
+   * over `is_public` for new code — `is_public: true` covers both
+   * `'app_public'` (auth-gated CDN) and `'anonymous_visible'`
+   * (unsigned public CDN), which have different delivery contracts.
+   */
+  visibility: Visibility
+  /**
+   * Stable unsigned public-CDN URL — populated only when
+   * `visibility === 'anonymous_visible'`. Drop directly into
+   * `<img src>` on logged-out pages. For other visibilities use
+   * `original_view_url` (signed) or the photo transform URL.
+   */
+  cdn_url: string | null
 }
 
 /**
@@ -57,10 +87,34 @@ export type MediaPolicy =
   | 'compliance'
 
 export interface UseMediaUploadOptions {
-  /** Whether the resulting storage object should be public-readable.
+  /**
+   * Tri-state visibility (preferred — see {@link Visibility} in
+   * `@scalemule/sdk`). Three modes:
+   *   - `'private'`           — owner + app members only (DEFAULT)
+   *   - `'app_public'`        — readable by any authenticated end-user
+   *                             in the same application; same semantics
+   *                             the legacy `is_public: true` flag has
+   *                             always had
+   *   - `'anonymous_visible'` — world-readable on the unsigned public
+   *                             CDN. Returned `cdn_url` is safe to drop
+   *                             into `<img src>` on a logged-out page.
+   *
+   * If both `visibility` and `is_public` are passed, `visibility`
+   * wins. `'anonymous_visible'` requires the operator to have
+   * provisioned the anonymous-delivery bucket — the storage service
+   * surfaces 503 `ANONYMOUS_DELIVERY_NOT_CONFIGURED` otherwise (the
+   * SDK never silently demotes).
+   */
+  visibility?: Visibility
+  /**
+   * Legacy two-state visibility flag. `true` → `app_public`; `false`
+   * → `private`. Prefer the typed `visibility` field for new code —
+   * `is_public: true` cannot express `anonymous_visible`.
+   *
    * Default: `false` (private). Public is opt-in for surfaces that
    * genuinely need it (avatars, public listings). Chat / DM uploads
-   * should always be private. */
+   * should always be private.
+   */
   is_public?: boolean
   /**
    * Per-call media-policy override. Defaults to `safe_visible` (visible
@@ -164,7 +218,19 @@ export function useMedia(): UseMediaReturn {
       setUploading(true)
       setError(null)
 
-      const isPublic = options?.is_public ?? false
+      // Resolve visibility — typed `visibility` wins; otherwise
+      // derive from legacy `is_public`; otherwise default `private`.
+      // Same precedence the storage service applies on the wire, so
+      // the SDK and server agree on the resolved value before we
+      // decide which branch to take.
+      const visibility: Visibility = options?.visibility
+        ?? (options?.is_public === true
+          ? 'app_public'
+          : options?.is_public === false
+            ? 'private'
+            : 'private')
+      const isPublic = visibility !== 'private'
+      const isAnonymous = visibility === 'anonymous_visible'
       const mimeType = (file as File).type || 'application/octet-stream'
 
       // Policy precedence: per-call override > provider default >
@@ -186,7 +252,62 @@ export function useMedia(): UseMediaReturn {
         signal: options?.signal,
       }
 
+      // The visibility-aware fields (`uploadAnonymous`, the
+      // `visibility` UploadOption, `FileInfo.cdn_url`) are added in
+      // `@scalemule/sdk` PR #47. Until that version is the min dep
+      // here we widen the storage / FileInfo views via a small set of
+      // typed aliases so this hook can call them. Once the new SDK
+      // version is the floor, drop these and import the real types.
+      type StorageWithAnon = typeof storage & {
+        uploadAnonymous: (
+          f: File | Blob,
+          opts?: Omit<UploadOptions, 'visibility' | 'isPublic'>
+        ) => ReturnType<typeof storage.upload>
+      }
+      type UploadOptionsWithVisibility = UploadOptions & { visibility?: Visibility }
+      type FileInfoWithVisibility = FileInfo & {
+        visibility?: Visibility
+        cdn_url?: string
+      }
+      const storageAnon = storage as StorageWithAnon
+
       try {
+        // ────────────────────────────────────────────────────────────────
+        // Anonymous-visible branch (any MIME).
+        //
+        // Files uploaded with `visibility: 'anonymous_visible'` go
+        // directly to storage's anonymous bucket and are served from
+        // the unsigned public CDN. The photo / video / audio
+        // services don't need to be involved here from the client —
+        // their scan subscribers pick anon files up server-side and
+        // register them automatically (skipping the bucket-copy
+        // step). Returning `cdn_url` is the contract callers rely
+        // on — drop directly into `<img src>` / `<video src>`.
+        // ────────────────────────────────────────────────────────────────
+        if (isAnonymous) {
+          const r = await storageAnon.uploadAnonymous(file, sharedOpts)
+          if (r.error || !r.data) {
+            throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
+          }
+          const f = r.data as FileInfoWithVisibility
+          return {
+            file_id: f.id,
+            photo_id: null,
+            // For anon files, original_view_url is the same unsigned
+            // CDN URL — no signed alternative exists. Callers should
+            // prefer `cdn_url` (more specific) but `original_view_url`
+            // works too for back-compat with code that already reads
+            // that field.
+            original_view_url: f.cdn_url ?? null,
+            optimized_url_promise: Promise.resolve(null),
+            hls_url_promise: Promise.resolve(null),
+            mime_type: mimeType,
+            is_public: true,
+            visibility: 'anonymous_visible',
+            cdn_url: f.cdn_url ?? null,
+          }
+        }
+
         // ────────────────────────────────────────────────────────────────
         // Image branch: upload + register with photo service.
         // Use uploadViaStorage so the photo optimizer picks it up.
@@ -209,6 +330,8 @@ export function useMedia(): UseMediaReturn {
             hls_url_promise: Promise.resolve(null),
             mime_type: mimeType,
             is_public: false,
+            visibility: 'private',
+            cdn_url: null,
           }
         }
 
@@ -238,6 +361,8 @@ export function useMedia(): UseMediaReturn {
             hls_url_promise: r.data.hls_url_promise,
             mime_type: mimeType,
             is_public: false,
+            visibility: 'private',
+            cdn_url: null,
           }
         }
 
@@ -263,6 +388,8 @@ export function useMedia(): UseMediaReturn {
             hls_url_promise: Promise.resolve(null),
             mime_type: mimeType,
             is_public: false,
+            visibility: 'private',
+            cdn_url: null,
           }
         }
 
@@ -276,13 +403,13 @@ export function useMedia(): UseMediaReturn {
         if (mimeType.startsWith('image/') && isPublic) {
           const r = await storage.upload(file, {
             ...sharedOpts,
-            isPublic: true,
+            visibility: 'app_public',
             skipCompression: true,
-          })
+          } as UploadOptionsWithVisibility)
           if (r.error || !r.data) {
             throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
           }
-          const f: FileInfo = r.data
+          const f = r.data as FileInfoWithVisibility
           return {
             file_id: f.id,
             photo_id: null,
@@ -291,6 +418,8 @@ export function useMedia(): UseMediaReturn {
             hls_url_promise: Promise.resolve(null),
             mime_type: mimeType,
             is_public: f.is_public ?? true,
+            visibility: f.visibility ?? 'app_public',
+            cdn_url: f.cdn_url ?? null,
           }
         }
 
@@ -301,12 +430,16 @@ export function useMedia(): UseMediaReturn {
         // up the typed services; everything else lands here.
         // ────────────────────────────────────────────────────────────────
         const r = isPublic
-          ? await storage.upload(file, { ...sharedOpts, isPublic: true, skipCompression: true })
+          ? await storage.upload(file, {
+              ...sharedOpts,
+              visibility: 'app_public',
+              skipCompression: true,
+            } as UploadOptionsWithVisibility)
           : await storage.uploadPrivate(file, sharedOpts)
         if (r.error || !r.data) {
           throw r.error ?? { code: 'upload_error', message: 'Upload failed', status: 0 }
         }
-        const f: FileInfo = r.data
+        const f = r.data as FileInfoWithVisibility
         return {
           file_id: f.id,
           photo_id: null,
@@ -315,6 +448,8 @@ export function useMedia(): UseMediaReturn {
           hls_url_promise: Promise.resolve(null),
           mime_type: mimeType,
           is_public: f.is_public ?? isPublic,
+          visibility: f.visibility ?? (isPublic ? 'app_public' : 'private'),
+          cdn_url: f.cdn_url ?? null,
         }
       } catch (err) {
         const e = err as ApiError
