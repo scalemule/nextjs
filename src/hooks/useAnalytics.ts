@@ -313,6 +313,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
   // "Proxy Mode" section for the matching analytics route.
   const proxyModeMisconfigWarnedRef = useRef(false)
   useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return
     if (proxyModeMisconfigWarnedRef.current) return
     if (apiKey === 'proxy-mode' && !analyticsProxyUrl && !publishableKey) {
       proxyModeMisconfigWarnedRef.current = true
