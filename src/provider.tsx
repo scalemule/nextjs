@@ -95,6 +95,14 @@ interface ScaleMuleContextValue {
   authProxyUrl?: string
   /** Publishable key for browser-safe operations (analytics) */
   publishableKey?: string
+  /**
+   * The configured `apiKey` value. Exposed so hooks like `useAnalytics`
+   * can detect the proxy-mode sentinel (`'proxy-mode'`) and warn when
+   * the corresponding proxy route is missing — silently 401'ing on the
+   * fallback is the worst possible failure mode for an analytics path.
+   * Treat as read-only diagnostic; consumers should not pass it onward.
+   */
+  apiKey?: string
   /** Gateway URL for direct API calls */
   gatewayUrl?: string
   /** Configured environment ('dev' or 'prod') */
@@ -563,13 +571,14 @@ export function ScaleMuleProvider({
       analyticsProxyUrl,
       authProxyUrl,
       publishableKey,
+      apiKey,
       gatewayUrl: resolvedGatewayUrl,
       environment: environment || undefined,
       enableAccountSwitcher,
       accountSwitcherPrivacy,
       bootstrapFlags,
     }),
-    [client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
+    [client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
   )
 
   return (

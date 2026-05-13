@@ -95,6 +95,44 @@ For zero-config auth (reads from env vars):
 export { GET, POST, DELETE, PATCH } from '@scalemule/nextjs/server/auth'
 ```
 
+## Proxy Mode (keep API keys server-side)
+
+If you don't want a real ScaleMule API key in browser bundles, run the SDK in **proxy mode**: pass the literal sentinel string `'proxy-mode'` as `apiKey` and route all server-bound traffic through Next.js routes that hold the real `SCALEMULE_API_KEY` server-side. **Both** the auth route and the analytics route are required — without the analytics route, every `trackEvent` / `trackPageView` silently 401s against the gateway and the dashboard reads empty.
+
+```ts
+// app/api/auth/[...scalemule]/route.ts
+export { GET, POST, DELETE, PATCH } from '@scalemule/nextjs/server/auth'
+```
+
+```ts
+// app/api/analytics/event/route.ts
+import { NextRequest } from 'next/server'
+import { createAnalyticsRoutes } from '@scalemule/nextjs/server'
+
+const { POST: handler } = createAnalyticsRoutes({ simpleProxy: true })
+
+export const dynamic = 'force-dynamic'
+export function POST(req: NextRequest, ctx: { params: Promise<Record<string, string | string[]>> }) {
+  return handler(req, ctx)
+}
+```
+
+```tsx
+// app/layout.tsx
+<ScaleMuleProvider
+  apiKey="proxy-mode"
+  applicationId={process.env.SCALEMULE_APP_ID}
+  environment="prod"
+  gatewayUrl="https://api.scalemule.com"
+  authProxyUrl="/api/auth"
+  analyticsProxyUrl="/api/analytics/event"
+>
+  {children}
+</ScaleMuleProvider>
+```
+
+If `apiKey="proxy-mode"` is set without `analyticsProxyUrl` (and no `publishableKey`), `useAnalytics` emits a one-time dev console warning — that exact misconfig caused a silent-empty dashboard in production for one customer (Gistyo, app ID `019dda2a-c7d9-75a1-9258-12e4c48f1499`).
+
 ## Client-Side Provider
 
 ```tsx

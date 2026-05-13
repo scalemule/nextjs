@@ -301,7 +301,32 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
   } = options
   const shouldAutoCaptureUtmParams = autoCaptureUtmParams ?? autoCapturUtmParams ?? true
 
-  const { client, user, analyticsProxyUrl, publishableKey, gatewayUrl } = useScaleMule()
+  const { client, user, analyticsProxyUrl, publishableKey, apiKey, gatewayUrl } = useScaleMule()
+
+  // One-time dev warning for the silent-401 misconfig pattern: proxy-mode
+  // app (apiKey is the literal `'proxy-mode'` sentinel) with no
+  // `analyticsProxyUrl` and no `publishableKey`. In that state every event
+  // falls through to `client.post(...)` and hits the gateway with the
+  // sentinel string as the API key, which 401s. No error surfaces to the
+  // caller (events are fire-and-forget) so the dashboard quietly stays
+  // empty. This warning fires once on first render. See the README's
+  // "Proxy Mode" section for the matching analytics route.
+  const proxyModeMisconfigWarnedRef = useRef(false)
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') return
+    if (proxyModeMisconfigWarnedRef.current) return
+    if (apiKey === 'proxy-mode' && !analyticsProxyUrl && !publishableKey) {
+      proxyModeMisconfigWarnedRef.current = true
+      console.warn(
+        '[ScaleMule] useAnalytics: apiKey="proxy-mode" but neither ' +
+          '`analyticsProxyUrl` nor `publishableKey` is configured. ' +
+          'Every trackEvent / trackPageView will silently 401 against the ' +
+          'gateway. Add an analytics proxy route (createAnalyticsRoutes({ simpleProxy: true })) ' +
+          'and pass `analyticsProxyUrl` to <ScaleMuleProvider>. See ' +
+          '@scalemule/nextjs README → Proxy Mode.'
+      )
+    }
+  }, [apiKey, analyticsProxyUrl, publishableKey])
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
