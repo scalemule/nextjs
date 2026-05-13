@@ -57,6 +57,14 @@ export type {
 } from './hooks/useAudio'
 export { useTtsJob } from './hooks/useTtsJob'
 export type { UseTtsJobOptions, UseTtsJobReturn } from './hooks/useTtsJob'
+
+// Components
+// `NarrationPlayer` was a public export through 0.1.24, removed in 0.1.27,
+// and restored here as a backward-compat surface. Removal of a documented
+// component in a patch-line bump was a regression; this brings it back
+// with the same prop API so consumers (Gistyo) keep building.
+export { NarrationPlayer } from './components/narration-player'
+export type { NarrationPlayerProps, NarrationPlayerAudio } from './components/narration-player'
 export { useMedia } from './hooks/useMedia'
 export type { MediaUploadResult, UseMediaUploadOptions, UseMediaReturn, MediaPolicy } from './hooks/useMedia'
 export { useFileStatus } from './hooks/useFileStatus'
