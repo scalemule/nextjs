@@ -442,6 +442,14 @@ export interface ClientContext {
   deviceFingerprint?: string
   /** HTTP Referer header (the page that linked to this one) */
   referrer?: string
+  /**
+   * End user's anonymous visitor ID, forwarded as `x-anonymous-id`.
+   * Populated by `extractClientContext()` from the upstream `x-anonymous-id`
+   * header so server-to-gateway calls (auth proxy) carry the same value the
+   * browser sent. The backend uses this header to link pre-auth analytics
+   * activity to a registered user during register/login.
+   */
+  anonymousId?: string
 }
 
 // ============================================================================
@@ -845,7 +853,15 @@ export interface UseAnalyticsOptions {
   autoGenerateSessionId?: boolean
   /** Session ID storage key (default: 'sm_session_id') */
   sessionStorageKey?: string
-  /** Anonymous ID storage key (default: 'sm_anonymous_id') */
+  /**
+   * @deprecated The anonymous ID is now owned by the underlying ScaleMule
+   * client (`@scalemule/sdk`), which uses the canonical
+   * `scalemule_anonymous_id` localStorage key shared across all client
+   * packages. Setting this option no longer has any effect — overriding the
+   * storage key here would fragment a visitor's identity between the
+   * analytics hook and the auth/request headers, which is the bug this
+   * deprecation closes. Will be removed in a future release.
+   */
   anonymousStorageKey?: string
   /** Use v2 enhanced tracking (default: true) */
   useV2?: boolean

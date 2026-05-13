@@ -58,29 +58,31 @@ function setStorageItem(
 }
 
 /**
- * Get or create session and anonymous IDs synchronously.
+ * Get or create the session ID synchronously.
  *
- * IMPORTANT: During SSR (server-side rendering), we return null for IDs.
+ * IMPORTANT: During SSR (server-side rendering), we return null for the ID.
  * This avoids generating random IDs on the server that would be used
- * during hydration instead of the actual stored IDs.
+ * during hydration instead of the actual stored values.
  *
- * On the client, this reads from storage or creates new IDs.
+ * The anonymous ID is no longer owned by this hook — it lives on the
+ * ScaleMule client (`@scalemule/sdk`) under the canonical
+ * `scalemule_anonymous_id` storage key so a single visitor has exactly
+ * one ID across analytics events and auth request headers. The hook
+ * reads it via `client.ensureAnonymousId()` during init and
+ * `client.getAnonymousId()` thereafter. See PR notes for the prior bug.
  */
-function getOrCreateIds(
-  sessionStorageKey: string,
-  anonymousStorageKey: string
-): { sessionId: string | null; anonymousId: string | null; sessionStart: number } {
-  // During SSR, return null - IDs will be initialized on client
+function getOrCreateSessionId(
+  sessionStorageKey: string
+): { sessionId: string | null; sessionStart: number } {
+  // During SSR, return null - session ID will be initialized on client
   if (typeof window === 'undefined') {
     return {
       sessionId: null,
-      anonymousId: null,
       sessionStart: Date.now(),
     }
   }
 
   const storage = typeof sessionStorage !== 'undefined' ? sessionStorage : undefined
-  const localStorage_ = typeof localStorage !== 'undefined' ? localStorage : undefined
 
   // Session ID (per-session, stored in sessionStorage)
   let sessionId = getStorageItem(storage, sessionStorageKey)
@@ -96,15 +98,7 @@ function getOrCreateIds(
     sessionStart = parseInt(sessionStartStr, 10)
   }
 
-  // Anonymous ID (persistent, stored in localStorage)
-  // This persists across sessions for returning visitor tracking
-  let anonymousId = getStorageItem(localStorage_, anonymousStorageKey)
-  if (!anonymousId) {
-    anonymousId = generateUUID()
-    setStorageItem(localStorage_, anonymousStorageKey, anonymousId)
-  }
-
-  return { sessionId, anonymousId, sessionStart }
+  return { sessionId, sessionStart }
 }
 
 // Parse UTM params from URL
@@ -297,7 +291,11 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
     autoCapturUtmParams,
     autoGenerateSessionId = true,
     sessionStorageKey = 'sm_session_id',
-    anonymousStorageKey = 'sm_anonymous_id',
+    // anonymousStorageKey is intentionally ignored — see UseAnalyticsOptions.
+    // Anonymous ID now lives on the ScaleMule client under the canonical
+    // `scalemule_anonymous_id` key (PR consolidating the contract). Reading
+    // an override here would re-fragment a visitor's identity between
+    // analytics events and auth request headers.
     useV2 = true,
     eventDedupMs = DEFAULT_EVENT_DEDUP_MS,
   } = options
@@ -338,30 +336,56 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       return
     }
 
-    const ids = getOrCreateIds(sessionStorageKey, anonymousStorageKey)
+    const ids = getOrCreateSessionId(sessionStorageKey)
 
     // Update refs (used internally for tracking)
     sessionIdRef.current = ids.sessionId
-    anonymousIdRef.current = ids.anonymousId
     sessionStartRef.current = ids.sessionStart
-    idsReadyRef.current = true
 
-    // Update state (for external access)
+    // Session ID is sync — publish to external state immediately.
     setSessionId(ids.sessionId)
-    setAnonymousId(ids.anonymousId)
 
-    // Flush any queued events now that IDs are ready
-    if (eventQueue.current.length > 0) {
+    // Resolve the anonymous ID via the ScaleMule client. This single source
+    // of truth (canonical `scalemule_anonymous_id` localStorage key) is also
+    // what gets sent as `x-anonymous-id` on direct-mode auth requests and
+    // forwarded by the auth proxy — so analytics events and the visitor's
+    // header identity stay in sync. We flush the queued event buffer only
+    // after the anon-ID has resolved, otherwise queued events would fire
+    // with a null anonymousIdRef and the backend would treat them as
+    // anonymous-id-less.
+    let cancelled = false
+    const flushQueuedEvents = () => {
+      if (eventQueue.current.length === 0) return
       const queue = eventQueue.current
       eventQueue.current = []
-      // Use setTimeout to ensure this runs after render
       setTimeout(() => {
         for (const event of queue) {
           sendEventRef.current?.(event)
         }
       }, 0)
     }
-  }, [autoGenerateSessionId, sessionStorageKey, anonymousStorageKey])
+    client
+      .ensureAnonymousId()
+      .then((anonId) => {
+        if (cancelled) return
+        anonymousIdRef.current = anonId
+        setAnonymousId(anonId)
+        idsReadyRef.current = true
+        flushQueuedEvents()
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Storage unavailable (private mode, etc). Mark IDs ready anyway
+        // so trackEvent doesn't block; events will fire without anon_id
+        // and the backend tolerates that.
+        idsReadyRef.current = true
+        flushQueuedEvents()
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [autoGenerateSessionId, sessionStorageKey, client])
 
   // Capture UTM params, landing page, and original referrer
   useEffect(() => {

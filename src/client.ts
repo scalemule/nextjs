@@ -8,6 +8,8 @@
  * - Error handling and response parsing
  */
 
+import { ensureAnonymousId as ensureAnonymousIdShared, STORAGE_KEYS } from '@scalemule/sdk'
+
 import { ScaleMuleApiError } from './types'
 import type { ApiError, StorageAdapter } from './types'
 
@@ -22,9 +24,11 @@ const GATEWAY_URLS: Record<ScaleMuleEnvironment, string> = {
   prod: 'https://api.scalemule.com',
 }
 
-const SESSION_STORAGE_KEY = 'scalemule_session'
-const USER_ID_STORAGE_KEY = 'scalemule_user_id'
-const WORKSPACE_STORAGE_KEY = 'scalemule_workspace_id'
+// Storage keys mirror @scalemule/sdk's canonical names so this client and
+// the base SDK never desync on what's in localStorage.
+const SESSION_STORAGE_KEY = STORAGE_KEYS.SESSION
+const USER_ID_STORAGE_KEY = STORAGE_KEYS.USER_ID
+const WORKSPACE_STORAGE_KEY = STORAGE_KEYS.WORKSPACE_ID
 
 // Status codes that should trigger a retry
 const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504])
@@ -446,6 +450,15 @@ export class ScaleMuleClient {
   private sessionGate: Promise<void> | null = null
   private resolveSessionGate: (() => void) | null = null
   private workspaceId: string | null = null
+  // Anonymous visitor ID for identity linking. See `@scalemule/sdk/anonymous-id`
+  // for the contract. The base SDK and this client share the same canonical
+  // localStorage key so a visitor has exactly one ID across all packages.
+  private anonymousId: string | null = null
+  // Per-client single-flight cache for the lazy mint. Concurrent first-use
+  // callers receive the same promise — without this, two simultaneous
+  // unauthenticated requests on a fresh visitor could mint different IDs.
+  // The shared helper also single-flights at the storage-adapter level.
+  private anonymousIdPromise: Promise<string> | null = null
   private refreshPromise: Promise<any> | null = null
   private onRefreshStart?: () => void
   private onRefreshEnd?: () => void
@@ -610,6 +623,17 @@ export class ScaleMuleClient {
     const wsId = await this.storage.getItem(WORKSPACE_STORAGE_KEY)
     if (wsId) this.workspaceId = wsId
 
+    // Eager warm-up of the anonymous-ID cache. The lazy path on the request
+    // hot-loop still works without this (see ensureAnonymousId), but warming
+    // here avoids a storage round-trip on the very first unauthenticated
+    // request. Errors are swallowed — storage may be unavailable in private
+    // mode or during SSR and that shouldn't block initialize().
+    try {
+      await this.ensureAnonymousId()
+    } catch {
+      /* non-fatal — lazy path will retry on the next call */
+    }
+
     // If we restored a session from storage, resolve the gate immediately
     // so API requests don't wait for /me revalidation
     if (token) {
@@ -619,6 +643,38 @@ export class ScaleMuleClient {
     if (this.debug) {
       console.log('[ScaleMule] Initialized with session:', !!token)
     }
+  }
+
+  /**
+   * Sync accessor for the cached anonymous ID. Returns `null` until either
+   * `initialize()` has run or `ensureAnonymousId()` has been awaited at
+   * least once. Use `ensureAnonymousId()` if you need a guaranteed value.
+   */
+  getAnonymousId(): string | null {
+    return this.anonymousId
+  }
+
+  /**
+   * Lazy-mint or cache-then-return the anonymous ID via the shared
+   * `@scalemule/sdk` helper. Concurrent callers receive the same in-flight
+   * promise, so a burst of simultaneous first-use requests all see the
+   * same minted value.
+   */
+  async ensureAnonymousId(): Promise<string> {
+    if (this.anonymousId) return this.anonymousId
+    if (!this.anonymousIdPromise) {
+      this.anonymousIdPromise = ensureAnonymousIdShared(this.storage)
+        .then((id) => {
+          this.anonymousId = id
+          return id
+        })
+        .finally(() => {
+          // Drop the promise reference now that the value is cached on
+          // the instance — future calls hit the sync fast path above.
+          this.anonymousIdPromise = null
+        })
+    }
+    return this.anonymousIdPromise
   }
 
   /**
@@ -710,6 +766,14 @@ export class ScaleMuleClient {
       headers.set('x-sm-workspace-id', this.workspaceId)
     }
 
+    // Attach `x-anonymous-id` on unauthenticated requests so the backend can
+    // link the visitor's pre-registration activity to a registered user on
+    // login/register. Only emitted when we have no session token — once the
+    // user is authenticated, the Bearer Authorization is the identity.
+    if (!options?.skipAuth && !this.sessionToken && this.anonymousId) {
+      headers.set('x-anonymous-id', this.anonymousId)
+    }
+
     // Set content type if not already set and body is present
     if (!headers.has('Content-Type') && options?.body && typeof options.body === 'string') {
       headers.set('Content-Type', 'application/json')
@@ -729,6 +793,19 @@ export class ScaleMuleClient {
     // before sending the request so auth headers are included
     if (this.sessionGate) {
       await this.sessionGate
+    }
+
+    // Lazy-mint the anonymous ID before building headers if needed. This
+    // covers the cold-start case where a brand-new visitor's very first
+    // action is an unauthenticated request before `initialize()` has had
+    // a chance to warm the cache. Errors swallowed — backend tolerates a
+    // missing header, the link pipeline just can't run for that one event.
+    if (!options.skipAuth && !this.sessionToken && !this.anonymousId) {
+      try {
+        await this.ensureAnonymousId()
+      } catch {
+        /* storage unavailable — proceed without the header */
+      }
     }
 
     const url = `${this.gatewayUrl}${path}`
