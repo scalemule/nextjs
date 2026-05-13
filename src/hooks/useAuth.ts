@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useMemo, useState, useEffect } from 'react'
+import { ensureAnonymousId } from '@scalemule/sdk'
+import type { StorageAdapter } from '@scalemule/sdk'
 import { useScaleMule } from '../provider'
 import { ScaleMuleApiError } from '../types'
 import { reportSdkError } from '../sdk-telemetry'
@@ -119,6 +121,46 @@ function getCookie(name: string): string | undefined {
 }
 
 /**
+ * Module-singleton localStorage adapter used to resolve the visitor's
+ * anonymous ID inside `proxyFetch`. Held as a module constant so the
+ * shared `ensureAnonymousId()` helper can single-flight concurrent
+ * callers via its internal WeakMap (keyed on adapter identity).
+ *
+ * Returns `null` during SSR — proxy auth only runs in the browser, but
+ * being defensive avoids surprises in server tests / hybrid frameworks.
+ */
+const browserStorage: StorageAdapter | null =
+  typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+    ? {
+        getItem: (key: string) => window.localStorage.getItem(key),
+        setItem: (key: string, value: string) => window.localStorage.setItem(key, value),
+        removeItem: (key: string) => window.localStorage.removeItem(key),
+      }
+    : null
+
+/**
+ * Resolve the visitor's anonymous ID for proxy-auth requests.
+ *
+ * Reads the canonical `scalemule_anonymous_id` (with legacy-key migration),
+ * minting and dual-writing if missing. Safe to call on every proxy call:
+ * the shared helper single-flights concurrent first-use against the same
+ * storage adapter, and once a value is present subsequent calls just hit
+ * the canonical-read path.
+ */
+async function getProxyAnonymousId(): Promise<string | undefined> {
+  if (!browserStorage) return undefined
+  try {
+    return await ensureAnonymousId(browserStorage)
+  } catch {
+    // Storage unavailable (private mode, quota, disabled cookies). Better
+    // to send the request without the header than to fail it — backend
+    // tolerates missing `x-anonymous-id`, the link pipeline just can't
+    // run for that single event.
+    return undefined
+  }
+}
+
+/**
  * Helper to make a fetch call to the auth proxy and parse the response.
  * Returns the parsed response in { success, data, error } format.
  *
@@ -143,6 +185,16 @@ async function proxyFetch<T>(
     if (csrfToken) {
       headers['x-csrf-token'] = csrfToken
     }
+  }
+
+  // Forward the visitor's anonymous-ID to the Next.js auth-proxy route. The
+  // server side (`server/context.ts::extractClientContext`) reads this header
+  // from the incoming request and re-emits it on the server-to-gateway call
+  // via `buildClientContextHeaders`, so the backend sees the same visitor
+  // identity for both direct-mode and proxy-mode customer apps.
+  const anonymousId = await getProxyAnonymousId()
+  if (anonymousId) {
+    headers['x-anonymous-id'] = anonymousId
   }
 
   const response = await fetch(`${proxyUrl}/${path}`, {

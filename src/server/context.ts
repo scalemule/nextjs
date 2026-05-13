@@ -164,11 +164,19 @@ export function extractClientContext(request: NextRequestLike): ClientContext {
   // This captures the actual referring URL during SSR when document.referrer is unavailable
   const referrer = headers.get('referer') || undefined
 
+  // Forward the visitor's anonymous-ID through the proxy → gateway hop.
+  // The browser-side proxyFetch sets this header before calling the Next.js
+  // auth-proxy route; without re-emitting it on the server-to-gateway call
+  // (via buildClientContextHeaders), the backend never sees it and the
+  // identity-link pipeline can't run for proxy-mode customers.
+  const anonymousId = headers.get('x-anonymous-id') || undefined
+
   return {
     ip,
     userAgent,
     deviceFingerprint,
     referrer,
+    anonymousId,
   }
 }
 
@@ -273,11 +281,16 @@ export function extractClientContextFromReq(req: IncomingMessageLike): ClientCon
   // Extract referrer from HTTP Referer header
   const referrer = getHeader('referer')
 
+  // Forward the visitor's anonymous-ID through the proxy → gateway hop.
+  // See note in extractClientContext (App Router) for why this matters.
+  const anonymousId = getHeader('x-anonymous-id')
+
   return {
     ip,
     userAgent,
     deviceFingerprint,
     referrer,
+    anonymousId,
   }
 }
 
@@ -313,6 +326,14 @@ export function buildClientContextHeaders(
 
   if (context.referrer) {
     headers['X-Client-Referrer'] = context.referrer
+  }
+
+  // Re-emit `x-anonymous-id` on the server-to-gateway call so the backend
+  // (`ms/scalemule-auth` register/login/oauth handlers) sees the same ID
+  // the visitor's browser sent into the proxy route. Without this the
+  // anonymous → user link pipeline is silent for every proxy-mode app.
+  if (context.anonymousId) {
+    headers['x-anonymous-id'] = context.anonymousId
   }
 
   return headers
