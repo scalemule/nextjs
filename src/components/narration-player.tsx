@@ -19,7 +19,14 @@
  * replacement consumers can migrate to is what created this incident.
  */
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from 'react'
 import type { TtsAudioInfo } from '@scalemule/sdk'
 
 export type NarrationPlayerAudio = TtsAudioInfo & {
@@ -258,6 +265,14 @@ export function NarrationPlayer({
     return expiresAtMs - Date.now() <= EXPIRY_REFRESH_WINDOW_MS
   }
 
+  function seekToTime(nextTime: number): void {
+    const element = audioRef.current
+    if (!element || !duration) return
+    const clampedTime = Math.max(0, Math.min(duration, nextTime))
+    element.currentTime = clampedTime
+    setCurrentTime(clampedTime)
+  }
+
   async function refreshAndResume(): Promise<boolean> {
     if (!onRefresh || refreshing) return false
     if (recoveredUrlRef.current === (audio.url ?? null)) return false
@@ -268,6 +283,7 @@ export function NarrationPlayer({
       await Promise.resolve(onRefresh())
       return true
     } catch {
+      recoveredUrlRef.current = null
       pendingResumeRef.current = false
       pendingResumeTimeRef.current = null
       onPlaybackError?.()
@@ -298,14 +314,45 @@ export function NarrationPlayer({
   }
 
   function seekTo(clientX: number): void {
-    const element = audioRef.current
     const scrubber = scrubRef.current
-    if (!element || !scrubber || !duration) return
+    if (!scrubber || !duration) return
     const bounds = scrubber.getBoundingClientRect()
     const ratio = Math.max(0, Math.min(1, (clientX - bounds.left) / bounds.width))
-    const nextTime = ratio * duration
-    element.currentTime = nextTime
-    setCurrentTime(nextTime)
+    seekToTime(ratio * duration)
+  }
+
+  function handleScrubberKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if (!duration) return
+    const step = Math.max(5, duration / 20)
+    switch (event.key) {
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        event.preventDefault()
+        seekToTime(currentTime - step)
+        break
+      case 'ArrowRight':
+      case 'ArrowUp':
+        event.preventDefault()
+        seekToTime(currentTime + step)
+        break
+      case 'Home':
+        event.preventDefault()
+        seekToTime(0)
+        break
+      case 'End':
+        event.preventDefault()
+        seekToTime(duration)
+        break
+      default:
+        break
+    }
+  }
+
+  function handleManualRefresh(): void {
+    if (!onRefresh || refreshing) return
+    Promise.resolve(onRefresh()).catch(() => {
+      onPlaybackError?.()
+    })
   }
 
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0
@@ -380,8 +427,10 @@ export function NarrationPlayer({
             aria-valuemin={0}
             aria-valuemax={Math.max(1, Math.floor(duration))}
             aria-valuenow={Math.floor(currentTime)}
+            aria-valuetext={`${formatTime(currentTime / speed)} of ${formatTime(duration / speed)}`}
             tabIndex={0}
             onClick={(event) => seekTo(event.clientX)}
+            onKeyDown={handleScrubberKeyDown}
             style={styles.scrubber}
           >
             {peaks.length > 0 ? (
@@ -433,7 +482,7 @@ export function NarrationPlayer({
           {onRefresh && showRefreshButton && (
             <button
               type="button"
-              onClick={onRefresh}
+              onClick={handleManualRefresh}
               disabled={refreshing}
               style={refreshing ? { ...styles.refreshButton, ...styles.disabled } : styles.refreshButton}
             >

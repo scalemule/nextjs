@@ -58,7 +58,7 @@ export type {
 export { useTtsJob } from './hooks/useTtsJob'
 export type { UseTtsJobOptions, UseTtsJobReturn } from './hooks/useTtsJob'
 
-// Components
+// Media
 // `NarrationPlayer` was a public export through 0.1.24, removed in 0.1.27,
 // and restored here as a backward-compat surface. Removal of a documented
 // component in a patch-line bump was a regression; this brings it back
