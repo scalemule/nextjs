@@ -18,6 +18,8 @@ import {
   type VideoService,
   type AudioService,
   type TtsService,
+  type SocialService,
+  type SocialPolicyService,
 } from '@scalemule/sdk'
 import { ScaleMuleClient, createClient } from './client'
 import { setSdkTelemetryEndpoint } from './sdk-telemetry'
@@ -73,6 +75,10 @@ interface ScaleMuleContextValue {
   media: unknown
   /** Base SDK TTS service — exposed for `useTtsJob()` and direct narration requests */
   tts: TtsService
+  /** Base SDK social graph service — follow graph, posts, feed, likes, and activity */
+  social: SocialService
+  /** Base SDK social policy service — privacy decisions, requests, blocks, reports */
+  socialPolicy: SocialPolicyService
   /**
    * Default media policy for `useMedia()` calls. Set via
    * `<ScaleMuleProvider mediaPolicy="…">`; per-call overrides win.
@@ -562,6 +568,8 @@ export function ScaleMuleProvider({
       audio: baseClient.audio,
       media: (baseClient as ScaleMule & { media: unknown }).media,
       tts: baseClient.tts,
+      social: baseClient.social,
+      socialPolicy: baseClient.socialPolicy,
       mediaPolicy: effectiveMediaPolicy,
       user,
       setUser: handleSetUser,

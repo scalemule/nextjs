@@ -1,13 +1,13 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
-import { ApiError, RealtimeService, StorageService, PhotoService, VideoService, AudioService, TtsService, TtsJobStatus, FileStatus } from '@scalemule/sdk';
+import { ApiError, RealtimeService, StorageService, PhotoService, VideoService, AudioService, TtsService, SocialService, SocialPolicyService, TtsJobStatus, TtsAudioInfo, FileStatus } from '@scalemule/sdk';
 import * as React from 'react';
 import { ReactNode, ReactElement } from 'react';
 import { MoneyClient } from '@scalemule/money';
 export { MoneyClient, MoneyClientConfig, createMoneyClient } from '@scalemule/money';
 import { ScaleMuleClient } from './client.js';
 export { ClientConfig, RequestOptions, createClient } from './client.js';
-import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError$1, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-zQloSkpW.js';
-export { h as AccountBalance, i as AnalyticsEvent, j as ApiResponse, B as BatchTrackRequest, k as BillingPayment, l as BillingPayout, m as BillingRefund, n as BillingTransaction, C as ChangeEmailRequest, o as ChangePasswordRequest, p as ClientContext, q as ConnectedAccount, D as DeviceFingerprint, r as DeviceInfo, E as EnhancedAnalyticsEvent, F as ForgotPasswordRequest, K as KnownAccountInfo, s as LinkedAccount, t as ListFilesResponse, u as LoginDeviceInfo, v as LoginRequest, w as LoginResponseWithMFA, x as LoginRiskInfo, M as MFAChallengeResponse, y as MFAMethod, z as MFASMSSetupResponse, G as MFASetupRequest, H as MFAStatus, I as MFATOTPSetupResponse, J as MFAVerifyRequest, O as OAuthCallbackRequest, N as OAuthCallbackResponse, P as OAuthConfig, Q as OAuthProvider, R as OAuthStartResponse, T as PageViewData, V as PayoutSchedule, W as PhoneLoginRequest, X as PhoneSendCodeRequest, Y as PhoneVerifyRequest, Z as Profile, _ as RefreshResponse, $ as RegisterRequest, a0 as ResetPasswordRequest, a1 as ScaleMuleApiError, a2 as ScaleMuleEnvironment, a3 as Session, a4 as SignedUploadCompleteRequest, a5 as SignedUploadRequest, a6 as SignedUploadResponse, a7 as SignedUploadUrl, a8 as StorageAdapter, a9 as StorageFile, aa as TrackEventResponse, ab as TransactionSummary, ac as UTMParams, ad as UpdateProfileRequest, ae as UploadOptions, af as UploadResponse, ag as VerifyEmailRequest } from './index-zQloSkpW.js';
+import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError$1, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-Tq5WdDfS.js';
+export { h as AccountBalance, i as AnalyticsEvent, j as ApiResponse, B as BatchTrackRequest, k as BillingPayment, l as BillingPayout, m as BillingRefund, n as BillingTransaction, C as ChangeEmailRequest, o as ChangePasswordRequest, p as ClientContext, q as ConnectedAccount, D as DeviceFingerprint, r as DeviceInfo, E as EnhancedAnalyticsEvent, F as ForgotPasswordRequest, K as KnownAccountInfo, s as LinkedAccount, t as ListFilesResponse, u as LoginDeviceInfo, v as LoginRequest, w as LoginResponseWithMFA, x as LoginRiskInfo, M as MFAChallengeResponse, y as MFAMethod, z as MFASMSSetupResponse, G as MFASetupRequest, H as MFAStatus, I as MFATOTPSetupResponse, J as MFAVerifyRequest, O as OAuthCallbackRequest, N as OAuthCallbackResponse, P as OAuthConfig, Q as OAuthProvider, R as OAuthStartResponse, T as PageViewData, V as PayoutSchedule, W as PhoneLoginRequest, X as PhoneSendCodeRequest, Y as PhoneVerifyRequest, Z as Profile, _ as RefreshResponse, $ as RegisterRequest, a0 as ResetPasswordRequest, a1 as ScaleMuleApiError, a2 as ScaleMuleEnvironment, a3 as Session, a4 as SignedUploadCompleteRequest, a5 as SignedUploadRequest, a6 as SignedUploadResponse, a7 as SignedUploadUrl, a8 as StorageAdapter, a9 as StorageFile, aa as TrackEventResponse, ab as TransactionSummary, ac as UTMParams, ad as UpdateProfileRequest, ae as UploadOptions, af as UploadResponse, ag as VerifyEmailRequest } from './index-Tq5WdDfS.js';
 
 /**
  * Tri-state file visibility — `'private' | 'app_public' | 'anonymous_visible'`.
@@ -223,6 +223,10 @@ interface ScaleMuleContextValue {
     media: unknown;
     /** Base SDK TTS service — exposed for `useTtsJob()` and direct narration requests */
     tts: TtsService;
+    /** Base SDK social graph service — follow graph, posts, feed, likes, and activity */
+    social: SocialService;
+    /** Base SDK social policy service — privacy decisions, requests, blocks, reports */
+    socialPolicy: SocialPolicyService;
     /**
      * Default media policy for `useMedia()` calls. Set via
      * `<ScaleMuleProvider mediaPolicy="…">`; per-call overrides win.
@@ -245,6 +249,14 @@ interface ScaleMuleContextValue {
     authProxyUrl?: string;
     /** Publishable key for browser-safe operations (analytics) */
     publishableKey?: string;
+    /**
+     * The configured `apiKey` value. Exposed so hooks like `useAnalytics`
+     * can detect the proxy-mode sentinel (`'proxy-mode'`) and warn when
+     * the corresponding proxy route is missing — silently 401'ing on the
+     * fallback is the worst possible failure mode for an analytics path.
+     * Treat as read-only diagnostic; consumers should not pass it onward.
+     */
+    apiKey?: string;
     /** Gateway URL for direct API calls */
     gatewayUrl?: string;
     /** Configured environment ('dev' or 'prod') */
@@ -462,6 +474,22 @@ interface UseTtsJobReturn {
     refresh: () => Promise<TtsJobStatus | null>;
 }
 declare function useTtsJob(jobId: string | null | undefined, options?: UseTtsJobOptions): UseTtsJobReturn;
+
+type NarrationPlayerAudio = TtsAudioInfo & {
+    waveform_peaks?: number[] | null;
+    ai_generated?: boolean;
+};
+interface NarrationPlayerProps {
+    audio: NarrationPlayerAudio;
+    className?: string;
+    providerLabel?: string;
+    narrationLabel?: string;
+    refreshing?: boolean;
+    onRefresh?: () => void | Promise<void>;
+    showRefreshButton?: boolean;
+    onPlaybackError?: () => void;
+}
+declare function NarrationPlayer({ audio, className, providerLabel, narrationLabel, refreshing, onRefresh, showRefreshButton, onPlaybackError, }: NarrationPlayerProps): react_jsx_runtime.JSX.Element | null;
 
 /**
  * Conversation kinds recognized by the chat realtime channel naming scheme.
@@ -1191,4 +1219,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError$1 as ApiError, type AudioFile, type AudioUploadResult, type ConversationKind, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, type UseAudioReturn, type UseAudioUploadOptions, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, type UseTtsJobOptions, type UseTtsJobReturn, UseUserReturn, type UseVoteOptions, type UseVoteReturn, User, type UsernameValidationResult, VoteButton, type VoteButtonClassNames, type VoteButtonProps, type VoteState, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };
+export { ApiError$1 as ApiError, type AudioFile, type AudioUploadResult, type ConversationKind, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, NarrationPlayer, type NarrationPlayerAudio, type NarrationPlayerProps, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, UseAnalyticsOptions, UseAnalyticsReturn, type UseAudioReturn, type UseAudioUploadOptions, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, type UseTtsJobOptions, type UseTtsJobReturn, UseUserReturn, type UseVoteOptions, type UseVoteReturn, User, type UsernameValidationResult, VoteButton, type VoteButtonClassNames, type VoteButtonProps, type VoteState, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };

@@ -1,3 +1,141 @@
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var init_chunk_3FTGBRLU = __esm({
+  "node_modules/@scalemule/sdk/dist/chunk-3FTGBRLU.mjs"() {
+  }
+});
+
+// node_modules/@scalemule/sdk/dist/index.mjs
+init_chunk_3FTGBRLU();
+var STORAGE_KEYS = {
+  SESSION: "scalemule_session",
+  USER_ID: "scalemule_user_id",
+  WORKSPACE_ID: "scalemule_workspace_id",
+  ANONYMOUS_ID: "scalemule_anonymous_id",
+  SESSION_POOL: "scalemule_session_pool",
+  ACTIVE_ACCOUNT: "scalemule_active_account",
+  KNOWN_ACCOUNTS: "scalemule_known_accounts",
+  OFFLINE_QUEUE: "scalemule_offline_queue"
+};
+var LEGACY_ANONYMOUS_ID_KEYS = ["sm_anonymous_id"];
+function generateAnonymousId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === "x" ? r : r & 3 | 8;
+    return v.toString(16);
+  });
+}
+var inFlight = /* @__PURE__ */ new WeakMap();
+function ensureAnonymousId(storage) {
+  const existing = inFlight.get(storage);
+  if (existing) return existing;
+  const promise = (async () => {
+    try {
+      return await resolveAnonymousId(storage);
+    } finally {
+      inFlight.delete(storage);
+    }
+  })();
+  inFlight.set(storage, promise);
+  return promise;
+}
+async function resolveAnonymousId(storage) {
+  const canonical = await storage.getItem(STORAGE_KEYS.ANONYMOUS_ID);
+  if (canonical) {
+    for (const legacyKey of LEGACY_ANONYMOUS_ID_KEYS) {
+      const legacy = await storage.getItem(legacyKey);
+      if (legacy !== canonical) {
+        try {
+          await storage.setItem(legacyKey, canonical);
+        } catch {
+        }
+      }
+    }
+    return canonical;
+  }
+  for (const legacyKey of LEGACY_ANONYMOUS_ID_KEYS) {
+    const legacy = await storage.getItem(legacyKey);
+    if (legacy) {
+      try {
+        await storage.setItem(STORAGE_KEYS.ANONYMOUS_ID, legacy);
+      } catch {
+      }
+      return legacy;
+    }
+  }
+  const fresh = generateAnonymousId();
+  try {
+    await storage.setItem(STORAGE_KEYS.ANONYMOUS_ID, fresh);
+  } catch {
+  }
+  for (const legacyKey of LEGACY_ANONYMOUS_ID_KEYS) {
+    try {
+      await storage.setItem(legacyKey, fresh);
+    } catch {
+    }
+  }
+  return fresh;
+}
+var PHONE_COUNTRIES = [
+  { code: "US", name: "United States", dialCode: "+1" },
+  { code: "CA", name: "Canada", dialCode: "+1" },
+  { code: "GB", name: "United Kingdom", dialCode: "+44" },
+  { code: "AU", name: "Australia", dialCode: "+61" },
+  { code: "DE", name: "Germany", dialCode: "+49" },
+  { code: "FR", name: "France", dialCode: "+33" },
+  { code: "IT", name: "Italy", dialCode: "+39" },
+  { code: "ES", name: "Spain", dialCode: "+34" },
+  { code: "NL", name: "Netherlands", dialCode: "+31" },
+  { code: "BE", name: "Belgium", dialCode: "+32" },
+  { code: "CH", name: "Switzerland", dialCode: "+41" },
+  { code: "AT", name: "Austria", dialCode: "+43" },
+  { code: "SE", name: "Sweden", dialCode: "+46" },
+  { code: "NO", name: "Norway", dialCode: "+47" },
+  { code: "DK", name: "Denmark", dialCode: "+45" },
+  { code: "FI", name: "Finland", dialCode: "+358" },
+  { code: "IE", name: "Ireland", dialCode: "+353" },
+  { code: "PT", name: "Portugal", dialCode: "+351" },
+  { code: "PL", name: "Poland", dialCode: "+48" },
+  { code: "CZ", name: "Czech Republic", dialCode: "+420" },
+  { code: "GR", name: "Greece", dialCode: "+30" },
+  { code: "RU", name: "Russia", dialCode: "+7" },
+  { code: "JP", name: "Japan", dialCode: "+81" },
+  { code: "KR", name: "South Korea", dialCode: "+82" },
+  { code: "CN", name: "China", dialCode: "+86" },
+  { code: "HK", name: "Hong Kong", dialCode: "+852" },
+  { code: "TW", name: "Taiwan", dialCode: "+886" },
+  { code: "SG", name: "Singapore", dialCode: "+65" },
+  { code: "MY", name: "Malaysia", dialCode: "+60" },
+  { code: "TH", name: "Thailand", dialCode: "+66" },
+  { code: "VN", name: "Vietnam", dialCode: "+84" },
+  { code: "PH", name: "Philippines", dialCode: "+63" },
+  { code: "ID", name: "Indonesia", dialCode: "+62" },
+  { code: "IN", name: "India", dialCode: "+91" },
+  { code: "PK", name: "Pakistan", dialCode: "+92" },
+  { code: "BD", name: "Bangladesh", dialCode: "+880" },
+  { code: "AE", name: "UAE", dialCode: "+971" },
+  { code: "SA", name: "Saudi Arabia", dialCode: "+966" },
+  { code: "IL", name: "Israel", dialCode: "+972" },
+  { code: "TR", name: "Turkey", dialCode: "+90" },
+  { code: "EG", name: "Egypt", dialCode: "+20" },
+  { code: "ZA", name: "South Africa", dialCode: "+27" },
+  { code: "NG", name: "Nigeria", dialCode: "+234" },
+  { code: "KE", name: "Kenya", dialCode: "+254" },
+  { code: "BR", name: "Brazil", dialCode: "+55" },
+  { code: "MX", name: "Mexico", dialCode: "+52" },
+  { code: "AR", name: "Argentina", dialCode: "+54" },
+  { code: "CL", name: "Chile", dialCode: "+56" },
+  { code: "CO", name: "Colombia", dialCode: "+57" },
+  { code: "PE", name: "Peru", dialCode: "+51" },
+  { code: "NZ", name: "New Zealand", dialCode: "+64" }
+];
+[...PHONE_COUNTRIES].sort((a, b) => b.dialCode.length - a.dialCode.length);
+
 // src/types/index.ts
 var ScaleMuleApiError = class extends Error {
   constructor(error, status) {
@@ -14,9 +152,9 @@ var GATEWAY_URLS = {
   dev: "https://api-dev.scalemule.com",
   prod: "https://api.scalemule.com"
 };
-var SESSION_STORAGE_KEY = "scalemule_session";
-var USER_ID_STORAGE_KEY = "scalemule_user_id";
-var WORKSPACE_STORAGE_KEY = "scalemule_workspace_id";
+var SESSION_STORAGE_KEY2 = STORAGE_KEYS.SESSION;
+var USER_ID_STORAGE_KEY2 = STORAGE_KEYS.USER_ID;
+var WORKSPACE_STORAGE_KEY2 = STORAGE_KEYS.WORKSPACE_ID;
 var RETRYABLE_STATUS_CODES = /* @__PURE__ */ new Set([408, 429, 500, 502, 503, 504]);
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -276,6 +414,15 @@ var ScaleMuleClient = class {
     this.sessionGate = null;
     this.resolveSessionGate = null;
     this.workspaceId = null;
+    // Anonymous visitor ID for identity linking. See `@scalemule/sdk/anonymous-id`
+    // for the contract. The base SDK and this client share the same canonical
+    // localStorage key so a visitor has exactly one ID across all packages.
+    this.anonymousId = null;
+    // Per-client single-flight cache for the lazy mint. Concurrent first-use
+    // callers receive the same promise — without this, two simultaneous
+    // unauthenticated requests on a fresh visitor could mint different IDs.
+    // The shared helper also single-flights at the storage-adapter level.
+    this.anonymousIdPromise = null;
     this.refreshPromise = null;
     this.apiKey = config.apiKey;
     this.applicationId = config.applicationId || null;
@@ -357,9 +504,9 @@ var ScaleMuleClient = class {
   setWorkspaceContext(id) {
     this.workspaceId = id;
     if (id) {
-      this.storage.setItem(WORKSPACE_STORAGE_KEY, id);
+      this.storage.setItem(WORKSPACE_STORAGE_KEY2, id);
     } else {
-      this.storage.removeItem(WORKSPACE_STORAGE_KEY);
+      this.storage.removeItem(WORKSPACE_STORAGE_KEY2);
     }
   }
   /**
@@ -406,12 +553,16 @@ var ScaleMuleClient = class {
    * Initialize client by loading persisted session
    */
   async initialize() {
-    const token = await this.storage.getItem(SESSION_STORAGE_KEY);
-    const userId = await this.storage.getItem(USER_ID_STORAGE_KEY);
+    const token = await this.storage.getItem(SESSION_STORAGE_KEY2);
+    const userId = await this.storage.getItem(USER_ID_STORAGE_KEY2);
     if (token) this.sessionToken = token;
     if (userId) this.userId = userId;
-    const wsId = await this.storage.getItem(WORKSPACE_STORAGE_KEY);
+    const wsId = await this.storage.getItem(WORKSPACE_STORAGE_KEY2);
     if (wsId) this.workspaceId = wsId;
+    try {
+      await this.ensureAnonymousId();
+    } catch {
+    }
     if (token) {
       this.resolveSessionPending();
     }
@@ -420,13 +571,39 @@ var ScaleMuleClient = class {
     }
   }
   /**
+   * Sync accessor for the cached anonymous ID. Returns `null` until either
+   * `initialize()` has run or `ensureAnonymousId()` has been awaited at
+   * least once. Use `ensureAnonymousId()` if you need a guaranteed value.
+   */
+  getAnonymousId() {
+    return this.anonymousId;
+  }
+  /**
+   * Lazy-mint or cache-then-return the anonymous ID via the shared
+   * `@scalemule/sdk` helper. Concurrent callers receive the same in-flight
+   * promise, so a burst of simultaneous first-use requests all see the
+   * same minted value.
+   */
+  async ensureAnonymousId() {
+    if (this.anonymousId) return this.anonymousId;
+    if (!this.anonymousIdPromise) {
+      this.anonymousIdPromise = ensureAnonymousId(this.storage).then((id) => {
+        this.anonymousId = id;
+        return id;
+      }).finally(() => {
+        this.anonymousIdPromise = null;
+      });
+    }
+    return this.anonymousIdPromise;
+  }
+  /**
    * Set session after login
    */
   async setSession(token, userId) {
     this.sessionToken = token;
     this.userId = userId;
-    await this.storage.setItem(SESSION_STORAGE_KEY, token);
-    await this.storage.setItem(USER_ID_STORAGE_KEY, userId);
+    await this.storage.setItem(SESSION_STORAGE_KEY2, token);
+    await this.storage.setItem(USER_ID_STORAGE_KEY2, userId);
     if (this.debug) {
       console.log("[ScaleMule] Session set for user:", userId);
     }
@@ -456,9 +633,9 @@ var ScaleMuleClient = class {
     this.sessionToken = null;
     this.userId = null;
     this.workspaceId = null;
-    await this.storage.removeItem(SESSION_STORAGE_KEY);
-    await this.storage.removeItem(USER_ID_STORAGE_KEY);
-    await this.storage.removeItem(WORKSPACE_STORAGE_KEY);
+    await this.storage.removeItem(SESSION_STORAGE_KEY2);
+    await this.storage.removeItem(USER_ID_STORAGE_KEY2);
+    await this.storage.removeItem(WORKSPACE_STORAGE_KEY2);
     if (this.debug) {
       console.log("[ScaleMule] Session cleared");
     }
@@ -493,6 +670,9 @@ var ScaleMuleClient = class {
     if (this.workspaceId) {
       headers.set("x-sm-workspace-id", this.workspaceId);
     }
+    if (!options?.skipAuth && !this.sessionToken && this.anonymousId) {
+      headers.set("x-anonymous-id", this.anonymousId);
+    }
     if (!headers.has("Content-Type") && options?.body && typeof options.body === "string") {
       headers.set("Content-Type", "application/json");
     }
@@ -504,6 +684,12 @@ var ScaleMuleClient = class {
   async request(path, options = {}) {
     if (this.sessionGate) {
       await this.sessionGate;
+    }
+    if (!options.skipAuth && !this.sessionToken && !this.anonymousId) {
+      try {
+        await this.ensureAnonymousId();
+      } catch {
+      }
     }
     const url = `${this.gatewayUrl}${path}`;
     const headers = this.buildHeaders(options);

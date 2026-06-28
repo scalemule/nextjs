@@ -2,7 +2,7 @@ import * as React from 'react';
 import { createContext, useState, useEffect, useMemo, useCallback, useContext, useRef } from 'react';
 import { createMoneyClient } from '@scalemule/money';
 export { MoneyClient, createMoneyClient } from '@scalemule/money';
-import { jsx, Fragment, jsxs } from 'react/jsx-runtime';
+import { jsx, jsxs, Fragment } from 'react/jsx-runtime';
 
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -301,21 +301,93 @@ function buildClientContextHeaders(context) {
   if (context.userAgent) headers["X-Client-User-Agent"] = context.userAgent;
   if (context.deviceFingerprint) headers["X-Client-Device-Fingerprint"] = context.deviceFingerprint;
   if (context.referrer) headers["X-Client-Referrer"] = context.referrer;
+  if (context.anonymousId) headers["x-anonymous-id"] = context.anonymousId;
   return headers;
+}
+var STORAGE_KEYS = {
+  SESSION: "scalemule_session",
+  USER_ID: "scalemule_user_id",
+  WORKSPACE_ID: "scalemule_workspace_id",
+  ANONYMOUS_ID: "scalemule_anonymous_id",
+  SESSION_POOL: "scalemule_session_pool",
+  ACTIVE_ACCOUNT: "scalemule_active_account",
+  KNOWN_ACCOUNTS: "scalemule_known_accounts",
+  OFFLINE_QUEUE: "scalemule_offline_queue"
+};
+var LEGACY_ANONYMOUS_ID_KEYS = ["sm_anonymous_id"];
+function generateAnonymousId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === "x" ? r : r & 3 | 8;
+    return v.toString(16);
+  });
+}
+var inFlight = /* @__PURE__ */ new WeakMap();
+function ensureAnonymousId(storage) {
+  const existing = inFlight.get(storage);
+  if (existing) return existing;
+  const promise = (async () => {
+    try {
+      return await resolveAnonymousId(storage);
+    } finally {
+      inFlight.delete(storage);
+    }
+  })();
+  inFlight.set(storage, promise);
+  return promise;
+}
+async function resolveAnonymousId(storage) {
+  const canonical = await storage.getItem(STORAGE_KEYS.ANONYMOUS_ID);
+  if (canonical) {
+    for (const legacyKey of LEGACY_ANONYMOUS_ID_KEYS) {
+      const legacy = await storage.getItem(legacyKey);
+      if (legacy !== canonical) {
+        try {
+          await storage.setItem(legacyKey, canonical);
+        } catch {
+        }
+      }
+    }
+    return canonical;
+  }
+  for (const legacyKey of LEGACY_ANONYMOUS_ID_KEYS) {
+    const legacy = await storage.getItem(legacyKey);
+    if (legacy) {
+      try {
+        await storage.setItem(STORAGE_KEYS.ANONYMOUS_ID, legacy);
+      } catch {
+      }
+      return legacy;
+    }
+  }
+  const fresh = generateAnonymousId();
+  try {
+    await storage.setItem(STORAGE_KEYS.ANONYMOUS_ID, fresh);
+  } catch {
+  }
+  for (const legacyKey of LEGACY_ANONYMOUS_ID_KEYS) {
+    try {
+      await storage.setItem(legacyKey, fresh);
+    } catch {
+    }
+  }
+  return fresh;
 }
 var SDK_VERSION = "0.0.1";
 var DEFAULT_TIMEOUT = 3e4;
 var DEFAULT_MAX_RETRIES = 2;
 var DEFAULT_BACKOFF_MS = 300;
 var MAX_BACKOFF_MS = 3e4;
-var SESSION_STORAGE_KEY = "scalemule_session";
-var USER_ID_STORAGE_KEY = "scalemule_user_id";
-var OFFLINE_QUEUE_KEY = "scalemule_offline_queue";
-var WORKSPACE_STORAGE_KEY = "scalemule_workspace_id";
-var ANONYMOUS_ID_STORAGE_KEY = "scalemule_anonymous_id";
-var SESSION_POOL_KEY = "scalemule_session_pool";
-var ACTIVE_ACCOUNT_KEY = "scalemule_active_account";
-var KNOWN_ACCOUNTS_KEY = "scalemule_known_accounts";
+var SESSION_STORAGE_KEY = STORAGE_KEYS.SESSION;
+var USER_ID_STORAGE_KEY = STORAGE_KEYS.USER_ID;
+var OFFLINE_QUEUE_KEY = STORAGE_KEYS.OFFLINE_QUEUE;
+var WORKSPACE_STORAGE_KEY = STORAGE_KEYS.WORKSPACE_ID;
+var SESSION_POOL_KEY = STORAGE_KEYS.SESSION_POOL;
+var ACTIVE_ACCOUNT_KEY = STORAGE_KEYS.ACTIVE_ACCOUNT;
+var KNOWN_ACCOUNTS_KEY = STORAGE_KEYS.KNOWN_ACCOUNTS;
 var GATEWAY_URLS = {
   dev: "https://api-dev.scalemule.com",
   prod: "https://api.scalemule.com"
@@ -558,6 +630,7 @@ var ScaleMuleClient = class {
     this.offlineQueue = null;
     this.workspaceId = null;
     this.anonymousId = null;
+    this.anonymousIdPromise = null;
     this.sessionPool = /* @__PURE__ */ new Map();
     this.knownAccounts = /* @__PURE__ */ new Map();
     this.refreshPromise = null;
@@ -593,12 +666,7 @@ var ScaleMuleClient = class {
     if (userId) this.userId = userId;
     const wsId = await this.storage.getItem(WORKSPACE_STORAGE_KEY);
     if (wsId) this.workspaceId = wsId;
-    let anonId = await this.storage.getItem(ANONYMOUS_ID_STORAGE_KEY);
-    if (!anonId) {
-      anonId = crypto.randomUUID();
-      await this.storage.setItem(ANONYMOUS_ID_STORAGE_KEY, anonId);
-    }
-    this.anonymousId = anonId;
+    await this.ensureAnonymousId();
     if (this.multiSessionEnabled) {
       const poolJson = await this.storage.getItem(SESSION_POOL_KEY);
       if (poolJson) {
@@ -650,7 +718,7 @@ var ScaleMuleClient = class {
         "[ScaleMule] Initialized, session:",
         !!this.sessionToken,
         "anonymousId:",
-        anonId,
+        this.anonymousId,
         "poolSize:",
         this.sessionPool.size,
         "knownAccounts:",
@@ -704,8 +772,37 @@ var ScaleMuleClient = class {
   isAuthenticated() {
     return this.sessionToken !== null;
   }
+  /**
+   * Sync accessor for the cached anonymous ID. Returns `null` until either
+   * `initialize()` has run or `ensureAnonymousId()` has been awaited at
+   * least once. Use `ensureAnonymousId()` if you need a guaranteed value.
+   */
   getAnonymousId() {
     return this.anonymousId;
+  }
+  /**
+   * Lazy-mint or cache-then-return the anonymous ID.
+   *
+   * Always returns a usable string. Callers that need to attach the
+   * `x-anonymous-id` header before `initialize()` has completed (rare —
+   * usually only the very first unauthenticated request from a freshly
+   * constructed client) should `await` this rather than relying on
+   * `getAnonymousId()`.
+   *
+   * Concurrent callers receive the same in-flight promise — no risk of
+   * two simultaneous first requests minting two distinct IDs.
+   */
+  async ensureAnonymousId() {
+    if (this.anonymousId) return this.anonymousId;
+    if (!this.anonymousIdPromise) {
+      this.anonymousIdPromise = ensureAnonymousId(this.storage).then((id) => {
+        this.anonymousId = id;
+        return id;
+      }).finally(() => {
+        this.anonymousIdPromise = null;
+      });
+    }
+    return this.anonymousIdPromise;
   }
   isMultiSessionEnabled() {
     return this.multiSessionEnabled;
@@ -882,8 +979,16 @@ var ScaleMuleClient = class {
       if (this.workspaceId) {
         headers["x-sm-workspace-id"] = this.workspaceId;
       }
-      if (!this.sessionToken && this.anonymousId) {
-        headers["x-anonymous-id"] = this.anonymousId;
+      if (!init.skipAuth && !this.sessionToken) {
+        if (!this.anonymousId) {
+          try {
+            await this.ensureAnonymousId();
+          } catch {
+          }
+        }
+        if (this.anonymousId) {
+          headers["x-anonymous-id"] = this.anonymousId;
+        }
       }
       if (attempt > 0 && (method === "POST" || method === "PUT" || method === "PATCH")) {
         if (!idempotencyKey) {
@@ -4371,6 +4476,116 @@ var SocialService = class extends ServiceModule {
     return this.comment(postId, data);
   }
 };
+var SocialPolicyService = class extends ServiceModule {
+  constructor() {
+    super(...arguments);
+    this.basePath = "/v1/social-policy";
+  }
+  decide(request, options) {
+    return this.post("/decision", withDefaultContext(request), options);
+  }
+  batchDecide(request, options) {
+    return this.post("/decisions/batch", request, options);
+  }
+  decideAction(action, actor, target, options) {
+    return this.decide(
+      {
+        app_key: options?.appKey,
+        account_id: options?.accountId,
+        policy_pack: options?.policyPack,
+        actor,
+        target,
+        action,
+        context: options?.context,
+        metadata: options?.metadata
+      },
+      options?.requestOptions
+    );
+  }
+  decideFollow(actor, target, options) {
+    return this.decideAction("follow", actor, target, options);
+  }
+  decideDirectMessage(actor, target, options) {
+    return this.decideAction("message_direct", actor, target, options);
+  }
+  decideContactRequest(actor, target, options) {
+    return this.decideAction("connect_request", actor, target, options);
+  }
+  getSettings(identityId, options) {
+    return this._get(`/settings/${identityId}`, options);
+  }
+  updateSettings(identityId, request, options) {
+    return this.patch(`/settings/${identityId}`, request, options);
+  }
+  createRelationship(request, options) {
+    return this.post("/relationships", request, options);
+  }
+  listRelationships(params, options) {
+    return this._get(this.withQuery("/relationships", toQueryParams(params)), options);
+  }
+  deleteRelationship(relationshipId, options) {
+    return this.del(`/relationships/${relationshipId}`, options);
+  }
+  createContactRequest(request, options) {
+    return this.post("/contact-requests", request, options);
+  }
+  listContactRequestInbox(params, options) {
+    return this._get(
+      this.withQuery("/contact-requests/inbox", toQueryParams(params)),
+      options
+    );
+  }
+  listContactRequestSent(params, options) {
+    return this._get(
+      this.withQuery("/contact-requests/sent", toQueryParams(params)),
+      options
+    );
+  }
+  acceptContactRequest(requestId, options) {
+    return this.post(`/contact-requests/${requestId}/accept`, void 0, options);
+  }
+  ignoreContactRequest(requestId, options) {
+    return this.post(`/contact-requests/${requestId}/ignore`, void 0, options);
+  }
+  declineContactRequest(requestId, options) {
+    return this.post(`/contact-requests/${requestId}/decline`, void 0, options);
+  }
+  reportContactRequest(requestId, options) {
+    return this.post(`/contact-requests/${requestId}/report`, void 0, options);
+  }
+  block(request, options) {
+    return this.post("/block", request, options);
+  }
+  unblock(request, options) {
+    return this.post("/unblock", request, options);
+  }
+  mute(request, options) {
+    return this.post("/mute", request, options);
+  }
+  unmute(request, options) {
+    return this.post("/unmute", request, options);
+  }
+  report(request, options) {
+    return this.post("/report", request, options);
+  }
+  listPolicyPacks(options) {
+    return this._get("/policy-packs", options);
+  }
+};
+function withDefaultContext(request) {
+  return {
+    ...request,
+    context: request.context ?? {}
+  };
+}
+function toQueryParams(params) {
+  if (!params) return void 0;
+  const query = {};
+  for (const [key, value] of Object.entries(params)) {
+    query[key] = value;
+  }
+  return query;
+}
 var ReferralsService = class extends ServiceModule {
   constructor() {
     super(...arguments);
@@ -5686,6 +5901,15 @@ var PhotoService = class extends ServiceModule {
   async delete(id, options) {
     return this.del(`/${id}`, options);
   }
+  async getPresets(options) {
+    return this._get("/presets", options);
+  }
+  async getManifest(id, params, options) {
+    return this._get(this.withQuery(`/${id}/manifest`, params), options);
+  }
+  async getPublicManifest(id, params, options) {
+    return this._get(this.withQuery(`/public/${id}/manifest`, params), options);
+  }
   /**
    * Build an absolute URL for the on-demand transform endpoint.
    *
@@ -5934,6 +6158,592 @@ var PhotoService = class extends ServiceModule {
     return this.get(id);
   }
 };
+var MEDIA_PRESETS = {
+  hero: { widths: [400, 800, 1200, 1600, 2400] },
+  inline: { widths: [400, 800, 1200] },
+  thumbnail: { widths: [120, 240, 360], fit: "cover" },
+  avatar: { widths: [64, 128, 256], fit: "cover" },
+  logo: { widths: [120, 240, 480] }
+};
+var MediaService = class extends ServiceModule {
+  constructor(client, storage, photo, video, audio) {
+    super(client);
+    this.storage = storage;
+    this.photo = photo;
+    this.video = video;
+    this.audio = audio;
+    this.basePath = "";
+  }
+  getPresets() {
+    return MEDIA_PRESETS;
+  }
+  async upload(file, options, requestOptions) {
+    const mimeType = file.type || "application/octet-stream";
+    const kind = detectKind(mimeType);
+    const visibility = resolveVisibility(options);
+    const isPublic = visibility !== "private";
+    const isAnonymous = visibility === "anonymous_visible";
+    const gateOnPipeline = shouldGateOnPipeline(options?.policy);
+    const emit = (phase, progress, fileId) => {
+      options?.onProgress?.({ phase, progress, file_id: fileId });
+    };
+    const uploadOptions = {
+      filename: options?.filename,
+      metadata: options?.metadata,
+      signal: options?.signal,
+      onProgress: (progress) => emit("uploading", progress)
+    };
+    emit("presigning", 0);
+    try {
+      if (isAnonymous) {
+        return await this.uploadAnonymous(file, mimeType, kind, options, requestOptions, uploadOptions, emit);
+      }
+      if (kind === "image" && !options?.skipPhotoRegister) {
+        return await this.uploadImage(
+          file,
+          mimeType,
+          visibility,
+          gateOnPipeline,
+          options,
+          requestOptions,
+          uploadOptions,
+          emit
+        );
+      }
+      if (kind === "video" && visibility === "private") {
+        const result = await this.video.uploadViaStorage(file, uploadOptions, requestOptions);
+        if (result.error || !result.data) {
+          return { data: null, error: result.error };
+        }
+        if (gateOnPipeline) {
+          emit("optimizing", 100, result.data.file_id);
+          await result.data.hls_url_promise;
+        }
+        const info = await this.fetchInfoBestEffort(result.data.file_id, requestOptions);
+        const asset2 = this.buildAsset(
+          info ?? fallbackFileInfo(result.data.file_id, mimeType, visibility, result.data.original_view_url, null),
+          {
+            photoId: null,
+            preset: options?.preset,
+            customWidths: options?.customWidths
+          }
+        );
+        emit("ready", 100, result.data.file_id);
+        return {
+          data: {
+            file_id: result.data.file_id,
+            photo_id: null,
+            original_view_url: result.data.original_view_url,
+            optimized_url_promise: Promise.resolve(null),
+            hls_url_promise: result.data.hls_url_promise,
+            mime_type: mimeType,
+            is_public: false,
+            visibility,
+            cdn_url: null,
+            asset: asset2
+          },
+          error: null
+        };
+      }
+      if (kind === "audio" && visibility === "private") {
+        const result = await this.audio.uploadViaStorage(file, uploadOptions, requestOptions);
+        if (result.error || !result.data) {
+          return { data: null, error: result.error };
+        }
+        const info = await this.fetchInfoBestEffort(result.data.file_id, requestOptions);
+        const asset2 = this.buildAsset(
+          info ?? fallbackFileInfo(result.data.file_id, mimeType, visibility, result.data.original_view_url, null),
+          {
+            photoId: null,
+            preset: options?.preset,
+            customWidths: options?.customWidths
+          }
+        );
+        emit("ready", 100, result.data.file_id);
+        return {
+          data: {
+            file_id: result.data.file_id,
+            photo_id: null,
+            original_view_url: result.data.original_view_url,
+            optimized_url_promise: Promise.resolve(null),
+            hls_url_promise: Promise.resolve(null),
+            mime_type: mimeType,
+            is_public: false,
+            visibility,
+            cdn_url: null,
+            asset: asset2
+          },
+          error: null
+        };
+      }
+      const storageResult = isPublic ? await this.storage.upload(file, {
+        ...uploadOptions,
+        visibility: "app_public",
+        skipCompression: true
+      }) : await this.storage.uploadPrivate(file, uploadOptions);
+      if (storageResult.error || !storageResult.data) {
+        return { data: null, error: storageResult.error };
+      }
+      const fileInfo = storageResult.data;
+      const asset = this.buildAsset(fileInfo, {
+        photoId: null,
+        preset: options?.preset,
+        customWidths: options?.customWidths
+      });
+      emit("ready", 100, fileInfo.id);
+      return {
+        data: {
+          file_id: fileInfo.id,
+          photo_id: null,
+          original_view_url: fileInfo.url ?? null,
+          optimized_url_promise: Promise.resolve(null),
+          hls_url_promise: Promise.resolve(null),
+          mime_type: mimeType,
+          is_public: fileInfo.is_public ?? isPublic,
+          visibility: resolveFileVisibility(fileInfo, visibility),
+          cdn_url: fileInfo.cdn_url ?? null,
+          asset
+        },
+        error: null
+      };
+    } catch (error) {
+      return {
+        data: null,
+        error: normalizeThrownError(error)
+      };
+    }
+  }
+  async get(fileId, options, requestOptions) {
+    const result = await this.storage.getInfo(fileId, requestOptions);
+    if (result.error || !result.data) {
+      return { data: null, error: result.error };
+    }
+    return {
+      data: this.buildAsset(result.data, {
+        photoId: null,
+        preset: options?.preset,
+        customWidths: options?.customWidths
+      }),
+      error: null
+    };
+  }
+  async list(params, requestOptions) {
+    const result = await this.storage.list(params, requestOptions);
+    return {
+      data: result.data.map(
+        (file) => this.buildAsset(file, {
+          photoId: null,
+          preset: params?.preset,
+          customWidths: params?.customWidths
+        })
+      ),
+      metadata: result.metadata,
+      error: result.error
+    };
+  }
+  async delete(fileId, options) {
+    try {
+      const [, storageResult] = await Promise.all([
+        this.photo.delete(fileId, options).catch(() => ({ data: null, error: null })),
+        this.storage.delete(fileId, options)
+      ]);
+      if (storageResult.error && storageResult.error.status !== 404) {
+        return { data: null, error: storageResult.error };
+      }
+      return { data: { deleted: true }, error: null };
+    } catch (error) {
+      return { data: null, error: normalizeThrownError(error) };
+    }
+  }
+  async releaseQuarantine(fileId, reason = "Released via @scalemule/sdk media.releaseQuarantine()", options) {
+    const response = await this.client.post(
+      `/v1/storage/admin/files/${fileId}/scan-override`,
+      { scan_status: "clean", reason },
+      options
+    );
+    if (response.error) {
+      return { data: null, error: response.error };
+    }
+    return this.get(fileId, void 0, options);
+  }
+  async getManifest(fileId, options, requestOptions) {
+    const file = await this.storage.getInfo(fileId, requestOptions);
+    if (file.error || !file.data) {
+      return { data: null, error: file.error };
+    }
+    const manifest = await this.fetchManifest(file.data, options, requestOptions);
+    return { data: manifest, error: null };
+  }
+  buildAsset(file, options, manifest) {
+    const visibility = resolveFileVisibility(file);
+    const photoId = options?.photoId ?? null;
+    const originalUrl = visibility === "anonymous_visible" ? file.cdn_url ?? file.url ?? null : file.url ?? file.cdn_url ?? null;
+    return {
+      file_id: file.id,
+      photo_id: photoId,
+      filename: file.filename,
+      content_type: file.content_type,
+      size_bytes: file.size_bytes,
+      kind: detectKind(file.content_type),
+      visibility,
+      is_public: file.is_public ?? visibility !== "private",
+      scan_status: file.scan_status,
+      created_at: file.created_at,
+      original_url: originalUrl,
+      cdn_url: file.cdn_url ?? null,
+      manifest: manifest ?? this.buildManifest(file, options)
+    };
+  }
+  buildManifest(file, options) {
+    const kind = detectKind(file.content_type);
+    const visibility = resolveFileVisibility(file);
+    const originalUrl = visibility === "anonymous_visible" ? file.cdn_url ?? file.url ?? null : file.url ?? file.cdn_url ?? null;
+    if (!originalUrl) {
+      return null;
+    }
+    if (kind !== "image" || file.content_type === "image/svg+xml") {
+      return {
+        file_id: file.id,
+        content_type: file.content_type,
+        preset: "original",
+        variants: { original: originalUrl },
+        srcset: null,
+        default: originalUrl
+      };
+    }
+    const preset = options?.preset ?? "inline";
+    const spec = resolvePresetSpec(preset, options?.customWidths);
+    const variants = Object.fromEntries(
+      spec.widths.map((width) => [
+        String(width),
+        visibility === "anonymous_visible" ? this.photo.getPublicTransformUrl(file.id, transformOptions(width, spec.fit)) : this.photo.getTransformUrl(file.id, transformOptions(width, spec.fit))
+      ])
+    );
+    const defaultWidth = pickDefaultWidth(spec.widths);
+    const defaultUrl = variants[String(defaultWidth)] ?? Object.values(variants)[0] ?? originalUrl;
+    return {
+      file_id: file.id,
+      content_type: file.content_type,
+      preset,
+      variants,
+      srcset: spec.widths.map((width) => `${variants[String(width)]} ${width}w`).join(", "),
+      default: defaultUrl
+    };
+  }
+  async uploadAnonymous(file, mimeType, kind, options, requestOptions, uploadOptions, emit) {
+    const result = await this.storage.uploadAnonymous(file, uploadOptions);
+    if (result.error || !result.data) {
+      return { data: null, error: result.error };
+    }
+    emit("scanning", 100, result.data.id);
+    const ready = await this.waitForAnonymousReady(result.data.id, options?.signal, emit);
+    if (ready.error) {
+      return { data: null, error: ready.error };
+    }
+    const fileInfo = await this.fetchInfoBestEffort(result.data.id, requestOptions) ?? {
+      ...result.data,
+      cdn_url: ready.cdnUrl ?? result.data.cdn_url,
+      scan_status: ready.scanStatus
+    };
+    let manifest = this.buildManifest(fileInfo, {
+      preset: options?.preset,
+      customWidths: options?.customWidths
+    });
+    if (kind === "image" && fileInfo.content_type !== "image/svg+xml" && options?.preset !== "custom") {
+      emit("optimizing", 100, result.data.id);
+      const persistedManifest = await this.waitForAnonymousManifest(fileInfo.id, options, requestOptions, emit);
+      if (persistedManifest.error) {
+        return { data: null, error: persistedManifest.error };
+      }
+      manifest = persistedManifest.manifest ?? manifest;
+    }
+    const asset = this.buildAsset(
+      fileInfo,
+      {
+        photoId: null,
+        preset: options?.preset,
+        customWidths: options?.customWidths
+      },
+      manifest
+    );
+    emit("ready", 100, result.data.id);
+    return {
+      data: {
+        file_id: result.data.id,
+        photo_id: null,
+        original_view_url: fileInfo.cdn_url ?? null,
+        optimized_url_promise: Promise.resolve(manifest?.default ?? null),
+        hls_url_promise: Promise.resolve(null),
+        mime_type: mimeType,
+        is_public: true,
+        visibility: "anonymous_visible",
+        cdn_url: fileInfo.cdn_url ?? null,
+        asset
+      },
+      error: null
+    };
+  }
+  async uploadImage(file, mimeType, visibility, gateOnPipeline, options, requestOptions, uploadOptions, emit) {
+    if (visibility === "private") {
+      const result = await this.photo.uploadViaStorage(file, uploadOptions, requestOptions);
+      if (result.error || !result.data) {
+        return { data: null, error: result.error };
+      }
+      if (gateOnPipeline) {
+        emit("optimizing", 100, result.data.file_id);
+        await result.data.optimized_url_promise;
+      }
+      const info2 = await this.fetchInfoBestEffort(result.data.file_id, requestOptions);
+      const asset2 = this.buildAsset(
+        info2 ?? fallbackFileInfo(result.data.file_id, mimeType, visibility, result.data.original_view_url, null),
+        {
+          photoId: result.data.photo_id,
+          preset: options?.preset,
+          customWidths: options?.customWidths
+        }
+      );
+      emit("ready", 100, result.data.file_id);
+      return {
+        data: {
+          file_id: result.data.file_id,
+          photo_id: result.data.photo_id,
+          original_view_url: result.data.original_view_url,
+          optimized_url_promise: result.data.optimized_url_promise,
+          hls_url_promise: Promise.resolve(null),
+          mime_type: mimeType,
+          is_public: false,
+          visibility,
+          cdn_url: null,
+          asset: asset2
+        },
+        error: null
+      };
+    }
+    const storageResult = await this.storage.upload(file, {
+      ...uploadOptions,
+      visibility: "app_public",
+      skipCompression: true
+    });
+    if (storageResult.error || !storageResult.data) {
+      return { data: null, error: storageResult.error };
+    }
+    const originalViewUrl = storageResult.data.url ?? null;
+    const registerResult = await this.photo.register({ fileId: storageResult.data.id }, requestOptions);
+    const photoId = registerResult.error || !registerResult.data ? null : registerResult.data.id;
+    const optimizedUrlPromise = photoId ? this.pollPhotoOptimizationComplete(photoId, requestOptions) : Promise.resolve(null);
+    if (gateOnPipeline) {
+      emit("optimizing", 100, storageResult.data.id);
+      await optimizedUrlPromise;
+    }
+    const info = await this.fetchInfoBestEffort(storageResult.data.id, requestOptions) ?? storageResult.data;
+    const asset = this.buildAsset(info, {
+      photoId,
+      preset: options?.preset,
+      customWidths: options?.customWidths
+    });
+    emit("ready", 100, storageResult.data.id);
+    return {
+      data: {
+        file_id: storageResult.data.id,
+        photo_id: photoId,
+        original_view_url: originalViewUrl,
+        optimized_url_promise: optimizedUrlPromise,
+        hls_url_promise: Promise.resolve(null),
+        mime_type: mimeType,
+        is_public: true,
+        visibility,
+        cdn_url: info.cdn_url ?? null,
+        asset
+      },
+      error: null
+    };
+  }
+  async waitForAnonymousReady(fileId, signal, emit) {
+    const delays = [500, 1e3, 1500, 2e3, 2500, 3e3];
+    for (let attempt = 0; attempt < 24; attempt++) {
+      if (signal?.aborted) {
+        return {
+          cdnUrl: null,
+          scanStatus: void 0,
+          error: { code: "aborted", message: "Upload aborted", status: 0 }
+        };
+      }
+      const status = await this.storage.getFileStatus(fileId);
+      if (status.error || !status.data) {
+        await sleep4(delays[Math.min(attempt, delays.length - 1)] ?? 3e3);
+        continue;
+      }
+      const scanStatus = status.data.scan.status;
+      if (status.data.urls.cdn_url) {
+        return { cdnUrl: status.data.urls.cdn_url, scanStatus, error: null };
+      }
+      if (scanStatus === "threat" || scanStatus === "quarantined" || scanStatus === "error") {
+        return {
+          cdnUrl: null,
+          scanStatus,
+          error: scanError(scanStatus)
+        };
+      }
+      emit("scanning", Math.min(99, 10 + attempt * 4), fileId);
+      await sleep4(delays[Math.min(attempt, delays.length - 1)] ?? 3e3);
+    }
+    return {
+      cdnUrl: null,
+      scanStatus: "pending",
+      error: {
+        code: "file_scanning",
+        message: "File scan did not complete in time. Re-fetch the file status and publish once cdn_url appears.",
+        status: 202
+      }
+    };
+  }
+  async fetchInfoBestEffort(fileId, requestOptions) {
+    const result = await this.storage.getInfo(fileId, requestOptions);
+    return result.error || !result.data ? null : result.data;
+  }
+  async fetchManifest(file, options, requestOptions) {
+    const kind = detectKind(file.content_type);
+    const visibility = resolveFileVisibility(file);
+    if (kind !== "image" || file.content_type === "image/svg+xml") {
+      return this.buildManifest(file, options);
+    }
+    if (visibility !== "anonymous_visible" || options?.preset === "custom") {
+      return this.buildManifest(file, options);
+    }
+    const persisted = await this.photo.getPublicManifest(
+      file.id,
+      { preset: options?.preset ?? "inline" },
+      requestOptions
+    );
+    if (persisted.error || !persisted.data) {
+      return this.buildManifest(file, options);
+    }
+    return persisted.data;
+  }
+  async pollPhotoOptimizationComplete(photoId, requestOptions) {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const result = await this.photo.get(photoId, requestOptions);
+      const status = result.data?.optimization_status;
+      if (status === "completed") {
+        return this.photo.getTransformUrl(photoId, { width: 1200 });
+      }
+      await sleep4(250);
+    }
+    return null;
+  }
+  async waitForAnonymousManifest(fileId, options, requestOptions, emit) {
+    const preset = options?.preset ?? "inline";
+    const delays = [500, 1e3, 1500, 2e3, 2500, 3e3];
+    for (let attempt = 0; attempt < 30; attempt++) {
+      if (options?.signal?.aborted) {
+        return {
+          manifest: null,
+          error: { code: "aborted", message: "Upload aborted", status: 0 }
+        };
+      }
+      const manifest = await this.photo.getPublicManifest(fileId, { preset }, requestOptions);
+      if (!manifest.error && manifest.data && manifest.data.ready) {
+        return { manifest: manifest.data, error: null };
+      }
+      emit("optimizing", Math.min(99, 15 + attempt * 3), fileId);
+      await sleep4(delays[Math.min(attempt, delays.length - 1)] ?? 3e3);
+    }
+    return {
+      manifest: null,
+      error: {
+        code: "manifest_pending",
+        message: "Photo variants are still being generated. Re-fetch the public manifest once ready flips true.",
+        status: 202
+      }
+    };
+  }
+};
+function detectKind(contentType) {
+  if (contentType.startsWith("image/")) return "image";
+  if (contentType.startsWith("video/")) return "video";
+  if (contentType.startsWith("audio/")) return "audio";
+  if (contentType.includes("pdf") || contentType.includes("text/") || contentType.includes("word") || contentType.includes("sheet") || contentType.includes("presentation")) {
+    return "document";
+  }
+  return "other";
+}
+function resolveVisibility(options) {
+  if (options?.visibility) return options.visibility;
+  if (options?.isPublic === true) return "app_public";
+  return "private";
+}
+function resolveFileVisibility(file, fallback = "private") {
+  if (file.visibility) return file.visibility;
+  if (file.is_public === true) return "app_public";
+  return fallback;
+}
+function shouldGateOnPipeline(policy) {
+  return policy === "safe_public" || policy === "moderated" || policy === "compliance";
+}
+function resolvePresetSpec(preset, customWidths) {
+  if (preset === "custom") {
+    const widths = Array.from(
+      new Set((customWidths ?? []).filter((value) => Number.isFinite(value) && value > 0))
+    ).sort((a, b) => a - b);
+    return { widths: widths.length > 0 ? widths : MEDIA_PRESETS.inline.widths };
+  }
+  return MEDIA_PRESETS[preset];
+}
+function transformOptions(width, fit) {
+  return fit === "cover" ? { width, height: width, fit: "cover" } : { width, fit: fit ?? "contain" };
+}
+function pickDefaultWidth(widths) {
+  if (widths.includes(1200)) return 1200;
+  return widths[Math.floor(widths.length / 2)] ?? widths[0] ?? 0;
+}
+function fallbackFileInfo(fileId, contentType, visibility, originalUrl, cdnUrl) {
+  return {
+    id: fileId,
+    filename: fileId,
+    content_type: contentType,
+    size_bytes: 0,
+    is_public: visibility !== "private",
+    visibility,
+    cdn_url: cdnUrl ?? void 0,
+    url: originalUrl ?? void 0,
+    created_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function normalizeThrownError(error) {
+  if (typeof error === "object" && error && "code" in error && "message" in error) {
+    return error;
+  }
+  return {
+    code: "upload_error",
+    message: error instanceof Error ? error.message : "Media operation failed",
+    status: 500
+  };
+}
+function scanError(status) {
+  switch (status) {
+    case "threat":
+      return {
+        code: "file_threat",
+        message: "File was flagged as malicious during scanning.",
+        status: 409
+      };
+    case "quarantined":
+      return {
+        code: "file_quarantined",
+        message: "File was quarantined during scanning.",
+        status: 409
+      };
+    default:
+      return {
+        code: "upload_error",
+        message: "File scan failed.",
+        status: 500
+      };
+  }
+}
+function sleep4(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 var AudioService = class extends ServiceModule {
   /**
    * @param storage Required for {@link uploadViaStorage}. Wired up by the
@@ -6823,6 +7633,7 @@ var ScaleMule = class {
     this.chat = new ChatService(this._client);
     this.conference = new ConferenceService(this._client);
     this.social = new SocialService(this._client);
+    this.socialPolicy = new SocialPolicyService(this._client);
     this.referrals = new ReferralsService(this._client);
     this.billing = new BillingService(this._client);
     this.analytics = new AnalyticsService(this._client);
@@ -6847,6 +7658,7 @@ var ScaleMule = class {
     this.functions = new FunctionsService(this._client);
     this.photo = new PhotoService(this._client, this.storage);
     this.audio = new AudioService(this._client, this.storage);
+    this.media = new MediaService(this._client, this.storage, this.photo, this.video, this.audio);
     this.tts = new TtsService(this._client);
     this.flagContent = new FlagContentService(this._client);
     this.creatorMaker = new CreatorMakerService(this._client);
@@ -6997,9 +7809,9 @@ var GATEWAY_URLS2 = {
   dev: "https://api-dev.scalemule.com",
   prod: "https://api.scalemule.com"
 };
-var SESSION_STORAGE_KEY2 = "scalemule_session";
-var USER_ID_STORAGE_KEY2 = "scalemule_user_id";
-var WORKSPACE_STORAGE_KEY2 = "scalemule_workspace_id";
+var SESSION_STORAGE_KEY2 = STORAGE_KEYS.SESSION;
+var USER_ID_STORAGE_KEY2 = STORAGE_KEYS.USER_ID;
+var WORKSPACE_STORAGE_KEY2 = STORAGE_KEYS.WORKSPACE_ID;
 var RETRYABLE_STATUS_CODES3 = /* @__PURE__ */ new Set([408, 429, 500, 502, 503, 504]);
 function sleep3(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -7259,6 +8071,15 @@ var ScaleMuleClient2 = class {
     this.sessionGate = null;
     this.resolveSessionGate = null;
     this.workspaceId = null;
+    // Anonymous visitor ID for identity linking. See `@scalemule/sdk/anonymous-id`
+    // for the contract. The base SDK and this client share the same canonical
+    // localStorage key so a visitor has exactly one ID across all packages.
+    this.anonymousId = null;
+    // Per-client single-flight cache for the lazy mint. Concurrent first-use
+    // callers receive the same promise — without this, two simultaneous
+    // unauthenticated requests on a fresh visitor could mint different IDs.
+    // The shared helper also single-flights at the storage-adapter level.
+    this.anonymousIdPromise = null;
     this.refreshPromise = null;
     this.apiKey = config.apiKey;
     this.applicationId = config.applicationId || null;
@@ -7395,12 +8216,42 @@ var ScaleMuleClient2 = class {
     if (userId) this.userId = userId;
     const wsId = await this.storage.getItem(WORKSPACE_STORAGE_KEY2);
     if (wsId) this.workspaceId = wsId;
+    try {
+      await this.ensureAnonymousId();
+    } catch {
+    }
     if (token) {
       this.resolveSessionPending();
     }
     if (this.debug) {
       console.log("[ScaleMule] Initialized with session:", !!token);
     }
+  }
+  /**
+   * Sync accessor for the cached anonymous ID. Returns `null` until either
+   * `initialize()` has run or `ensureAnonymousId()` has been awaited at
+   * least once. Use `ensureAnonymousId()` if you need a guaranteed value.
+   */
+  getAnonymousId() {
+    return this.anonymousId;
+  }
+  /**
+   * Lazy-mint or cache-then-return the anonymous ID via the shared
+   * `@scalemule/sdk` helper. Concurrent callers receive the same in-flight
+   * promise, so a burst of simultaneous first-use requests all see the
+   * same minted value.
+   */
+  async ensureAnonymousId() {
+    if (this.anonymousId) return this.anonymousId;
+    if (!this.anonymousIdPromise) {
+      this.anonymousIdPromise = ensureAnonymousId(this.storage).then((id) => {
+        this.anonymousId = id;
+        return id;
+      }).finally(() => {
+        this.anonymousIdPromise = null;
+      });
+    }
+    return this.anonymousIdPromise;
   }
   /**
    * Set session after login
@@ -7476,6 +8327,9 @@ var ScaleMuleClient2 = class {
     if (this.workspaceId) {
       headers.set("x-sm-workspace-id", this.workspaceId);
     }
+    if (!options?.skipAuth && !this.sessionToken && this.anonymousId) {
+      headers.set("x-anonymous-id", this.anonymousId);
+    }
     if (!headers.has("Content-Type") && options?.body && typeof options.body === "string") {
       headers.set("Content-Type", "application/json");
     }
@@ -7487,6 +8341,12 @@ var ScaleMuleClient2 = class {
   async request(path, options = {}) {
     if (this.sessionGate) {
       await this.sessionGate;
+    }
+    if (!options.skipAuth && !this.sessionToken && !this.anonymousId) {
+      try {
+        await this.ensureAnonymousId();
+      } catch {
+      }
     }
     const url = `${this.gatewayUrl}${path}`;
     const headers = this.buildHeaders(options);
@@ -8146,6 +9006,8 @@ function ScaleMuleProvider({
       audio: baseClient.audio,
       media: baseClient.media,
       tts: baseClient.tts,
+      social: baseClient.social,
+      socialPolicy: baseClient.socialPolicy,
       mediaPolicy: effectiveMediaPolicy,
       user,
       setUser: handleSetUser,
@@ -8155,13 +9017,14 @@ function ScaleMuleProvider({
       analyticsProxyUrl,
       authProxyUrl,
       publishableKey,
+      apiKey,
       gatewayUrl: resolvedGatewayUrl,
       environment: environment || void 0,
       enableAccountSwitcher,
       accountSwitcherPrivacy,
       bootstrapFlags
     }),
-    [client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
+    [client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
   );
   return /* @__PURE__ */ jsx(ScaleMuleContext.Provider, { value, children });
 }
@@ -8222,6 +9085,19 @@ function getCookie(name) {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
   return match ? decodeURIComponent(match[1]) : void 0;
 }
+var browserStorage = typeof window !== "undefined" && typeof window.localStorage !== "undefined" ? {
+  getItem: (key) => window.localStorage.getItem(key),
+  setItem: (key, value) => window.localStorage.setItem(key, value),
+  removeItem: (key) => window.localStorage.removeItem(key)
+} : null;
+async function getProxyAnonymousId() {
+  if (!browserStorage) return void 0;
+  try {
+    return await ensureAnonymousId(browserStorage);
+  } catch {
+    return void 0;
+  }
+}
 async function proxyFetch(proxyUrl, path, options = {}) {
   const method = options.method || "POST";
   const headers = {};
@@ -8233,6 +9109,10 @@ async function proxyFetch(proxyUrl, path, options = {}) {
     if (csrfToken) {
       headers["x-csrf-token"] = csrfToken;
     }
+  }
+  const anonymousId = await getProxyAnonymousId();
+  if (anonymousId) {
+    headers["x-anonymous-id"] = anonymousId;
   }
   const response = await fetch(`${proxyUrl}/${path}`, {
     method,
@@ -9705,6 +10585,442 @@ function useTtsJob(jobId, options) {
   }, [jobId, options?.enabled, options?.pollIntervalMs, refresh]);
   return { job, loading, error, refresh };
 }
+var SPEEDS = [1, 1.25, 1.5, 2];
+var EXPIRY_REFRESH_WINDOW_MS = 3e4;
+function formatTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0:00";
+  const wholeSeconds = Math.floor(seconds);
+  const minutes = Math.floor(wholeSeconds / 60);
+  const remainder = wholeSeconds % 60;
+  return `${minutes}:${remainder.toString().padStart(2, "0")}`;
+}
+function getNextSpeed(currentSpeed) {
+  const currentIndex = SPEEDS.findIndex((speed) => speed === currentSpeed);
+  if (currentIndex === -1) return SPEEDS[0];
+  return SPEEDS[(currentIndex + 1) % SPEEDS.length];
+}
+var styles = {
+  root: {
+    borderRadius: "1.75rem",
+    border: "1px solid rgba(226, 232, 240, 0.8)",
+    background: "linear-gradient(180deg, #f8fbff 0%, #edf4ff 100%)",
+    padding: "1rem",
+    color: "#0f172b",
+    boxShadow: "0 22px 70px rgba(4, 12, 24, 0.28)"
+  },
+  layout: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "1rem"
+  },
+  playButton: {
+    display: "flex",
+    height: "4.5rem",
+    width: "4.5rem",
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "9999px",
+    border: "none",
+    backgroundColor: "#020618",
+    color: "#ffffff",
+    boxShadow: "0 10px 28px rgba(15, 23, 42, 0.25)",
+    cursor: "pointer"
+  },
+  playIcon: { display: "block", width: "1.75rem", height: "1.75rem", fill: "currentColor" },
+  playIconOffset: { marginLeft: "0.25rem" },
+  content: { minWidth: "16rem", flex: "1 1 18rem" },
+  metaRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "0.75rem",
+    fontSize: "0.8rem",
+    fontWeight: 500,
+    color: "#62748e"
+  },
+  metaRight: { display: "flex", alignItems: "center", gap: "0.75rem" },
+  badge: {
+    borderRadius: "9999px",
+    backgroundColor: "#dbeafe",
+    padding: "0.25rem 0.75rem",
+    fontSize: "0.65rem",
+    fontWeight: 600,
+    letterSpacing: "0.24em",
+    textTransform: "uppercase",
+    color: "#1447e6"
+  },
+  scrubber: {
+    position: "relative",
+    marginTop: "1rem",
+    height: "3rem",
+    cursor: "pointer",
+    overflow: "hidden",
+    borderRadius: "1rem",
+    backgroundColor: "rgba(226, 232, 240, 0.9)",
+    paddingInline: "0.25rem"
+  },
+  waveform: {
+    pointerEvents: "none",
+    position: "absolute",
+    inset: 0,
+    height: "100%",
+    width: "100%"
+  },
+  fallbackTrack: { position: "absolute", inset: 0, backgroundColor: "rgba(226, 232, 240, 0.9)" },
+  fallbackProgress: {
+    position: "absolute",
+    insetBlock: 0,
+    left: 0,
+    backgroundColor: "#155dfc"
+  },
+  chipsRow: {
+    marginTop: "1rem",
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "0.5rem",
+    fontSize: "0.72rem",
+    fontWeight: 500,
+    color: "#62748e"
+  },
+  chipStrong: {
+    borderRadius: "9999px",
+    border: "1px solid #e2e8f0",
+    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    padding: "0.25rem 0.75rem",
+    color: "#334155"
+  },
+  chipMuted: {
+    borderRadius: "9999px",
+    border: "1px solid #e2e8f0",
+    backgroundColor: "rgba(255, 255, 255, 0.65)",
+    padding: "0.25rem 0.75rem"
+  },
+  controls: {
+    display: "flex",
+    flexShrink: 0,
+    alignItems: "center",
+    gap: "0.5rem",
+    alignSelf: "flex-start"
+  },
+  secondaryButton: {
+    borderRadius: "9999px",
+    border: "1px solid #cad5e2",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    padding: "0.5rem 1rem",
+    fontSize: "1rem",
+    fontWeight: 600,
+    color: "#334155",
+    boxShadow: "0 1px 3px rgba(15, 23, 42, 0.08)",
+    cursor: "pointer"
+  },
+  refreshButton: {
+    borderRadius: "9999px",
+    border: "1px solid #cad5e2",
+    backgroundColor: "rgba(255, 255, 255, 0.75)",
+    padding: "0.5rem 1rem",
+    fontSize: "0.875rem",
+    fontWeight: 600,
+    color: "#334155",
+    cursor: "pointer"
+  },
+  disabled: { cursor: "not-allowed", opacity: 0.6 }
+};
+function NarrationPlayer({
+  audio,
+  className,
+  providerLabel = "ScaleMule",
+  narrationLabel = "AI-Narrated",
+  refreshing = false,
+  onRefresh,
+  showRefreshButton = false,
+  onPlaybackError
+}) {
+  const audioRef = useRef(null);
+  const scrubRef = useRef(null);
+  const pendingResumeRef = useRef(false);
+  const pendingResumeTimeRef = useRef(null);
+  const recoveredUrlRef = useRef(null);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(
+    audio.duration_ms ? audio.duration_ms / 1e3 : 0
+  );
+  const [speed, setSpeed] = useState(1.5);
+  const peaks = useMemo(() => {
+    if (!Array.isArray(audio.waveform_peaks)) return [];
+    const sampled = audio.waveform_peaks.filter((_, index) => index % 3 === 0).slice(0, 220);
+    return sampled.length > 0 ? sampled : audio.waveform_peaks.slice(0, 220);
+  }, [audio.waveform_peaks]);
+  useEffect(() => {
+    const element = audioRef.current;
+    if (!element) return;
+    recoveredUrlRef.current = null;
+    const resumeTime = pendingResumeTimeRef.current;
+    setCurrentTime(resumeTime ?? 0);
+    setPlaying(false);
+    element.pause();
+    try {
+      element.currentTime = resumeTime ?? 0;
+    } catch {
+      element.currentTime = 0;
+    }
+    if (pendingResumeRef.current) {
+      pendingResumeRef.current = false;
+      pendingResumeTimeRef.current = null;
+      element.play().catch(() => {
+        setPlaying(false);
+        onPlaybackError?.();
+      });
+      return;
+    }
+    pendingResumeTimeRef.current = null;
+  }, [audio.url]);
+  useEffect(() => {
+    const element = audioRef.current;
+    if (!element) return;
+    element.playbackRate = speed;
+    element.preservesPitch = true;
+  }, [speed]);
+  function isUrlExpiringSoon() {
+    if (!audio.expires_at) return false;
+    const expiresAtMs = Date.parse(audio.expires_at);
+    if (!Number.isFinite(expiresAtMs)) return false;
+    return expiresAtMs - Date.now() <= EXPIRY_REFRESH_WINDOW_MS;
+  }
+  function seekToTime(nextTime) {
+    const element = audioRef.current;
+    if (!element || !duration) return;
+    const clampedTime = Math.max(0, Math.min(duration, nextTime));
+    element.currentTime = clampedTime;
+    setCurrentTime(clampedTime);
+  }
+  async function refreshAndResume() {
+    if (!onRefresh || refreshing) return false;
+    if (recoveredUrlRef.current === (audio.url ?? null)) return false;
+    recoveredUrlRef.current = audio.url ?? null;
+    pendingResumeRef.current = true;
+    pendingResumeTimeRef.current = currentTime;
+    try {
+      await Promise.resolve(onRefresh());
+      return true;
+    } catch {
+      recoveredUrlRef.current = null;
+      pendingResumeRef.current = false;
+      pendingResumeTimeRef.current = null;
+      onPlaybackError?.();
+      return false;
+    }
+  }
+  function togglePlayback() {
+    const element = audioRef.current;
+    if (!element) return;
+    if (element.paused) {
+      if (refreshing) {
+        pendingResumeRef.current = true;
+        pendingResumeTimeRef.current = currentTime;
+        return;
+      }
+      if (onRefresh && isUrlExpiringSoon()) {
+        void refreshAndResume();
+        return;
+      }
+      element.play().catch(() => {
+        setPlaying(false);
+        onPlaybackError?.();
+      });
+      return;
+    }
+    element.pause();
+  }
+  function seekTo(clientX) {
+    const scrubber = scrubRef.current;
+    if (!scrubber || !duration) return;
+    const bounds = scrubber.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - bounds.left) / bounds.width));
+    seekToTime(ratio * duration);
+  }
+  function handleScrubberKeyDown(event) {
+    if (!duration) return;
+    const step = Math.max(5, duration / 20);
+    switch (event.key) {
+      case "ArrowLeft":
+      case "ArrowDown":
+        event.preventDefault();
+        seekToTime(currentTime - step);
+        break;
+      case "ArrowRight":
+      case "ArrowUp":
+        event.preventDefault();
+        seekToTime(currentTime + step);
+        break;
+      case "Home":
+        event.preventDefault();
+        seekToTime(0);
+        break;
+      case "End":
+        event.preventDefault();
+        seekToTime(duration);
+        break;
+    }
+  }
+  function handleManualRefresh() {
+    if (!onRefresh || refreshing) return;
+    Promise.resolve(onRefresh()).catch(() => {
+      onPlaybackError?.();
+    });
+  }
+  const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+  const expiresLabel = audio.expires_at ? new Date(audio.expires_at).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit"
+  }) : null;
+  if (!audio.url) return null;
+  return /* @__PURE__ */ jsxs("div", { className, style: styles.root, children: [
+    /* @__PURE__ */ jsx(
+      "audio",
+      {
+        ref: audioRef,
+        src: audio.url ?? void 0,
+        preload: "metadata",
+        onLoadedMetadata: (event) => {
+          setDuration(event.currentTarget.duration || 0);
+        },
+        onTimeUpdate: (event) => {
+          setCurrentTime(event.currentTarget.currentTime);
+        },
+        onPlay: () => setPlaying(true),
+        onPause: () => setPlaying(false),
+        onEnded: () => setPlaying(false),
+        onError: () => {
+          if (onRefresh) {
+            void refreshAndResume().then((didRefresh) => {
+              if (!didRefresh) onPlaybackError?.();
+            });
+            return;
+          }
+          onPlaybackError?.();
+        }
+      }
+    ),
+    /* @__PURE__ */ jsxs("div", { style: styles.layout, children: [
+      /* @__PURE__ */ jsx(
+        "button",
+        {
+          type: "button",
+          onClick: togglePlayback,
+          "aria-label": playing ? "Pause narration" : "Play narration",
+          style: styles.playButton,
+          children: playing ? /* @__PURE__ */ jsxs("svg", { viewBox: "0 0 24 24", style: styles.playIcon, "aria-hidden": "true", children: [
+            /* @__PURE__ */ jsx("rect", { x: "6", y: "5", width: "4", height: "14", rx: "1.2" }),
+            /* @__PURE__ */ jsx("rect", { x: "14", y: "5", width: "4", height: "14", rx: "1.2" })
+          ] }) : /* @__PURE__ */ jsx(
+            "svg",
+            {
+              viewBox: "0 0 24 24",
+              style: { ...styles.playIcon, ...styles.playIconOffset },
+              "aria-hidden": "true",
+              children: /* @__PURE__ */ jsx("path", { d: "M7 5.2c0-1.02 1.12-1.65 2-.98l10.2 7.78a1.24 1.24 0 0 1 0 1.98L9 21.76c-.88.67-2-.04-2-1.08V5.2Z" })
+            }
+          )
+        }
+      ),
+      /* @__PURE__ */ jsxs("div", { style: styles.content, children: [
+        /* @__PURE__ */ jsxs("div", { style: styles.metaRow, children: [
+          /* @__PURE__ */ jsx("span", { children: formatTime(currentTime / speed) }),
+          /* @__PURE__ */ jsxs("div", { style: styles.metaRight, children: [
+            /* @__PURE__ */ jsx("span", { style: styles.badge, children: narrationLabel }),
+            /* @__PURE__ */ jsx("span", { children: formatTime(duration / speed) })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsx(
+          "div",
+          {
+            ref: scrubRef,
+            role: "slider",
+            "aria-label": "Narration progress",
+            "aria-valuemin": 0,
+            "aria-valuemax": Math.max(1, Math.floor(duration)),
+            "aria-valuenow": Math.floor(currentTime),
+            "aria-valuetext": `${formatTime(currentTime / speed)} of ${formatTime(duration / speed)}`,
+            tabIndex: 0,
+            onClick: (event) => seekTo(event.clientX),
+            onKeyDown: handleScrubberKeyDown,
+            style: styles.scrubber,
+            children: peaks.length > 0 ? /* @__PURE__ */ jsx(
+              "svg",
+              {
+                viewBox: `0 0 ${peaks.length} 40`,
+                preserveAspectRatio: "none",
+                style: styles.waveform,
+                children: peaks.map((peak, index) => {
+                  const height = Math.max(2, Math.round(Math.abs(peak) * 34));
+                  const y = (40 - height) / 2;
+                  const filled = index / peaks.length < progress;
+                  return /* @__PURE__ */ jsx(
+                    "rect",
+                    {
+                      x: index,
+                      y,
+                      width: 0.82,
+                      height,
+                      rx: 0.4,
+                      fill: filled ? "#155dfc" : "#90c5ff"
+                    },
+                    `${audio.id}-${index}`
+                  );
+                })
+              }
+            ) : /* @__PURE__ */ jsxs(Fragment, { children: [
+              /* @__PURE__ */ jsx("div", { style: styles.fallbackTrack }),
+              /* @__PURE__ */ jsx("div", { style: { ...styles.fallbackProgress, width: `${progress * 100}%` } })
+            ] })
+          }
+        ),
+        /* @__PURE__ */ jsxs("div", { style: styles.chipsRow, children: [
+          /* @__PURE__ */ jsxs("span", { style: styles.chipStrong, children: [
+            "Provider: ",
+            providerLabel
+          ] }),
+          duration > 0 && /* @__PURE__ */ jsxs("span", { style: styles.chipMuted, children: [
+            "Length ",
+            formatTime(duration / speed)
+          ] }),
+          expiresLabel && /* @__PURE__ */ jsxs("span", { style: styles.chipMuted, children: [
+            "Expires ",
+            expiresLabel
+          ] })
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxs("div", { style: styles.controls, children: [
+        /* @__PURE__ */ jsxs(
+          "button",
+          {
+            type: "button",
+            onClick: () => setSpeed((currentSpeed) => getNextSpeed(currentSpeed)),
+            style: styles.secondaryButton,
+            children: [
+              speed,
+              "\xD7"
+            ]
+          }
+        ),
+        onRefresh && showRefreshButton && /* @__PURE__ */ jsx(
+          "button",
+          {
+            type: "button",
+            onClick: handleManualRefresh,
+            disabled: refreshing,
+            style: refreshing ? { ...styles.refreshButton, ...styles.disabled } : styles.refreshButton,
+            children: refreshing ? "Refreshing\u2026" : "Refresh"
+          }
+        )
+      ] })
+    ] })
+  ] });
+}
 function useMedia() {
   const { media: rawMedia, mediaPolicy: providerDefaultPolicy } = useScaleMule();
   const media = rawMedia;
@@ -10284,16 +11600,14 @@ function setStorageItem(storage, key, value) {
   } catch {
   }
 }
-function getOrCreateIds(sessionStorageKey, anonymousStorageKey) {
+function getOrCreateSessionId(sessionStorageKey) {
   if (typeof window === "undefined") {
     return {
       sessionId: null,
-      anonymousId: null,
       sessionStart: Date.now()
     };
   }
   const storage = typeof sessionStorage !== "undefined" ? sessionStorage : void 0;
-  const localStorage_ = typeof localStorage !== "undefined" ? localStorage : void 0;
   let sessionId = getStorageItem(storage, sessionStorageKey);
   let sessionStartStr = getStorageItem(storage, SESSION_START_KEY);
   let sessionStart;
@@ -10305,12 +11619,7 @@ function getOrCreateIds(sessionStorageKey, anonymousStorageKey) {
   } else {
     sessionStart = parseInt(sessionStartStr, 10);
   }
-  let anonymousId = getStorageItem(localStorage_, anonymousStorageKey);
-  if (!anonymousId) {
-    anonymousId = generateUUID();
-    setStorageItem(localStorage_, anonymousStorageKey, anonymousId);
-  }
-  return { sessionId, anonymousId, sessionStart };
+  return { sessionId, sessionStart };
 }
 function parseUtmParams() {
   if (typeof window === "undefined") return null;
@@ -10421,12 +11730,27 @@ function useAnalytics(options = {}) {
     autoCapturUtmParams,
     autoGenerateSessionId = true,
     sessionStorageKey = "sm_session_id",
-    anonymousStorageKey = "sm_anonymous_id",
+    // anonymousStorageKey is intentionally ignored — see UseAnalyticsOptions.
+    // Anonymous ID now lives on the ScaleMule client under the canonical
+    // `scalemule_anonymous_id` key (PR consolidating the contract). Reading
+    // an override here would re-fragment a visitor's identity between
+    // analytics events and auth request headers.
     useV2 = true,
     eventDedupMs = DEFAULT_EVENT_DEDUP_MS
   } = options;
   const shouldAutoCaptureUtmParams = autoCaptureUtmParams ?? autoCapturUtmParams ?? true;
-  const { client, user, analyticsProxyUrl, publishableKey, gatewayUrl } = useScaleMule();
+  const { client, user, analyticsProxyUrl, publishableKey, apiKey, gatewayUrl } = useScaleMule();
+  const proxyModeMisconfigWarnedRef = useRef(false);
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (proxyModeMisconfigWarnedRef.current) return;
+    if (apiKey === "proxy-mode" && !analyticsProxyUrl && !publishableKey) {
+      proxyModeMisconfigWarnedRef.current = true;
+      console.warn(
+        '[ScaleMule] useAnalytics: apiKey="proxy-mode" but neither `analyticsProxyUrl` nor `publishableKey` is configured. Every trackEvent / trackPageView will silently 401 against the gateway. Add an analytics proxy route (createAnalyticsRoutes({ simpleProxy: true })) and pass `analyticsProxyUrl` to <ScaleMuleProvider>. See @scalemule/nextjs README \u2192 Proxy Mode.'
+      );
+    }
+  }, [apiKey, analyticsProxyUrl, publishableKey]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [utmParams, setUtmParams] = useState(null);
@@ -10447,14 +11771,13 @@ function useAnalytics(options = {}) {
       idsReadyRef.current = true;
       return;
     }
-    const ids = getOrCreateIds(sessionStorageKey, anonymousStorageKey);
+    const ids = getOrCreateSessionId(sessionStorageKey);
     sessionIdRef.current = ids.sessionId;
-    anonymousIdRef.current = ids.anonymousId;
     sessionStartRef.current = ids.sessionStart;
-    idsReadyRef.current = true;
     setSessionId(ids.sessionId);
-    setAnonymousId(ids.anonymousId);
-    if (eventQueue.current.length > 0) {
+    let cancelled = false;
+    const flushQueuedEvents = () => {
+      if (eventQueue.current.length === 0) return;
       const queue = eventQueue.current;
       eventQueue.current = [];
       setTimeout(() => {
@@ -10462,8 +11785,22 @@ function useAnalytics(options = {}) {
           sendEventRef.current?.(event);
         }
       }, 0);
-    }
-  }, [autoGenerateSessionId, sessionStorageKey, anonymousStorageKey]);
+    };
+    client.ensureAnonymousId().then((anonId) => {
+      if (cancelled) return;
+      anonymousIdRef.current = anonId;
+      setAnonymousId(anonId);
+      idsReadyRef.current = true;
+      flushQueuedEvents();
+    }).catch(() => {
+      if (cancelled) return;
+      idsReadyRef.current = true;
+      flushQueuedEvents();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [autoGenerateSessionId, sessionStorageKey, client]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (shouldAutoCaptureUtmParams) {
@@ -11194,7 +12531,7 @@ function useVote({
   const [state, setState] = useState(initialState ?? ZERO);
   const [isLoading, setIsLoading] = useState(!initialState && enabled);
   const [error, setError] = useState(null);
-  const inFlight = useRef(null);
+  const inFlight2 = useRef(null);
   const path = `/v1/social/${encodeURIComponent(targetType)}/${encodeURIComponent(targetId)}/vote`;
   const refetch = useCallback(async () => {
     if (!enabled) return;
@@ -11229,10 +12566,10 @@ function useVote({
           setError(e);
         }
       };
-      const p = inFlight.current ? inFlight.current.then(send) : send();
-      inFlight.current = p;
+      const p = inFlight2.current ? inFlight2.current.then(send) : send();
+      inFlight2.current = p;
       await p;
-      if (inFlight.current === p) inFlight.current = null;
+      if (inFlight2.current === p) inFlight2.current = null;
     },
     [client, path, state]
   );
@@ -12035,4 +13372,4 @@ function createSafeLogger(prefix) {
   };
 }
 
-export { FeedbackWidget, ScaleMuleApiError, ScaleMuleClient2 as ScaleMuleClient, ScaleMuleMedia, ScaleMuleProvider, VoteButton, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };
+export { FeedbackWidget, NarrationPlayer, ScaleMuleApiError, ScaleMuleClient2 as ScaleMuleClient, ScaleMuleMedia, ScaleMuleProvider, VoteButton, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };

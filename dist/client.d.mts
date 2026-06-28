@@ -1,4 +1,4 @@
-import { a8 as StorageAdapter, A as ApiError } from './index-zQloSkpW.mjs';
+import { a8 as StorageAdapter, A as ApiError } from './index-Tq5WdDfS.mjs';
 
 /**
  * ScaleMule API Client
@@ -77,6 +77,8 @@ declare class ScaleMuleClient {
     private sessionGate;
     private resolveSessionGate;
     private workspaceId;
+    private anonymousId;
+    private anonymousIdPromise;
     private refreshPromise;
     private onRefreshStart?;
     private onRefreshEnd?;
@@ -133,6 +135,19 @@ declare class ScaleMuleClient {
      * Initialize client by loading persisted session
      */
     initialize(): Promise<void>;
+    /**
+     * Sync accessor for the cached anonymous ID. Returns `null` until either
+     * `initialize()` has run or `ensureAnonymousId()` has been awaited at
+     * least once. Use `ensureAnonymousId()` if you need a guaranteed value.
+     */
+    getAnonymousId(): string | null;
+    /**
+     * Lazy-mint or cache-then-return the anonymous ID via the shared
+     * `@scalemule/sdk` helper. Concurrent callers receive the same in-flight
+     * promise, so a burst of simultaneous first-use requests all see the
+     * same minted value.
+     */
+    ensureAnonymousId(): Promise<string>;
     /**
      * Set session after login
      */
