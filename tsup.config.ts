@@ -15,8 +15,7 @@ export default defineConfig({
   splitting: false,
   sourcemap: false,
   clean: true,
-  noExternal: ['@scalemule/sdk'],
-  external: ['react', 'react-dom', 'next', 'next/headers', 'next/server'],
+  external: ['@scalemule/sdk', 'react', 'react-dom', 'next', 'next/headers', 'next/server'],
   treeshake: true,
   minify: false,
 })
