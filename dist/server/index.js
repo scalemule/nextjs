@@ -2532,11 +2532,13 @@ function extractClientContext(request) {
   const userAgent = headers2.get("user-agent") || void 0;
   const deviceFingerprint = headers2.get("x-device-fingerprint") || void 0;
   const referrer = headers2.get("referer") || void 0;
+  const anonymousId = headers2.get("x-anonymous-id") || void 0;
   return {
     ip,
     userAgent,
     deviceFingerprint,
-    referrer
+    referrer,
+    anonymousId
   };
 }
 function extractClientContextFromReq(req) {
@@ -2591,11 +2593,13 @@ function extractClientContextFromReq(req) {
   const userAgent = getHeader("user-agent");
   const deviceFingerprint = getHeader("x-device-fingerprint");
   const referrer = getHeader("referer");
+  const anonymousId = getHeader("x-anonymous-id");
   return {
     ip,
     userAgent,
     deviceFingerprint,
-    referrer
+    referrer,
+    anonymousId
   };
 }
 function buildClientContextHeaders(context) {
@@ -2615,6 +2619,9 @@ function buildClientContextHeaders(context) {
   }
   if (context.referrer) {
     headers2["X-Client-Referrer"] = context.referrer;
+  }
+  if (context.anonymousId) {
+    headers2["x-anonymous-id"] = context.anonymousId;
   }
   return headers2;
 }

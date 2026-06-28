@@ -71,11 +71,13 @@ function extractClientContext(request) {
   const userAgent = headers.get("user-agent") || void 0;
   const deviceFingerprint = headers.get("x-device-fingerprint") || void 0;
   const referrer = headers.get("referer") || void 0;
+  const anonymousId = headers.get("x-anonymous-id") || void 0;
   return {
     ip,
     userAgent,
     deviceFingerprint,
-    referrer
+    referrer,
+    anonymousId
   };
 }
 function buildClientContextHeaders(context) {
@@ -95,6 +97,9 @@ function buildClientContextHeaders(context) {
   }
   if (context.referrer) {
     headers["X-Client-Referrer"] = context.referrer;
+  }
+  if (context.anonymousId) {
+    headers["x-anonymous-id"] = context.anonymousId;
   }
   return headers;
 }
