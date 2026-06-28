@@ -4,6 +4,9 @@ import { createMoneyClient } from '@scalemule/money';
 export { MoneyClient, createMoneyClient } from '@scalemule/money';
 import { jsx, jsxs, Fragment } from 'react/jsx-runtime';
 
+// src/provider.tsx
+
+// node_modules/@scalemule/sdk/dist/index.mjs
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __esm = (fn, res) => function __init() {
@@ -13,11 +16,17 @@ var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
-
-// node_modules/@scalemule/sdk/dist/chunk-3FTGBRLU.mjs
-var DB_NAME, STORE_NAME, DB_VERSION, MAX_AGE_MS, UploadResumeStore;
-var init_chunk_3FTGBRLU = __esm({
-  "node_modules/@scalemule/sdk/dist/chunk-3FTGBRLU.mjs"() {
+var upload_resume_exports = {};
+__export(upload_resume_exports, {
+  UploadResumeStore: () => UploadResumeStore
+});
+var DB_NAME;
+var STORE_NAME;
+var DB_VERSION;
+var MAX_AGE_MS;
+var UploadResumeStore;
+var init_upload_resume = __esm({
+  "src/services/upload-resume.ts"() {
     DB_NAME = "sm_upload_sessions_v1";
     STORE_NAME = "sessions";
     DB_VERSION = 1;
@@ -173,21 +182,8 @@ var init_chunk_3FTGBRLU = __esm({
     };
   }
 });
-
-// node_modules/@scalemule/sdk/dist/upload-resume-RXLHBH5E.mjs
-var upload_resume_RXLHBH5E_exports = {};
-__export(upload_resume_RXLHBH5E_exports, {
-  UploadResumeStore: () => UploadResumeStore
-});
-var init_upload_resume_RXLHBH5E = __esm({
-  "node_modules/@scalemule/sdk/dist/upload-resume-RXLHBH5E.mjs"() {
-    init_chunk_3FTGBRLU();
-  }
-});
-
-// node_modules/@scalemule/sdk/dist/upload-compression-VOUJRAIM.mjs
-var upload_compression_VOUJRAIM_exports = {};
-__export(upload_compression_VOUJRAIM_exports, {
+var upload_compression_exports = {};
+__export(upload_compression_exports, {
   maybeCompressImage: () => maybeCompressImage
 });
 async function maybeCompressImage(file, userConfig, sessionId, telemetry) {
@@ -273,9 +269,13 @@ function getNetworkEffectiveType() {
   }
   return "4g";
 }
-var MIN_COMPRESS_SIZE, COMPRESSIBLE_TYPES, SKIP_TYPES, NETWORK_PROFILES, cachedImport;
-var init_upload_compression_VOUJRAIM = __esm({
-  "node_modules/@scalemule/sdk/dist/upload-compression-VOUJRAIM.mjs"() {
+var MIN_COMPRESS_SIZE;
+var COMPRESSIBLE_TYPES;
+var SKIP_TYPES;
+var NETWORK_PROFILES;
+var cachedImport;
+var init_upload_compression = __esm({
+  "src/services/upload-compression.ts"() {
     MIN_COMPRESS_SIZE = 100 * 1024;
     COMPRESSIBLE_TYPES = /* @__PURE__ */ new Set(["image/jpeg", "image/jpg", "image/png", "image/bmp", "image/tiff"]);
     SKIP_TYPES = /* @__PURE__ */ new Set(["image/gif", "image/svg+xml", "image/webp", "image/avif"]);
@@ -288,9 +288,6 @@ var init_upload_compression_VOUJRAIM = __esm({
     cachedImport = null;
   }
 });
-
-// node_modules/@scalemule/sdk/dist/index.mjs
-init_chunk_3FTGBRLU();
 function buildClientContextHeaders(context) {
   if (!context) return {};
   const headers = {};
@@ -2461,7 +2458,7 @@ var StorageService = class extends ServiceModule {
     let resumeData = null;
     if (options?.resume !== "off" && typeof window !== "undefined") {
       try {
-        const { UploadResumeStore: UploadResumeStore2 } = await Promise.resolve().then(() => (init_upload_resume_RXLHBH5E(), upload_resume_RXLHBH5E_exports));
+        const { UploadResumeStore: UploadResumeStore2 } = await Promise.resolve().then(() => (init_upload_resume(), upload_resume_exports));
         resumeStore = new UploadResumeStore2();
         await resumeStore.open();
         const resumeKey = await UploadResumeStore2.generateResumeKey(
@@ -2509,7 +2506,7 @@ var StorageService = class extends ServiceModule {
     } else {
       let clientUploadKey;
       try {
-        const { UploadResumeStore: UploadResumeStore2 } = await Promise.resolve().then(() => (init_upload_resume_RXLHBH5E(), upload_resume_RXLHBH5E_exports));
+        const { UploadResumeStore: UploadResumeStore2 } = await Promise.resolve().then(() => (init_upload_resume(), upload_resume_exports));
         clientUploadKey = await UploadResumeStore2.generateResumeKey(
           this.client.getApiKey?.() || "",
           this.client.getUserId?.() || "",
@@ -2542,7 +2539,7 @@ var StorageService = class extends ServiceModule {
     const { upload_session_id, file_id, part_size_bytes, total_parts } = startData;
     if (resumeStore && !resumeData) {
       try {
-        const { UploadResumeStore: UploadResumeStore2 } = await Promise.resolve().then(() => (init_upload_resume_RXLHBH5E(), upload_resume_RXLHBH5E_exports));
+        const { UploadResumeStore: UploadResumeStore2 } = await Promise.resolve().then(() => (init_upload_resume(), upload_resume_exports));
         const resumeKey = await UploadResumeStore2.generateResumeKey(
           this.client.getApiKey?.() || "",
           this.client.getUserId?.() || "",
@@ -2693,7 +2690,7 @@ var StorageService = class extends ServiceModule {
           telemetry?.emit(sessionId, "upload.multipart.part_completed", { part_number: result.partNum });
           if (resumeStore) {
             try {
-              const { UploadResumeStore: UploadResumeStore2 } = await Promise.resolve().then(() => (init_upload_resume_RXLHBH5E(), upload_resume_RXLHBH5E_exports));
+              const { UploadResumeStore: UploadResumeStore2 } = await Promise.resolve().then(() => (init_upload_resume(), upload_resume_exports));
               const resumeKey = await UploadResumeStore2.generateResumeKey(
                 this.client.getApiKey?.() || "",
                 this.client.getUserId?.() || "",
@@ -2745,7 +2742,7 @@ var StorageService = class extends ServiceModule {
     );
     if (resumeStore) {
       try {
-        const { UploadResumeStore: UploadResumeStore2 } = await Promise.resolve().then(() => (init_upload_resume_RXLHBH5E(), upload_resume_RXLHBH5E_exports));
+        const { UploadResumeStore: UploadResumeStore2 } = await Promise.resolve().then(() => (init_upload_resume(), upload_resume_exports));
         const resumeKey = await UploadResumeStore2.generateResumeKey(
           this.client.getApiKey?.() || "",
           this.client.getUserId?.() || "",
@@ -3397,7 +3394,7 @@ var StorageService = class extends ServiceModule {
   }
   async maybeCompress(file, config, sessionId, telemetry) {
     try {
-      const { maybeCompressImage: maybeCompressImage2 } = await Promise.resolve().then(() => (init_upload_compression_VOUJRAIM(), upload_compression_VOUJRAIM_exports));
+      const { maybeCompressImage: maybeCompressImage2 } = await Promise.resolve().then(() => (init_upload_compression(), upload_compression_exports));
       return await maybeCompressImage2(file, config, sessionId, telemetry);
     } catch {
       return null;
@@ -3485,6 +3482,7 @@ function extractS3ErrorCode(body) {
   const m = body.match(/<Code>([^<]+)<\/Code>/);
   return m ? m[1] : void 0;
 }
+init_upload_resume();
 var DEFAULT_RECONNECT_BASE_MS = 1e3;
 var MAX_RECONNECT_MS = 3e4;
 var HEARTBEAT_INTERVAL_MS = 3e4;
