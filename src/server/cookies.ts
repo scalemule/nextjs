@@ -85,8 +85,19 @@ function createCookieHeader(
  * Create Set-Cookie header to clear a cookie
  */
 function createClearCookieHeader(name: string, options: SessionCookieOptions = {}): string {
+  // The clear header must carry the SAME attributes as the set header:
+  // in cross-site contexts (e.g. an embedded Zendesk app) browsers reject
+  // any Set-Cookie that is not `SameSite=None; Secure`, so a bare
+  // Max-Age=0 header is silently dropped and the session cookie survives
+  // logout — embedded users could never log out (found 2026-07-19).
   const path = options.path ?? '/'
-  let cookie = `${name}=; Path=${path}; Max-Age=0; HttpOnly`
+  const secure = options.secure ?? process.env.NODE_ENV === 'production'
+  const sameSite = options.sameSite ?? 'lax'
+  let cookie = `${name}=; Path=${path}; Max-Age=0; HttpOnly; SameSite=${sameSite}`
+
+  if (secure) {
+    cookie += '; Secure'
+  }
 
   if (options.domain) {
     cookie += `; Domain=${options.domain}`
