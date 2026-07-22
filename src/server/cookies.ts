@@ -5,7 +5,7 @@
  * Tokens are never exposed to the browser.
  */
 
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 
 // ============================================================================
 // Constants
@@ -231,14 +231,38 @@ export async function getSession(): Promise<SessionData | null> {
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)
   const userIdCookie = cookieStore.get(USER_ID_COOKIE_NAME)
 
-  if (!sessionCookie?.value || !userIdCookie?.value) {
-    return null
+  if (sessionCookie?.value && userIdCookie?.value) {
+    return {
+      sessionToken: sessionCookie.value,
+      userId: userIdCookie.value,
+      expiresAt: new Date(), // Note: actual expiry is managed by ScaleMule backend
+    }
   }
 
+  // Bearer fallback for cookieless contexts (e.g. partitioned iframes in
+  // embedded apps): the SDK session token is the same credential the cookie
+  // carries, presented via headers instead. Custom headers cannot be sent by
+  // cross-site forms (they force a CORS preflight), so this path is no more
+  // CSRF-exposed than the cookie path.
+  const headerStore = await headers()
+  return sessionFromAuthHeaders(
+    headerStore.get('authorization'),
+    headerStore.get('x-sm-user-id'),
+  )
+}
+
+function sessionFromAuthHeaders(
+  authorization: string | null,
+  userId: string | null,
+): SessionData | null {
+  if (!authorization || !userId) return null
+  const match = /^Bearer\s+(.+)$/i.exec(authorization.trim())
+  const token = match?.[1]?.trim()
+  if (!token) return null
   return {
-    sessionToken: sessionCookie.value,
-    userId: userIdCookie.value,
-    expiresAt: new Date(), // Note: actual expiry is managed by ScaleMule backend
+    sessionToken: token,
+    userId,
+    expiresAt: new Date(),
   }
 }
 
@@ -249,27 +273,32 @@ export async function getSession(): Promise<SessionData | null> {
  */
 export function getSessionFromRequest(request: Request): SessionData | null {
   const cookieHeader = request.headers.get('cookie')
-  if (!cookieHeader) return null
 
-  const cookies = Object.fromEntries(
-    cookieHeader.split(';').map((c) => {
-      const [key, ...rest] = c.trim().split('=')
-      return [key, decodeURIComponent(rest.join('='))]
-    })
+  if (cookieHeader) {
+    const cookies = Object.fromEntries(
+      cookieHeader.split(';').map((c) => {
+        const [key, ...rest] = c.trim().split('=')
+        return [key, decodeURIComponent(rest.join('='))]
+      })
+    )
+
+    const sessionToken = cookies[SESSION_COOKIE_NAME]
+    const userId = cookies[USER_ID_COOKIE_NAME]
+
+    if (sessionToken && userId) {
+      return {
+        sessionToken,
+        userId,
+        expiresAt: new Date(),
+      }
+    }
+  }
+
+  // Bearer fallback — see getSession() for the rationale.
+  return sessionFromAuthHeaders(
+    request.headers.get('authorization'),
+    request.headers.get('x-sm-user-id'),
   )
-
-  const sessionToken = cookies[SESSION_COOKIE_NAME]
-  const userId = cookies[USER_ID_COOKIE_NAME]
-
-  if (!sessionToken || !userId) {
-    return null
-  }
-
-  return {
-    sessionToken,
-    userId,
-    expiresAt: new Date(),
-  }
 }
 
 // ============================================================================
