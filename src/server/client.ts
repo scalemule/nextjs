@@ -59,6 +59,12 @@ export interface ServerConfig {
 export function resolveGatewayUrl(config: ServerConfig): string {
   if (config.gatewayUrl) return config.gatewayUrl
   if (process.env.SCALEMULE_API_URL) return process.env.SCALEMULE_API_URL
+  // SCALEMULE_GATEWAY_URL is the name most apps actually set (it mirrors the
+  // client-side NEXT_PUBLIC_SCALEMULE_GATEWAY_URL). Without this fallback, a
+  // cell-resident app that sets only SCALEMULE_GATEWAY_URL silently gets the
+  // DEFAULT platform gateway here and validates sessions against the wrong
+  // cell — the root cause of MergeYard's post-multi-cell SESSION_EXPIRED bug.
+  if (process.env.SCALEMULE_GATEWAY_URL) return process.env.SCALEMULE_GATEWAY_URL
   return GATEWAY_URLS[config.environment || 'prod']
 }
 
