@@ -144,8 +144,15 @@ export function apiHandler(handler: HandlerFn, options?: HandlerOptions) {
         if (error.status >= 500) {
           console.error('Internal API error:', error.message)
         }
+        // Echo the upstream correlation id as `meta.request_id` when we have
+        // one, matching the platform envelope. Omitted entirely otherwise, so
+        // the response shape is unchanged for errors raised inside the route.
         return Response.json(
-          { success: false, error: { code: error.code, message: safeMessage } },
+          {
+            success: false,
+            error: { code: error.code, message: safeMessage },
+            ...(error.requestId ? { meta: { request_id: error.requestId } } : {}),
+          },
           { status: error.status }
         )
       }

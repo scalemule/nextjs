@@ -1,6 +1,6 @@
 {
   "name": "@scalemule/nextjs",
-  "version": "0.1.39",
+  "version": "0.1.40",
   "description": "ScaleMule SDK for Next.js applications - authentication, storage, and user management",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -55,12 +55,13 @@
     "type-check": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
-    "prepublishOnly": "node -e \"const v=require('./package.json').version; if(!/^0\\.(0|1)\\.\\d+$/.test(v)){console.error('ERR: SDK '+v+' violates patch-only policy (0.0.x or 0.1.x only). See CONTRIBUTING.md SDK versioning section.');process.exit(1)}\""
+    "prepublishOnly": "node -e \"const v=require('./package.json').version; if(!/^0\\.(0|1)\\.\\d+$/.test(v)){console.error('ERR: SDK '+v+' violates patch-only policy (0.0.x or 0.1.x only). See CONTRIBUTING.md SDK versioning section.');process.exit(1)}\"",
+    "release": "npm run build && npm test && npm run type-check && npm publish --access public"
   },
   "dependencies": {
     "@scalemule/ledvery": "^0.0.1",
     "@scalemule/money": "^0.0.1",
-    "@scalemule/sdk": "^0.0.63"
+    "@scalemule/sdk": "^0.0.64"
   },
   "peerDependencies": {
     "next": ">=14.0.0",

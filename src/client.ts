@@ -12,6 +12,7 @@ import { ensureAnonymousId as ensureAnonymousIdShared, STORAGE_KEYS } from '@sca
 
 import { ScaleMuleApiError } from './types'
 import type { ApiError, StorageAdapter } from './types'
+import { withErrorContext } from './error-context'
 
 // ============================================================================
 // Environment Presets
@@ -858,9 +859,13 @@ export class ScaleMuleClient {
         if (!response.ok) {
           // Handle API error response — normalize string-valued error to ApiError shape
           const rawError = responseData?.error
-          const error: ApiError = (rawError && typeof rawError === 'object')
+          const baseError: ApiError = (rawError && typeof rawError === 'object')
             ? rawError as ApiError
             : { code: `HTTP_${response.status}`, message: (typeof rawError === 'string' ? rawError : (responseData?.message as string) || text || response.statusText) }
+          // Lift Signals context (request id, trace id, raw problem) off the
+          // envelope and headers. Returns a copy, so `responseData.error` is
+          // never mutated into a self-referencing object.
+          const error: ApiError = withErrorContext(baseError, responseData, response.headers)
 
           // Handle 401 Unauthorized — trigger auto-refresh unless this is
           // already a refresh request OR we've already used our refresh
@@ -1235,10 +1240,17 @@ export class ScaleMuleClient {
             const unwrapped = data?.data !== undefined ? data.data : data
             resolve(unwrapped as T)
           } else {
-            reject(new ScaleMuleApiError((data?.error as ApiError) || {
+            const uploadError: ApiError = (data?.error as ApiError) || {
               code: `HTTP_${xhr.status}`,
               message: (data?.message as string) || xhr.responseText || 'Upload failed',
-            }))
+            }
+            reject(
+              new ScaleMuleApiError(
+                withErrorContext(uploadError, data, {
+                  get: (name: string) => xhr.getResponseHeader(name),
+                })
+              )
+            )
           }
         } catch {
           reject(new ScaleMuleApiError({ code: 'PARSE_ERROR', message: 'Failed to parse response' }))

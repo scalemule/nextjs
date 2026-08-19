@@ -23,6 +23,7 @@ import type {
   ClientContext,
 } from '../types'
 import { buildClientContextHeaders } from './context'
+import { withErrorContext } from '../error-context'
 
 // ============================================================================
 // Environment Presets
@@ -164,10 +165,14 @@ export class ScaleMuleServer {
       }
 
       if (!response.ok) {
-        const error: ApiError = (responseData?.error as ApiError) || {
+        const baseError: ApiError = (responseData?.error as ApiError) || {
           code: `HTTP_${response.status}`,
           message: (responseData?.message as string) || text || response.statusText,
         }
+        // Lift Signals context (request id, trace id, raw problem) off the
+        // envelope and headers. Returns a copy, so `responseData.error` is
+        // never mutated into a self-referencing object.
+        const error: ApiError = withErrorContext(baseError, responseData, response.headers)
 
         // Handle 401 Unauthorized — trigger auto-refresh unless this is already a refresh request
         if (response.status === 401 && options.sessionToken && !options.isAutoRefresh) {
@@ -753,7 +758,11 @@ export class ScaleMuleServer {
 
         if (!response.ok) {
           throw new ScaleMuleApiError(
-            (responseData?.error as ApiError) || { code: 'UPLOAD_FAILED', message: text || 'Upload failed' }
+            withErrorContext(
+              (responseData?.error as ApiError) || { code: 'UPLOAD_FAILED', message: text || 'Upload failed' },
+              responseData,
+              response.headers
+            )
           )
         }
 

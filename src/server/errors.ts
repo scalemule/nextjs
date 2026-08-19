@@ -28,7 +28,14 @@ export class ScaleMuleError extends Error {
     public readonly code: string,
     message: string,
     public readonly status: number = 400,
-    public readonly details?: Record<string, unknown>
+    public readonly details?: Record<string, unknown>,
+    /**
+     * Correlation id of the upstream platform request that produced this
+     * error, when there was one. `apiHandler()` echoes it back to the browser
+     * as `meta.request_id` so a client-side failure can be traced all the way
+     * through the route handler to the platform service.
+     */
+    public readonly requestId?: string
   ) {
     super(message)
     this.name = 'ScaleMuleError'
@@ -106,6 +113,8 @@ type SdkResult<T> = {
   data?: T | null
   error?: ApiError | null
   success?: boolean
+  /** Platform envelope metadata; `request_id` is echoed onto ScaleMuleError. */
+  meta?: { request_id?: string; trace_id?: string; timestamp?: string }
 }
 
 /**
@@ -143,7 +152,8 @@ export function unwrap<T>(result: T | SdkResult<T>): T {
         code,
         err?.message || 'An error occurred',
         status,
-        (err as Record<string, unknown> | undefined)?.details as Record<string, unknown> | undefined
+        (err as Record<string, unknown> | undefined)?.details as Record<string, unknown> | undefined,
+        err?.requestId ?? envelope.meta?.request_id
       )
     }
     return envelope.data as T
