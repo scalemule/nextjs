@@ -133,6 +133,20 @@ export class ScaleMuleApiError extends Error {
   status?: number
   field?: string
   details?: unknown
+  /**
+   * Correlation id for the failed request. Comes from the response envelope
+   * (`meta.request_id`), falling back to the `x-request-id` response header
+   * echoed by the gateway. Surface this in support flows.
+   */
+  requestId?: string
+  /** Distributed-trace id, when the backend supplies `meta.trace_id`. */
+  traceId?: string
+  /**
+   * The raw `error` object from the response body, unmodified. Escape hatch
+   * for consumers (such as `@scalemule/signals` `fromError`) that need fields
+   * this class does not model yet.
+   */
+  problem?: unknown
 
   constructor(error: ApiError, status?: number) {
     super(error.message)
@@ -140,6 +154,9 @@ export class ScaleMuleApiError extends Error {
     this.code = error.code
     this.field = error.field
     this.status = status
+    this.requestId = error.requestId
+    this.traceId = error.traceId
+    this.problem = error.problem
   }
 }
 
@@ -157,6 +174,12 @@ export interface ApiError {
   code: string
   message: string
   field?: string
+  /** Correlation id: envelope `meta.request_id`, else the `x-request-id` header. */
+  requestId?: string
+  /** Distributed-trace id from envelope `meta.trace_id`. */
+  traceId?: string
+  /** The raw body `error` object, passed through untouched. */
+  problem?: unknown
 }
 
 // ============================================================================
