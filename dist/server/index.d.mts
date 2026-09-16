@@ -516,7 +516,7 @@ declare class ScaleMuleError extends Error {
      * through the route handler to the platform service.
      */
     readonly requestId?: string | undefined;
-    constructor(code: string, message: string, status?: number, details?: Record<string, unknown> | undefined, 
+    constructor(code: string, message: string, status?: number, details?: Record<string, unknown> | undefined,
     /**
      * Correlation id of the upstream platform request that produced this
      * error, when there was one. `apiHandler()` echoes it back to the browser
