@@ -324,3 +324,21 @@ it('lets a reader cancel pending playback while refresh finishes', async () => {
   metadata(element(container))
   expect(play).not.toHaveBeenCalled()
 })
+
+it('keeps the saved position visible while a refreshed paused source waits for metadata', async () => {
+  const onRefresh = vi.fn().mockResolvedValue({ ...source, url: source.url + '?new=1' })
+  const { container } = render(<AudioPlayer audio={source} onRefresh={onRefresh} showRefreshButton />)
+  const media = element(container)
+  metadata(media)
+  tick(media, 47)
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+  await waitFor(() => expect(media.src).toContain('new=1'))
+  // Chromium resets currentTime even though preload=none has not loaded replacement metadata.
+  Object.defineProperty(media, 'readyState', { configurable: true, value: 0 })
+  tick(media, 0)
+  expect(screen.getByText('0:40 remaining')).toBeTruthy()
+  expect(container.textContent).toContain('0:47')
+  metadata(media)
+  expect(media.currentTime).toBe(47)
+  expect(play).not.toHaveBeenCalled()
+})

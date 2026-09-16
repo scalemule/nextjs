@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.42
+
+- Preserve visible elapsed and remaining time when a paused player refreshes a source with preload disabled. Playback position is restored when the replacement media becomes ready.
+- Add a regression test for the browser reset event before replacement metadata arrives. No new playback or platform API surface.
+
 ## 0.1.41
 
 - Add the standalone `@scalemule/nextjs/audio` entry and `audio.css`, with waveform, compact news, and inline list players sharing one controller.

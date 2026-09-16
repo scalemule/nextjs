@@ -267,7 +267,10 @@ function PlayerSession({
               const d = positive(e.currentTarget.duration);
               if (d) setDuration(d);
             },
-            onTimeUpdate: (e) => setPosition(positive(e.currentTarget.currentTime)),
+            onTimeUpdate: (e) => {
+              if (e.currentTarget.readyState === 0 && resume.current != null) return;
+              setPosition(positive(e.currentTarget.currentTime));
+            },
             onPlay: () => {
               intent.current = true;
               setPlaying(true);
