@@ -1,6 +1,6 @@
-import { S as ServerConfig } from '../webhook-handler-Cfa7-yKN.js';
-export { a as ScaleMuleServer, V as VideoFailedEvent, b as VideoReadyEvent, c as VideoTranscodedEvent, d as VideoUploadedEvent, W as WebhookEvent, e as WebhookRoutesConfig, f as createServerClient, g as createWebhookHandler, h as createWebhookRoutes, p as parseWebhookEvent, r as registerVideoWebhook, i as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-Cfa7-yKN.js';
-import { p as ClientContext, A as ApiError } from '../index-Tq5WdDfS.js';
+import { S as ServerConfig } from '../webhook-handler-5ymVecTD.js';
+export { a as ScaleMuleServer, V as VideoFailedEvent, b as VideoReadyEvent, c as VideoTranscodedEvent, d as VideoUploadedEvent, W as WebhookEvent, e as WebhookRoutesConfig, f as createServerClient, g as createWebhookHandler, h as createWebhookRoutes, p as parseWebhookEvent, r as registerVideoWebhook, i as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-5ymVecTD.js';
+import { p as ClientContext, A as ApiError } from '../index-Bv1m_qQ8.js';
 export { L as LedveryRoutesConfig, a as LedverySessionData, S as SM_LEDVERY_ACCESS_TOKEN_COOKIE, b as SM_LEDVERY_ID_TOKEN_COOKIE, c as SM_LEDVERY_NONCE_COOKIE, d as SM_LEDVERY_PKCE_VERIFIER_COOKIE, e as SM_LEDVERY_STATE_COOKIE, f as createLedveryRoutes, g as getLedverySession } from '../ledvery-CxPzZpxP.js';
 import { NextRequest, NextResponse } from 'next/server';
 import '@scalemule/money';
@@ -509,7 +509,21 @@ declare class ScaleMuleError extends Error {
     readonly code: string;
     readonly status: number;
     readonly details?: Record<string, unknown> | undefined;
-    constructor(code: string, message: string, status?: number, details?: Record<string, unknown> | undefined);
+    /**
+     * Correlation id of the upstream platform request that produced this
+     * error, when there was one. `apiHandler()` echoes it back to the browser
+     * as `meta.request_id` so a client-side failure can be traced all the way
+     * through the route handler to the platform service.
+     */
+    readonly requestId?: string | undefined;
+    constructor(code: string, message: string, status?: number, details?: Record<string, unknown> | undefined, 
+    /**
+     * Correlation id of the upstream platform request that produced this
+     * error, when there was one. `apiHandler()` echoes it back to the browser
+     * as `meta.request_id` so a client-side failure can be traced all the way
+     * through the route handler to the platform service.
+     */
+    requestId?: string | undefined);
 }
 declare function errorCodeToStatus(code: string): number;
 /**
@@ -521,6 +535,12 @@ type SdkResult<T> = {
     data?: T | null;
     error?: ApiError | null;
     success?: boolean;
+    /** Platform envelope metadata; `request_id` is echoed onto ScaleMuleError. */
+    meta?: {
+        request_id?: string;
+        trace_id?: string;
+        timestamp?: string;
+    };
 };
 /**
  * Convert an SDK result into throw-on-error, or pass through a raw value.

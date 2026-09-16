@@ -1,0 +1,206 @@
+/* src/components/audio-player.css */
+.sm-audio {
+  --sm-audio-accent: #246346;
+  --sm-audio-ink: #203b30;
+  --sm-audio-muted: #52675c;
+  --sm-audio-track: #d4ddd6;
+  --sm-audio-wave: #8e9e93;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+  color: var(--sm-audio-ink);
+  font: 400 14px/1.4 system-ui, sans-serif;
+  color-scheme: light;
+}
+.sm-audio,
+.sm-audio * {
+  box-sizing: border-box;
+}
+.sm-audio audio {
+  display: none;
+}
+.sm-audio button {
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.sm-audio button:focus-visible,
+.sm-audio input:focus-visible {
+  outline: 3px solid var(--sm-audio-accent);
+  outline-offset: 4px;
+}
+.sm-audio__play {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--sm-audio-accent);
+  color: #fff;
+}
+.sm-audio__play svg {
+  width: 21px;
+  height: 21px;
+  fill: currentColor;
+}
+.sm-audio__content {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.sm-audio__label {
+  display: block;
+  font-weight: 650;
+  font-size: 14px;
+}
+.sm-audio__times {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 12px;
+  color: var(--sm-audio-muted);
+  font-variant-numeric: tabular-nums;
+}
+.sm-audio__seek {
+  width: 100%;
+}
+.sm-audio__range {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  height: 24px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  cursor: pointer;
+  background: transparent;
+  border-radius: 0;
+}
+.sm-audio__range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background:
+    linear-gradient(
+      to right,
+      var(--sm-audio-accent) 0 var(--sm-audio-progress),
+      var(--sm-audio-track) var(--sm-audio-progress) 100%);
+}
+.sm-audio__range::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--sm-audio-track);
+}
+.sm-audio__range::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--sm-audio-accent);
+}
+.sm-audio__range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -4px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--sm-audio-accent);
+  box-shadow: 0 0 0 1px var(--sm-audio-accent);
+}
+.sm-audio__range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--sm-audio-accent);
+  box-shadow: 0 0 0 1px var(--sm-audio-accent);
+}
+.sm-audio__range:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.sm-audio__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sm-audio__speed,
+.sm-audio__refresh {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--sm-audio-track);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sm-audio-ink);
+  font-weight: 600 !important;
+}
+.sm-audio__refresh:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.sm-audio__status {
+  flex: 1 0 100%;
+  margin: 0;
+  font-size: 13px;
+  color: var(--sm-audio-muted);
+}
+.sm-audio__waveform {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 48px;
+  margin-top: 12px;
+}
+.sm-audio__waveform span {
+  flex: 1;
+  min-width: 1px;
+  border-radius: 2px;
+}
+.sm-audio--waveform {
+  padding: 16px;
+  border: 1px solid var(--sm-audio-track);
+  border-radius: 12px;
+}
+.sm-audio--inline {
+  gap: 8px;
+}
+.sm-audio--inline .sm-audio__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.sm-audio--inline .sm-audio__times {
+  justify-content: flex-start;
+}
+.sm-audio__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+@media (forced-colors: active) {
+  .sm-audio__range {
+    appearance: auto;
+  }
+  .sm-audio__play {
+    border: 1px solid ButtonText;
+  }
+}
+@media (max-width: 380px) {
+  .sm-audio {
+    gap: 10px;
+  }
+  .sm-audio__content {
+    flex-basis: 120px;
+  }
+}

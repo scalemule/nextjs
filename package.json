@@ -1,6 +1,6 @@
 {
   "name": "@scalemule/nextjs",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "description": "ScaleMule SDK for Next.js applications - authentication, storage, and user management",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -40,7 +40,13 @@
       "types": "./dist/testing.d.ts",
       "import": "./dist/testing.mjs",
       "require": "./dist/testing.js"
-    }
+    },
+    "./audio": {
+      "types": "./dist/audio.d.ts",
+      "import": "./dist/audio.mjs",
+      "require": "./dist/audio.js"
+    },
+    "./audio.css": "./dist/audio.css"
   },
   "files": [
     "dist",
@@ -48,7 +54,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "npm run clean && tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",

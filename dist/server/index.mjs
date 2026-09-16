@@ -15,6 +15,9 @@ var ScaleMuleApiError = class extends Error {
     this.code = error.code;
     this.field = error.field;
     this.status = status;
+    this.requestId = error.requestId;
+    this.traceId = error.traceId;
+    this.problem = error.problem;
   }
 };
 
@@ -32,40 +35,40 @@ function validateIP(ip) {
   return void 0;
 }
 function extractClientContext(request) {
-  const headers2 = request.headers;
+  const headers3 = request.headers;
   let ip;
-  const cfConnectingIp = headers2.get("cf-connecting-ip");
+  const cfConnectingIp = headers3.get("cf-connecting-ip");
   if (cfConnectingIp) {
     ip = validateIP(cfConnectingIp);
   }
   if (!ip) {
-    const doConnectingIp = headers2.get("do-connecting-ip");
+    const doConnectingIp = headers3.get("do-connecting-ip");
     if (doConnectingIp) {
       ip = validateIP(doConnectingIp);
     }
   }
   if (!ip) {
-    const realIp = headers2.get("x-real-ip");
+    const realIp = headers3.get("x-real-ip");
     if (realIp) {
       ip = validateIP(realIp);
     }
   }
   if (!ip) {
-    const forwardedFor = headers2.get("x-forwarded-for");
+    const forwardedFor = headers3.get("x-forwarded-for");
     if (forwardedFor) {
       const firstIp = forwardedFor.split(",")[0]?.trim();
       ip = validateIP(firstIp);
     }
   }
   if (!ip) {
-    const vercelForwarded = headers2.get("x-vercel-forwarded-for");
+    const vercelForwarded = headers3.get("x-vercel-forwarded-for");
     if (vercelForwarded) {
       const firstIp = vercelForwarded.split(",")[0]?.trim();
       ip = validateIP(firstIp);
     }
   }
   if (!ip) {
-    const trueClientIp = headers2.get("true-client-ip");
+    const trueClientIp = headers3.get("true-client-ip");
     if (trueClientIp) {
       ip = validateIP(trueClientIp);
     }
@@ -73,10 +76,10 @@ function extractClientContext(request) {
   if (!ip && request.ip) {
     ip = validateIP(request.ip);
   }
-  const userAgent = headers2.get("user-agent") || void 0;
-  const deviceFingerprint = headers2.get("x-device-fingerprint") || void 0;
-  const referrer = headers2.get("referer") || void 0;
-  const anonymousId = headers2.get("x-anonymous-id") || void 0;
+  const userAgent = headers3.get("user-agent") || void 0;
+  const deviceFingerprint = headers3.get("x-device-fingerprint") || void 0;
+  const referrer = headers3.get("referer") || void 0;
+  const anonymousId = headers3.get("x-anonymous-id") || void 0;
   return {
     ip,
     userAgent,
@@ -86,9 +89,9 @@ function extractClientContext(request) {
   };
 }
 function extractClientContextFromReq(req) {
-  const headers2 = req.headers;
+  const headers3 = req.headers;
   const getHeader = (name) => {
-    const value = headers2[name.toLowerCase()];
+    const value = headers3[name.toLowerCase()];
     if (Array.isArray(value)) {
       return value[0];
     }
@@ -147,27 +150,27 @@ function extractClientContextFromReq(req) {
   };
 }
 function buildClientContextHeaders(context) {
-  const headers2 = {};
+  const headers3 = {};
   if (!context) {
-    return headers2;
+    return headers3;
   }
   if (context.ip) {
-    headers2["x-sm-forwarded-client-ip"] = context.ip;
-    headers2["X-Client-IP"] = context.ip;
+    headers3["x-sm-forwarded-client-ip"] = context.ip;
+    headers3["X-Client-IP"] = context.ip;
   }
   if (context.userAgent) {
-    headers2["X-Client-User-Agent"] = context.userAgent;
+    headers3["X-Client-User-Agent"] = context.userAgent;
   }
   if (context.deviceFingerprint) {
-    headers2["X-Client-Device-Fingerprint"] = context.deviceFingerprint;
+    headers3["X-Client-Device-Fingerprint"] = context.deviceFingerprint;
   }
   if (context.referrer) {
-    headers2["X-Client-Referrer"] = context.referrer;
+    headers3["X-Client-Referrer"] = context.referrer;
   }
   if (context.anonymousId) {
-    headers2["x-anonymous-id"] = context.anonymousId;
+    headers3["x-anonymous-id"] = context.anonymousId;
   }
-  return headers2;
+  return headers3;
 }
 function buildFlagContext(clientContext, extraContext = {}) {
   const context = { ...extraContext };
@@ -175,6 +178,25 @@ function buildFlagContext(clientContext, extraContext = {}) {
     context.ip_address = clientContext.ip;
   }
   return context;
+}
+
+// src/error-context.ts
+function withErrorContext(error, responseData, headers3) {
+  const enriched = { ...error };
+  const meta = responseData?.meta;
+  const requestId = meta?.request_id ?? headers3?.get("x-request-id") ?? void 0;
+  if (requestId !== void 0 && enriched.requestId === void 0) {
+    enriched.requestId = requestId;
+  }
+  const traceId = meta?.trace_id;
+  if (traceId !== void 0 && enriched.traceId === void 0) {
+    enriched.traceId = traceId;
+  }
+  const rawError = responseData?.error;
+  if (rawError !== null && typeof rawError === "object" && enriched.problem === void 0) {
+    enriched.problem = rawError;
+  }
+  return enriched;
 }
 
 // src/server/client.ts
@@ -185,6 +207,7 @@ var GATEWAY_URLS = {
 function resolveGatewayUrl(config) {
   if (config.gatewayUrl) return config.gatewayUrl;
   if (process.env.SCALEMULE_API_URL) return process.env.SCALEMULE_API_URL;
+  if (process.env.SCALEMULE_GATEWAY_URL) return process.env.SCALEMULE_GATEWAY_URL;
   return GATEWAY_URLS[config.environment || "prod"];
 }
 var ScaleMuleServer = class {
@@ -573,7 +596,7 @@ var ScaleMuleServer = class {
         formData.append("file", blob, file.filename);
         formData.append("sm_user_id", userId);
         const url = `${this.gatewayUrl}/v1/storage/upload`;
-        const headers2 = {
+        const headers3 = {
           "x-api-key": this.apiKey,
           "x-user-id": userId,
           ...buildClientContextHeaders(options?.clientContext)
@@ -584,7 +607,7 @@ var ScaleMuleServer = class {
         try {
           const response = await fetch(url, {
             method: "POST",
-            headers: headers2,
+            headers: headers3,
             body: formData
           });
           const text = await response.text();
@@ -595,7 +618,11 @@ var ScaleMuleServer = class {
           }
           if (!response.ok) {
             throw new ScaleMuleApiError(
-              responseData?.error || { code: "UPLOAD_FAILED", message: text || "Upload failed" }
+              withErrorContext(
+                responseData?.error || { code: "UPLOAD_FAILED", message: text || "Upload failed" },
+                responseData,
+                response.headers
+              )
             );
           }
           const data = responseData?.data !== void 0 ? responseData.data : responseData;
@@ -806,14 +833,14 @@ var ScaleMuleServer = class {
    */
   async request(method, path, options = {}) {
     const url = `${this.gatewayUrl}${path}`;
-    const headers2 = {
+    const headers3 = {
       "x-api-key": this.apiKey,
       "Content-Type": "application/json",
       // Forward client context headers if provided
       ...buildClientContextHeaders(options.clientContext)
     };
     if (options.sessionToken) {
-      headers2["Authorization"] = `Bearer ${options.sessionToken}`;
+      headers3["Authorization"] = `Bearer ${options.sessionToken}`;
     }
     if (this.debug) {
       console.log(`[ScaleMule Server] ${method} ${path}`);
@@ -824,7 +851,7 @@ var ScaleMuleServer = class {
     try {
       const response = await fetch(url, {
         method,
-        headers: headers2,
+        headers: headers3,
         body: options.body ? JSON.stringify(options.body) : void 0
       });
       const rotated = response.headers.get("x-rotated-session-token");
@@ -838,10 +865,11 @@ var ScaleMuleServer = class {
       } catch {
       }
       if (!response.ok) {
-        const error = responseData?.error || {
+        const baseError = responseData?.error || {
           code: `HTTP_${response.status}`,
           message: responseData?.message || text || response.statusText
         };
+        const error = withErrorContext(baseError, responseData, response.headers);
         if (response.status === 401 && options.sessionToken && !options.isAutoRefresh) {
           if (this.debug) console.log("[ScaleMule Server] 401 received, attempting auto-refresh...");
           try {
@@ -920,87 +948,111 @@ function createCookieHeader(name, value, options = {}) {
 }
 function createClearCookieHeader(name, options = {}) {
   const path = options.path ?? "/";
-  let cookie = `${name}=; Path=${path}; Max-Age=0; HttpOnly`;
+  const secure = options.secure ?? process.env.NODE_ENV === "production";
+  const sameSite = options.sameSite ?? "lax";
+  let cookie = `${name}=; Path=${path}; Max-Age=0; HttpOnly; SameSite=${sameSite}`;
+  if (secure) {
+    cookie += "; Secure";
+  }
   if (options.domain) {
     cookie += `; Domain=${options.domain}`;
   }
   return cookie;
 }
 function withSession(loginResponse, responseBody, options = {}) {
-  const headers2 = new Headers();
-  headers2.set("Content-Type", "application/json");
-  headers2.append(
+  const headers3 = new Headers();
+  headers3.set("Content-Type", "application/json");
+  headers3.append(
     "Set-Cookie",
     createCookieHeader(SESSION_COOKIE_NAME, loginResponse.session_token, options)
   );
-  headers2.append(
+  headers3.append(
     "Set-Cookie",
     createCookieHeader(USER_ID_COOKIE_NAME, loginResponse.user.id, options)
   );
   return new Response(JSON.stringify({ success: true, data: responseBody }), {
     status: 200,
-    headers: headers2
+    headers: headers3
   });
 }
 function withRefreshedSession(sessionToken, userId, responseBody, options = {}) {
-  const headers2 = new Headers();
-  headers2.set("Content-Type", "application/json");
-  headers2.append(
+  const headers3 = new Headers();
+  headers3.set("Content-Type", "application/json");
+  headers3.append(
     "Set-Cookie",
     createCookieHeader(SESSION_COOKIE_NAME, sessionToken, options)
   );
-  headers2.append(
+  headers3.append(
     "Set-Cookie",
     createCookieHeader(USER_ID_COOKIE_NAME, userId, options)
   );
   return new Response(JSON.stringify({ success: true, data: responseBody }), {
     status: 200,
-    headers: headers2
+    headers: headers3
   });
 }
 function clearSession(responseBody, options = {}, status = 200) {
-  const headers2 = new Headers();
-  headers2.set("Content-Type", "application/json");
-  headers2.append("Set-Cookie", createClearCookieHeader(SESSION_COOKIE_NAME, options));
-  headers2.append("Set-Cookie", createClearCookieHeader(USER_ID_COOKIE_NAME, options));
+  const headers3 = new Headers();
+  headers3.set("Content-Type", "application/json");
+  headers3.append("Set-Cookie", createClearCookieHeader(SESSION_COOKIE_NAME, options));
+  headers3.append("Set-Cookie", createClearCookieHeader(USER_ID_COOKIE_NAME, options));
   return new Response(JSON.stringify({ success: status < 300, data: responseBody }), {
     status,
-    headers: headers2
+    headers: headers3
   });
 }
 async function getSession() {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
   const userIdCookie = cookieStore.get(USER_ID_COOKIE_NAME);
-  if (!sessionCookie?.value || !userIdCookie?.value) {
-    return null;
+  if (sessionCookie?.value && userIdCookie?.value) {
+    return {
+      sessionToken: sessionCookie.value,
+      userId: userIdCookie.value,
+      expiresAt: /* @__PURE__ */ new Date()
+      // Note: actual expiry is managed by ScaleMule backend
+    };
   }
+  const headerStore = await headers();
+  return sessionFromAuthHeaders(
+    headerStore.get("authorization"),
+    headerStore.get("x-sm-user-id")
+  );
+}
+function sessionFromAuthHeaders(authorization, userId) {
+  if (!authorization || !userId) return null;
+  const match = /^Bearer\s+(.+)$/i.exec(authorization.trim());
+  const token = match?.[1]?.trim();
+  if (!token) return null;
   return {
-    sessionToken: sessionCookie.value,
-    userId: userIdCookie.value,
+    sessionToken: token,
+    userId,
     expiresAt: /* @__PURE__ */ new Date()
-    // Note: actual expiry is managed by ScaleMule backend
   };
 }
 function getSessionFromRequest(request) {
   const cookieHeader = request.headers.get("cookie");
-  if (!cookieHeader) return null;
-  const cookies4 = Object.fromEntries(
-    cookieHeader.split(";").map((c) => {
-      const [key, ...rest] = c.trim().split("=");
-      return [key, decodeURIComponent(rest.join("="))];
-    })
-  );
-  const sessionToken = cookies4[SESSION_COOKIE_NAME];
-  const userId = cookies4[USER_ID_COOKIE_NAME];
-  if (!sessionToken || !userId) {
-    return null;
+  if (cookieHeader) {
+    const cookies4 = Object.fromEntries(
+      cookieHeader.split(";").map((c) => {
+        const [key, ...rest] = c.trim().split("=");
+        return [key, decodeURIComponent(rest.join("="))];
+      })
+    );
+    const sessionToken = cookies4[SESSION_COOKIE_NAME];
+    const userId = cookies4[USER_ID_COOKIE_NAME];
+    if (sessionToken && userId) {
+      return {
+        sessionToken,
+        userId,
+        expiresAt: /* @__PURE__ */ new Date()
+      };
+    }
   }
-  return {
-    sessionToken,
-    userId,
-    expiresAt: /* @__PURE__ */ new Date()
-  };
+  return sessionFromAuthHeaders(
+    request.headers.get("authorization"),
+    request.headers.get("x-sm-user-id")
+  );
 }
 var MAX_KNOWN_ACCOUNTS = 10;
 function maskEmail(email) {
@@ -1041,7 +1093,7 @@ function applyPrivacyToEntry(entry, privacy) {
       };
   }
 }
-function appendKnownAccountCookie(headers2, account, existingCookie, options = {}, privacy) {
+function appendKnownAccountCookie(headers3, account, existingCookie, options = {}, privacy) {
   let accounts = {};
   if (existingCookie) {
     try {
@@ -1070,9 +1122,9 @@ function appendKnownAccountCookie(headers2, account, existingCookie, options = {
   if (options.domain) {
     cookie += `; Domain=${options.domain}`;
   }
-  headers2.append("Set-Cookie", cookie);
+  headers3.append("Set-Cookie", cookie);
 }
-function removeKnownAccountFromCookie(headers2, userId, existingCookie, options = {}) {
+function removeKnownAccountFromCookie(headers3, userId, existingCookie, options = {}) {
   let accounts = {};
   if (existingCookie) {
     try {
@@ -1092,15 +1144,15 @@ function removeKnownAccountFromCookie(headers2, userId, existingCookie, options 
   if (options.domain) {
     cookie += `; Domain=${options.domain}`;
   }
-  headers2.append("Set-Cookie", cookie);
+  headers3.append("Set-Cookie", cookie);
 }
-function clearKnownAccountsCookie(headers2, options = {}) {
+function clearKnownAccountsCookie(headers3, options = {}) {
   const path = options.path ?? "/";
   let cookie = `${KNOWN_ACCOUNTS_COOKIE_NAME}=; Path=${path}; Max-Age=0`;
   if (options.domain) {
     cookie += `; Domain=${options.domain}`;
   }
-  headers2.append("Set-Cookie", cookie);
+  headers3.append("Set-Cookie", cookie);
 }
 function getKnownAccountsFromRequest(request) {
   const cookieHeader = request.headers.get("cookie");
@@ -1598,13 +1650,13 @@ function createAuthRoutes(config = {}) {
           if (!user_id) {
             return errorResponse("VALIDATION_ERROR", "user_id required", 400);
           }
-          const headers2 = new Headers();
-          headers2.set("Content-Type", "application/json");
+          const headers3 = new Headers();
+          headers3.set("Content-Type", "application/json");
           const existingKnown = getKnownAccountsCookieRaw(request);
-          removeKnownAccountFromCookie(headers2, user_id, existingKnown, cookieOptions);
+          removeKnownAccountFromCookie(headers3, user_id, existingKnown, cookieOptions);
           return new Response(
             JSON.stringify({ success: true, data: { message: "Account forgotten" } }),
-            { status: 200, headers: headers2 }
+            { status: 200, headers: headers3 }
           );
         }
         // ==================== Forget All Accounts ====================
@@ -1612,12 +1664,12 @@ function createAuthRoutes(config = {}) {
           if (!config.enableAccountSwitcher) {
             return errorResponse("NOT_FOUND", "Account switcher not enabled", 404);
           }
-          const headers2 = new Headers();
-          headers2.set("Content-Type", "application/json");
-          clearKnownAccountsCookie(headers2, cookieOptions);
+          const headers3 = new Headers();
+          headers3.set("Content-Type", "application/json");
+          clearKnownAccountsCookie(headers3, cookieOptions);
           return new Response(
             JSON.stringify({ success: true, data: { message: "All accounts forgotten" } }),
-            { status: 200, headers: headers2 }
+            { status: 200, headers: headers3 }
           );
         }
         default:
@@ -2327,31 +2379,31 @@ function createPushRoutes(config) {
   const { apiKey, gatewayUrl, csrf = true } = config;
   async function proxyToGateway(request, method, subPath) {
     const targetUrl = `${gatewayUrl}/v1/communication/push/${subPath}`;
-    const headers2 = {
+    const headers3 = {
       "x-api-key": apiKey
     };
     const session = getSessionFromRequest(request);
     if (session?.sessionToken) {
-      headers2["Authorization"] = `Bearer ${session.sessionToken}`;
+      headers3["Authorization"] = `Bearer ${session.sessionToken}`;
     }
     const clientContext = extractClientContext(
       request
     );
     const contextHeaders = buildClientContextHeaders(clientContext);
-    Object.assign(headers2, contextHeaders);
+    Object.assign(headers3, contextHeaders);
     const workspaceId = request.headers.get("x-sm-workspace-id");
     if (workspaceId) {
-      headers2["x-sm-workspace-id"] = workspaceId;
+      headers3["x-sm-workspace-id"] = workspaceId;
     }
     const fetchOptions = {
       method,
-      headers: headers2
+      headers: headers3
     };
     if (method !== "GET" && method !== "DELETE") {
       try {
         const body = await request.text();
         if (body) {
-          headers2["Content-Type"] = "application/json";
+          headers3["Content-Type"] = "application/json";
           fetchOptions.body = body;
         }
       } catch {
@@ -2446,26 +2498,26 @@ function createNotificationRoutes(config) {
   const { apiKey, gatewayUrl } = config;
   async function proxyToGateway(request, method, subPath) {
     const targetUrl = `${gatewayUrl}/v1/notifications/${subPath}`;
-    const headers2 = {
+    const headers3 = {
       "x-api-key": apiKey,
       "Content-Type": "application/json"
     };
     const session = getSessionFromRequest(request);
     if (session?.sessionToken) {
-      headers2["Authorization"] = `Bearer ${session.sessionToken}`;
+      headers3["Authorization"] = `Bearer ${session.sessionToken}`;
     }
     const clientContext = extractClientContext(
       request
     );
     const contextHeaders = buildClientContextHeaders(clientContext);
-    Object.assign(headers2, contextHeaders);
+    Object.assign(headers3, contextHeaders);
     const workspaceId = request.headers.get("x-sm-workspace-id");
     if (workspaceId) {
-      headers2["x-sm-workspace-id"] = workspaceId;
+      headers3["x-sm-workspace-id"] = workspaceId;
     }
     const fetchOptions = {
       method,
-      headers: headers2
+      headers: headers3
     };
     if (method === "PATCH") {
       try {
@@ -2510,11 +2562,12 @@ function createNotificationRoutes(config) {
 
 // src/server/errors.ts
 var ScaleMuleError = class extends Error {
-  constructor(code, message, status = 400, details) {
+  constructor(code, message, status = 400, details, requestId) {
     super(message);
     this.code = code;
     this.status = status;
     this.details = details;
+    this.requestId = requestId;
     this.name = "ScaleMuleError";
   }
 };
@@ -2568,7 +2621,8 @@ function unwrap(result) {
         code,
         err?.message || "An error occurred",
         status,
-        err?.details
+        err?.details,
+        err?.requestId ?? envelope.meta?.request_id
       );
     }
     return envelope.data;
@@ -2617,7 +2671,11 @@ function apiHandler(handler, options) {
           console.error("Internal API error:", error.message);
         }
         return Response.json(
-          { success: false, error: { code: error.code, message: safeMessage } },
+          {
+            success: false,
+            error: { code: error.code, message: safeMessage },
+            ...error.requestId ? { meta: { request_id: error.requestId } } : {}
+          },
           { status: error.status }
         );
       }
@@ -3139,47 +3197,47 @@ function formatPermissionsDirective(feature, value) {
   return `${feature}=(${parts.join(" ")})`;
 }
 function buildSecurityHeaders(opts = {}) {
-  const headers2 = [];
+  const headers3 = [];
   const includeHsts = opts.includeHsts ?? true;
   const hstsMaxAge = opts.hstsMaxAgeSeconds ?? 31536e3;
   if (includeHsts && hstsMaxAge > 0) {
     const parts = [`max-age=${hstsMaxAge}`];
     if (opts.hstsIncludeSubDomains ?? true) parts.push("includeSubDomains");
     if (opts.hstsPreload ?? false) parts.push("preload");
-    headers2.push({
+    headers3.push({
       key: "Strict-Transport-Security",
       value: parts.join("; ")
     });
   }
   const frameOptions = opts.frameOptions === void 0 ? "DENY" : opts.frameOptions;
   if (frameOptions !== null) {
-    headers2.push({ key: "X-Frame-Options", value: frameOptions });
+    headers3.push({ key: "X-Frame-Options", value: frameOptions });
   }
   const contentTypeOptions = opts.contentTypeOptions === void 0 ? "nosniff" : opts.contentTypeOptions;
   if (contentTypeOptions !== null) {
-    headers2.push({ key: "X-Content-Type-Options", value: contentTypeOptions });
+    headers3.push({ key: "X-Content-Type-Options", value: contentTypeOptions });
   }
-  headers2.push({
+  headers3.push({
     key: "Referrer-Policy",
     value: opts.referrerPolicy ?? "strict-origin-when-cross-origin"
   });
   const xss = opts.xssProtection === void 0 ? "0" : opts.xssProtection;
   if (xss !== null) {
-    headers2.push({ key: "X-XSS-Protection", value: xss });
+    headers3.push({ key: "X-XSS-Protection", value: xss });
   }
   const permissions = opts.permissionsPolicy === void 0 ? DEFAULT_PERMISSIONS_POLICY : opts.permissionsPolicy;
   if (permissions !== null) {
     const directives = Object.entries(permissions).map(([feature, value]) => formatPermissionsDirective(feature, value)).join(", ");
-    headers2.push({ key: "Permissions-Policy", value: directives });
+    headers3.push({ key: "Permissions-Policy", value: directives });
   }
   if (opts.extraHeaders?.length) {
-    const byKey = new Map(headers2.map((h) => [h.key.toLowerCase(), h]));
+    const byKey = new Map(headers3.map((h) => [h.key.toLowerCase(), h]));
     for (const extra of opts.extraHeaders) {
       byKey.set(extra.key.toLowerCase(), extra);
     }
     return Array.from(byKey.values());
   }
-  return headers2;
+  return headers3;
 }
 
 export { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, DEFAULT_PERMISSIONS_POLICY, KNOWN_ACCOUNTS_COOKIE_NAME, OAUTH_STATE_COOKIE_NAME, SESSION_COOKIE_NAME, SM_LEDVERY_ACCESS_TOKEN_COOKIE, SM_LEDVERY_ID_TOKEN_COOKIE, SM_LEDVERY_NONCE_COOKIE, SM_LEDVERY_PKCE_VERIFIER_COOKIE, SM_LEDVERY_STATE_COOKIE, ScaleMuleError, ScaleMuleServer, USER_ID_COOKIE_NAME, apiHandler, appendKnownAccountCookie, buildClientContextHeaders, buildFlagContext, buildSecurityHeaders, clearKnownAccountsCookie, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createLedveryRoutes, createNotificationRoutes, createPushRoutes, createServerClient, createWebhookHandler, createWebhookRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getKnownAccountsCookieRaw, getKnownAccountsFromRequest, getLedverySession, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, isSafeRedirect, normalizeKnownAccountsCookie, parseWebhookEvent, prefetchBundles, prefetchSecrets, registerVideoWebhook, removeKnownAccountFromCookie, requireAppSecret, requireBundle, requireSession, resolveGatewayUrl, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, validateSafeRedirect, verifyWebhookSignature, withAuth, withCSRFProtection, withCSRFToken, withSession };

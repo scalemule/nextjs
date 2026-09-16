@@ -10,8 +10,30 @@ var ScaleMuleApiError = class extends Error {
     this.code = error.code;
     this.field = error.field;
     this.status = status;
+    this.requestId = error.requestId;
+    this.traceId = error.traceId;
+    this.problem = error.problem;
   }
 };
+
+// src/error-context.ts
+function withErrorContext(error, responseData, headers) {
+  const enriched = { ...error };
+  const meta = responseData?.meta;
+  const requestId = meta?.request_id ?? headers?.get("x-request-id") ?? void 0;
+  if (requestId !== void 0 && enriched.requestId === void 0) {
+    enriched.requestId = requestId;
+  }
+  const traceId = meta?.trace_id;
+  if (traceId !== void 0 && enriched.traceId === void 0) {
+    enriched.traceId = traceId;
+  }
+  const rawError = responseData?.error;
+  if (rawError !== null && typeof rawError === "object" && enriched.problem === void 0) {
+    enriched.problem = rawError;
+  }
+  return enriched;
+}
 
 // src/client.ts
 var GATEWAY_URLS = {
@@ -589,7 +611,8 @@ var ScaleMuleClient = class {
         }
         if (!response.ok) {
           const rawError = responseData?.error;
-          const error = rawError && typeof rawError === "object" ? rawError : { code: `HTTP_${response.status}`, message: typeof rawError === "string" ? rawError : responseData?.message || text || response.statusText };
+          const baseError = rawError && typeof rawError === "object" ? rawError : { code: `HTTP_${response.status}`, message: typeof rawError === "string" ? rawError : responseData?.message || text || response.statusText };
+          const error = withErrorContext(baseError, responseData, response.headers);
           if (response.status === 401 && this.sessionToken && !options.isAutoRefresh && refreshAttempts < MAX_REFRESH_ATTEMPTS) {
             refreshAttempts++;
             if (this.debug) console.log("[ScaleMule] 401 received, attempting auto-refresh...");
@@ -851,10 +874,17 @@ var ScaleMuleClient = class {
             const unwrapped = data?.data !== void 0 ? data.data : data;
             resolve(unwrapped);
           } else {
-            reject(new ScaleMuleApiError(data?.error || {
+            const uploadError = data?.error || {
               code: `HTTP_${xhr.status}`,
               message: data?.message || xhr.responseText || "Upload failed"
-            }));
+            };
+            reject(
+              new ScaleMuleApiError(
+                withErrorContext(uploadError, data, {
+                  get: (name) => xhr.getResponseHeader(name)
+                })
+              )
+            );
           }
         } catch {
           reject(new ScaleMuleApiError({ code: "PARSE_ERROR", message: "Failed to parse response" }));

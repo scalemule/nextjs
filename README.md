@@ -395,3 +395,33 @@ test('shows user name', () => {
 ## License
 
 MIT - ScaleMule Inc.
+
+### Shared audio player
+
+```tsx
+import { AudioPlayer } from '@scalemule/nextjs/audio'
+import '@scalemule/nextjs/audio.css'
+
+<AudioPlayer
+  audioKey={article.id}
+  audio={{ url: article.audio.url, duration_ms: article.audio.duration_ms }}
+  variant="compact"
+  label="Listen to this story"
+/>
+```
+
+`AudioPlayer` has three layouts using one playback controller:
+
+- `waveform` (default): full article player; displays real supplied `waveform_peaks`, or a progress track when peaks are unavailable.
+- `compact`: narration label, elapsed time, explicit remaining time, seek track and speed control. Suited to news articles.
+- `inline`: play/pause, elapsed/remaining time and speed for a story list.
+
+The CSS is shared and framework-independent; import it once in your app layout. The audio entry point preserves `use client` in both ESM and CJS and imports only React at runtime. It requires neither `ScaleMuleProvider` nor an API key. Existing `NarrationPlayer` exports/props remain supported unchanged.
+
+Defaults: no autoplay, `preload="none"`, one recording playing per document, and a persisted speed under `scalemule:audio:playback-rate`. Set `playbackRateStorageKey={null}` to disable storage, `exclusivePlayback={false}` to allow simultaneous players, or `preload="metadata"` for eager duration discovery. Supplying `duration_ms` shows remaining time without fetching media. Elapsed time stays on the recording's timeline; remaining time accounts for playback speed. Native range inputs support keyboard and touch seeking; both played/remaining contrast and the seek handle identify progress.
+
+For signed URLs, supply `onRefresh(signal)` returning a fresh `AudioPlayerSource`. Pass the signal to your application's fetch request. The controller refreshes near expiry only on a play attempt, deduplicates concurrent requests, attempts automatic recovery at most once per play attempt, and preserves position after metadata loads. `showRefreshButton` exposes a manual retry. Refresh callbacks should use a bounded request timeout. The player never fetches a platform endpoint itself, and never generates audio. Keep auth/tenant authorization in the host application's server route; only return a reader-authorized media URL. Change `audioKey` when the article changes to abort stale refreshes and reset position.
+
+Customize `--sm-audio-accent`, `--sm-audio-ink`, `--sm-audio-muted`, `--sm-audio-track`, and `--sm-audio-wave` on `className` or `style`, retaining accessible contrast. Default accent/track contrast is over 4:1. Keep the player outside a navigation link; links and playback controls need separate interaction targets.
+
+This patch adds reusable presentation and bounded playback recovery. It does not change media storage, transcoding, TTS generation or entitlement enforcement.

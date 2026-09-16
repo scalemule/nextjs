@@ -9,6 +9,9 @@ var ScaleMuleApiError = class extends Error {
     this.code = error.code;
     this.field = error.field;
     this.status = status;
+    this.requestId = error.requestId;
+    this.traceId = error.traceId;
+    this.problem = error.problem;
   }
 };
 function createMockUser(options = {}) {
