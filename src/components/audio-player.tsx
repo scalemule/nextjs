@@ -309,7 +309,12 @@ function PlayerSession({
           const d = positive(e.currentTarget.duration)
           if (d) setDuration(d)
         }}
-        onTimeUpdate={(e) => setPosition(positive(e.currentTarget.currentTime))}
+        onTimeUpdate={(e) => {
+          // A paused preload=none source replacement emits a reset before metadata.
+          // Keep the reader's saved position visible until the seek can be restored.
+          if (e.currentTarget.readyState === 0 && resume.current != null) return
+          setPosition(positive(e.currentTarget.currentTime))
+        }}
         onPlay={() => {
           intent.current = true
           setPlaying(true)
