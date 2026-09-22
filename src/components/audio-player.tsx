@@ -26,7 +26,11 @@ export interface AudioPlayerProps {
   label?: string
   className?: string
   style?: CSSProperties
-  /** Defaults to none: lists do not download every recording on page load. */
+  /**
+   * Defaults to none so a list does not download every recording.
+   * A player that does not already know its length uses metadata anyway,
+   * so the clock can show before play.
+   */
   preload?: 'none' | 'metadata'
   /** Called at most once automatically per play attempt. Honor signal to cancel network work. */
   onRefresh?: (signal: AbortSignal) => Promise<AudioPlayerSource>
@@ -260,6 +264,9 @@ function PlayerSession({
         : 0.08
     })
   }, [source.waveform_peaks])
+  // A stored length can render with preload none. Without one, read the
+  // file header. Otherwise the clock stays blank until the reader presses play.
+  const mediaPreload = durationOf(source) > 0 ? preload : 'metadata'
   const current = Math.min(positive(position), duration || Infinity)
   const progress = duration
     ? Math.max(0, Math.min(100, (current / duration) * 100))
@@ -284,7 +291,7 @@ function PlayerSession({
       <audio
         ref={media}
         src={source.url ?? undefined}
-        preload={preload}
+        preload={mediaPreload}
         onLoadedMetadata={(e) => {
           const element = e.currentTarget
           const total = positive(element.duration) || durationOf(source)
