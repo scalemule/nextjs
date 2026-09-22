@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+/** @vitest-environment jsdom */
 import React from 'react'
 import {
   act,
@@ -33,6 +33,31 @@ function element(container: HTMLElement) {
   return container.querySelector('audio')!
 }
 beforeEach(() => {
+  if (typeof localStorage.clear !== 'function') {
+    const store = new Map<string, string>()
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, String(value))
+      },
+      removeItem: (key: string) => {
+        store.delete(key)
+      },
+      clear: () => store.clear(),
+      key: (index: number) => [...store.keys()][index] ?? null,
+      get length() {
+        return store.size
+      },
+    }
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: storage,
+    })
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: storage,
+    })
+  }
   localStorage.clear()
   play = vi
     .spyOn(HTMLMediaElement.prototype, 'play')
@@ -138,11 +163,45 @@ it('hydrates persisted speed without overwriting it on mount; tolerates denied s
 
 it('handles missing or non-finite duration without invalid seeking', () => {
   const { container } = render(
-    <AudioPlayer audio={{ url: source.url, duration_ms: NaN }} />
+    <AudioPlayer audio={{ url: source.url, duration_ms: NaN }} preload="none" />
   )
-  metadata(element(container), Infinity)
+  const media = element(container)
+  expect(media.preload).toBe('metadata')
+  metadata(media, Infinity)
   expect((screen.getByRole('slider') as HTMLInputElement).disabled).toBe(true)
   expect(screen.getByText('Duration available when played')).toBeTruthy()
+})
+
+it('shows a supplied length before playback, even when preload is none', () => {
+  render(
+    <AudioPlayer
+      audio={{ url: source.url, duration_ms: 868_000, ai_generated: true }}
+      audioKey="article"
+      variant="compact"
+      label="Listen to this story"
+      preload="none"
+    />
+  )
+  expect(screen.getByText('14:28 remaining')).toBeTruthy()
+  expect(screen.queryByText('Duration available when played')).toBeNull()
+  expect(play).not.toHaveBeenCalled()
+})
+
+it('reads the length from the file header when the record omitted it', () => {
+  const { container } = render(
+    <AudioPlayer
+      audio={{ url: source.url, duration_ms: null }}
+      variant="compact"
+      label="Listen to this story"
+      preload="none"
+    />
+  )
+  const media = element(container)
+  expect(media.preload).toBe('metadata')
+  expect(screen.getByText('Duration available when played')).toBeTruthy()
+  metadata(media, 87)
+  expect(screen.getByText('1:27 remaining')).toBeTruthy()
+  expect(play).not.toHaveBeenCalled()
 })
 
 it('refreshes expired audio only on interaction and resumes after metadata at the same position', async () => {
