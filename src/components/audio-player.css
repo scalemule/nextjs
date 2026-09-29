@@ -132,7 +132,8 @@
   gap: 8px;
 }
 .sm-audio__speed,
-.sm-audio__refresh {
+.sm-audio__refresh,
+.sm-audio__highlight {
   min-width: 44px;
   min-height: 44px;
   padding: 6px 10px;
@@ -141,6 +142,24 @@
   background: transparent;
   color: var(--sm-audio-ink);
   font-weight: 600 !important;
+}
+.sm-audio__highlight {
+  display: grid;
+  place-items: center;
+}
+.sm-audio__highlight svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+.sm-audio__highlight--on {
+  background: var(--sm-audio-accent);
+  border-color: var(--sm-audio-accent);
+  color: #fff;
+}
+.sm-audio__highlight:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 .sm-audio__refresh:disabled {
   opacity: 0.6;
@@ -204,4 +223,15 @@
   .sm-audio__content {
     flex-basis: 120px;
   }
+}
+
+/* Follow-along narration highlighting (CSS Custom Highlight API).
+ * The names are registered by NarrationHighlighter; sites can retheme
+ * with the two custom properties on the article body element. */
+::highlight(sm-narration-sentence) {
+  background-color: var(--sm-narration-sentence, rgba(36, 99, 70, 0.12));
+}
+::highlight(sm-narration-word) {
+  background-color: var(--sm-narration-word, rgba(36, 99, 70, 0.32));
+  color: inherit;
 }

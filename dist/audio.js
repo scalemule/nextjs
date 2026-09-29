@@ -22,15 +22,210 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/audio.ts
 var audio_exports = {};
 __export(audio_exports, {
-  AudioPlayer: () => AudioPlayer
+  AudioPlayer: () => AudioPlayer,
+  narrationHighlightSupported: () => narrationHighlightSupported
 });
 module.exports = __toCommonJS(audio_exports);
 
 // src/components/audio-player.tsx
 var import_react = require("react");
+
+// src/components/narration-highlight.ts
+var WORD_HIGHLIGHT = "sm-narration-word";
+var SENTENCE_HIGHLIGHT = "sm-narration-sentence";
+function normalizeWord(raw) {
+  return raw.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+var SKIPPED_TAGS = /* @__PURE__ */ new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"]);
+function collectDomWords(root) {
+  const doc = root.ownerDocument ?? root;
+  const walker = doc.createTreeWalker(root, 4, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (parent && SKIPPED_TAGS.has(parent.tagName)) return 2;
+      return 1;
+    }
+  });
+  const out = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.data;
+    const matcher = /\S+/g;
+    for (let m = matcher.exec(text); m; m = matcher.exec(text)) {
+      const norm = normalizeWord(m[0]);
+      if (norm) {
+        out.push({ node, start: m.index, end: m.index + m[0].length, norm });
+      }
+    }
+  }
+  return out;
+}
+function alignWords(timingNorms, domNorms, window2 = 6) {
+  const out = new Array(timingNorms.length).fill(-1);
+  let j = 0;
+  for (let i = 0; i < timingNorms.length; i++) {
+    const target = timingNorms[i];
+    if (!target) continue;
+    let found = -1;
+    for (let k = j; k < Math.min(domNorms.length, j + window2); k++) {
+      if (domNorms[k] === target) {
+        found = k;
+        break;
+      }
+    }
+    if (found === -1) {
+      continue;
+    }
+    out[i] = found;
+    j = found + 1;
+  }
+  return out;
+}
+function wordIndexAt(words, timeMs) {
+  let lo = 0;
+  let hi = words.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = lo + hi >> 1;
+    if (words[mid][1] <= timeMs) {
+      ans = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return ans;
+}
+function narrationHighlightSupported() {
+  return typeof window !== "undefined" && typeof CSS !== "undefined" && "highlights" in CSS && typeof globalThis.Highlight === "function";
+}
+var NarrationHighlighter = class {
+  constructor(root, timings) {
+    this.currentWord = -2;
+    this.currentSentence = -2;
+    this.follow = true;
+    this.detachUserScroll = null;
+    this.words = timings.words;
+    const domWords = collectDomWords(root);
+    const matches = alignWords(
+      this.words.map((w) => normalizeWord(w[0])),
+      domWords.map((w) => w.norm)
+    );
+    const doc = root.ownerDocument;
+    this.ranges = matches.map((m) => {
+      if (m === -1) return null;
+      const w = domWords[m];
+      try {
+        const range = doc.createRange();
+        range.setStart(w.node, w.start);
+        range.setEnd(w.node, w.end);
+        return range;
+      } catch {
+        return null;
+      }
+    });
+    this.sentenceRanges = /* @__PURE__ */ new Map();
+    this.words.forEach((w, i) => {
+      const range = this.ranges[i];
+      if (!range) return;
+      const list = this.sentenceRanges.get(w[3]);
+      if (list) list.push(range);
+      else this.sentenceRanges.set(w[3], [range]);
+    });
+    this.reducedMotion = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.attachUserScroll(doc);
+  }
+  /** Fraction of narration words found in the article body. A low
+   * ratio means the body diverged from the script; callers may prefer
+   * to hide the toggle below ~0.5. */
+  matchRatio() {
+    if (this.ranges.length === 0) return 0;
+    return this.ranges.filter(Boolean).length / this.ranges.length;
+  }
+  attachUserScroll(doc) {
+    const stopFollowing = () => {
+      this.follow = false;
+    };
+    const opts = { passive: true };
+    doc.addEventListener("wheel", stopFollowing, opts);
+    doc.addEventListener("touchmove", stopFollowing, opts);
+    this.detachUserScroll = () => {
+      doc.removeEventListener("wheel", stopFollowing, opts);
+      doc.removeEventListener("touchmove", stopFollowing, opts);
+    };
+  }
+  /** Re-engage auto-scroll (the reader pressed the toggle or sought). */
+  resumeFollowing() {
+    this.follow = true;
+    this.currentSentence = -2;
+  }
+  update(timeMs) {
+    if (!narrationHighlightSupported()) return;
+    const idx = wordIndexAt(this.words, timeMs);
+    if (idx === this.currentWord) return;
+    this.currentWord = idx;
+    const registry = CSS.highlights;
+    if (idx < 0) {
+      registry.delete(WORD_HIGHLIGHT);
+      registry.delete(SENTENCE_HIGHLIGHT);
+      this.currentSentence = -2;
+      return;
+    }
+    const wordRange = this.ranges[idx];
+    if (wordRange) registry.set(WORD_HIGHLIGHT, new Highlight(wordRange));
+    else registry.delete(WORD_HIGHLIGHT);
+    const sentence = this.words[idx][3];
+    if (sentence !== this.currentSentence) {
+      this.currentSentence = sentence;
+      const ranges = this.sentenceRanges.get(sentence) ?? [];
+      if (ranges.length > 0) {
+        registry.set(SENTENCE_HIGHLIGHT, new Highlight(...ranges));
+        this.scrollTo(ranges[0]);
+      } else {
+        registry.delete(SENTENCE_HIGHLIGHT);
+      }
+    }
+  }
+  scrollTo(range) {
+    if (!this.follow) return;
+    try {
+      const rect = range.getBoundingClientRect();
+      const viewport = window.innerHeight || 0;
+      if (rect.top < viewport * 0.15 || rect.bottom > viewport * 0.7) {
+        const target = window.scrollY + rect.top - viewport * 0.3;
+        window.scrollTo({ top: target, behavior: this.reducedMotion ? "auto" : "smooth" });
+      }
+    } catch {
+    }
+  }
+  clear() {
+    if (!narrationHighlightSupported()) return;
+    const registry = CSS.highlights;
+    registry.delete(WORD_HIGHLIGHT);
+    registry.delete(SENTENCE_HIGHLIGHT);
+    this.currentWord = -2;
+    this.currentSentence = -2;
+  }
+  destroy() {
+    this.clear();
+    this.detachUserScroll?.();
+    this.detachUserScroll = null;
+  }
+};
+function parseTimingsPayload(body) {
+  const candidate = body?.timings ?? body?.data?.timings ?? body;
+  const t = candidate;
+  if (!t || t.version !== 1 || !Array.isArray(t.words) || t.words.length === 0) return null;
+  const valid = t.words.every(
+    (w) => Array.isArray(w) && w.length === 4 && typeof w[0] === "string" && typeof w[1] === "number" && typeof w[2] === "number" && typeof w[3] === "number"
+  );
+  return valid ? t : null;
+}
+
+// src/components/audio-player.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
 var SPEEDS = [1, 1.25, 1.5, 2, 3];
 var PLAY_EVENT = "scalemule:audio:play";
+var HIGHLIGHT_PREF_KEY = "scalemule:audio:highlight";
 var positive = (n) => n != null && Number.isFinite(n) && n > 0 ? n : 0;
 var durationOf = (audio) => positive(audio.duration_ms) / 1e3;
 function time(seconds) {
@@ -52,7 +247,8 @@ function PlayerSession({
   showRefreshButton = false,
   onPlaybackError,
   playbackRateStorageKey = "scalemule:audio:playback-rate",
-  exclusivePlayback = true
+  exclusivePlayback = true,
+  narration
 }) {
   const media = (0, import_react.useRef)(null);
   const alive = (0, import_react.useRef)(true);
@@ -71,6 +267,91 @@ function PlayerSession({
   const sliderId = (0, import_react.useId)();
   const labelId = (0, import_react.useId)();
   const rate = (0, import_react.useRef)(1);
+  const narrationOffered = !!narration && audio.has_word_timings !== false && narrationHighlightSupported();
+  const [highlightOn, setHighlightOn] = (0, import_react.useState)(false);
+  const [highlightBusy, setHighlightBusy] = (0, import_react.useState)(false);
+  const highlighter = (0, import_react.useRef)(null);
+  const highlightAbort = (0, import_react.useRef)(null);
+  (0, import_react.useEffect)(() => {
+    if (!narrationOffered) return;
+    try {
+      if (window.localStorage.getItem(HIGHLIGHT_PREF_KEY) === "1") {
+        void enableHighlight(false);
+      }
+    } catch {
+    }
+  }, [narrationOffered]);
+  (0, import_react.useEffect)(() => {
+    return () => {
+      highlightAbort.current?.abort();
+      highlighter.current?.destroy();
+      highlighter.current = null;
+    };
+  }, []);
+  async function enableHighlight(persist) {
+    if (!narration) return;
+    if (persist) {
+      try {
+        window.localStorage.setItem(HIGHLIGHT_PREF_KEY, "1");
+      } catch {
+      }
+    }
+    if (highlighter.current) {
+      highlighter.current.resumeFollowing();
+      setHighlightOn(true);
+      return;
+    }
+    if (highlightBusy) return;
+    const controller = new AbortController();
+    highlightAbort.current = controller;
+    setHighlightBusy(true);
+    try {
+      const resp = await fetch(narration.timingsUrl, { signal: controller.signal });
+      if (!resp.ok) throw new Error(`timings ${resp.status}`);
+      const timings = parseTimingsPayload(await resp.json());
+      const target = document.getElementById(narration.targetId);
+      if (!timings || !target) throw new Error("timings or target missing");
+      const instance = new NarrationHighlighter(target, timings);
+      if (instance.matchRatio() < 0.5) {
+        instance.destroy();
+        throw new Error("article text does not match narration");
+      }
+      highlighter.current = instance;
+      setHighlightOn(true);
+      const element = media.current;
+      if (element) instance.update(element.currentTime * 1e3);
+    } catch {
+      setHighlightOn(false);
+    } finally {
+      if (highlightAbort.current === controller) highlightAbort.current = null;
+      setHighlightBusy(false);
+    }
+  }
+  function disableHighlight() {
+    try {
+      window.localStorage.setItem(HIGHLIGHT_PREF_KEY, "0");
+    } catch {
+    }
+    highlightAbort.current?.abort();
+    highlighter.current?.clear();
+    setHighlightOn(false);
+  }
+  (0, import_react.useEffect)(() => {
+    if (!highlightOn || !highlighter.current) return;
+    const element = media.current;
+    if (!element) return;
+    if (!playing) {
+      highlighter.current.update(element.currentTime * 1e3);
+      return;
+    }
+    let frame = 0;
+    const tick = () => {
+      highlighter.current?.update(element.currentTime * 1e3);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [highlightOn, playing, position]);
   (0, import_react.useEffect)(() => {
     alive.current = true;
     const element = media.current;
@@ -202,6 +483,7 @@ function PlayerSession({
       media.current.currentTime = target;
       resume.current = target;
       setPosition(target);
+      highlighter.current?.resumeFollowing();
     } catch {
     }
   }
@@ -225,6 +507,7 @@ function PlayerSession({
       return Number.isFinite(value) ? Math.min(1, Math.max(0.08, Math.abs(value))) : 0.08;
     });
   }, [source.waveform_peaks]);
+  const mediaPreload = durationOf(source) > 0 ? preload : "metadata";
   const current = Math.min(positive(position), duration || Infinity);
   const progress = duration ? Math.max(0, Math.min(100, current / duration * 100)) : 0;
   const remaining = duration ? `${time((duration - current) / speed)} remaining` : "Duration available when played";
@@ -243,7 +526,7 @@ function PlayerSession({
           {
             ref: media,
             src: source.url ?? void 0,
-            preload,
+            preload: mediaPreload,
             onLoadedMetadata: (e) => {
               const element = e.currentTarget;
               const total = positive(element.duration) || durationOf(source);
@@ -352,6 +635,19 @@ function PlayerSession({
           )
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "sm-audio__actions", children: [
+          narrationOffered && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              type: "button",
+              className: `sm-audio__highlight${highlightOn ? " sm-audio__highlight--on" : ""}`,
+              "aria-pressed": highlightOn,
+              disabled: highlightBusy,
+              onClick: () => highlightOn ? disableHighlight() : void enableHighlight(true),
+              "aria-label": highlightOn ? "Turn off follow-along highlighting" : "Highlight the text as it is read",
+              title: highlightOn ? "Turn off follow-along highlighting" : "Highlight the text as it is read",
+              children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("svg", { viewBox: "0 0 24 24", "aria-hidden": "true", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M4 5h16v2.5H4zm0 5.75h16v2.5H4zM4 16.5h9v2.5H4z" }) })
+            }
+          ),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
             "button",
             {
@@ -383,5 +679,6 @@ function PlayerSession({
 }
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  AudioPlayer
+  AudioPlayer,
+  narrationHighlightSupported
 });
