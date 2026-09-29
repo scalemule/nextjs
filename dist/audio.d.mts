@@ -7,6 +7,22 @@ interface AudioPlayerSource {
     expires_at?: string | null;
     waveform_peaks?: number[] | null;
     ai_generated?: boolean;
+    /** Whether narration word timings exist for this recording. */
+    has_word_timings?: boolean;
+}
+/**
+ * Follow-along highlighting for article narration. When set (and the
+ * recording has word timings), the player shows a highlight toggle —
+ * off by default; the reader's choice persists per browser. Enabled,
+ * the word and sentence being read are painted via the CSS Custom
+ * Highlight API on the element `targetId`, and the page scrolls along
+ * gently. `timingsUrl` is fetched lazily on first enable and must
+ * return the timings JSON (raw or in a {timings}/{data:{timings}}
+ * envelope).
+ */
+interface AudioPlayerNarration {
+    timingsUrl: string;
+    targetId: string;
 }
 type AudioPlayerVariant = 'waveform' | 'compact' | 'inline';
 interface AudioPlayerProps {
@@ -17,7 +33,12 @@ interface AudioPlayerProps {
     label?: string;
     className?: string;
     style?: CSSProperties;
-    /** Defaults to none: lists do not download every recording on page load. */
+    narration?: AudioPlayerNarration;
+    /**
+     * Defaults to none so a list does not download every recording.
+     * A player that does not already know its length uses metadata anyway,
+     * so the clock can show before play.
+     */
     preload?: 'none' | 'metadata';
     /** Called at most once automatically per play attempt. Honor signal to cancel network work. */
     onRefresh?: (signal: AbortSignal) => Promise<AudioPlayerSource>;
@@ -30,4 +51,28 @@ interface AudioPlayerProps {
 /** Three layouts, one playback controller. No provider, credentials, polling, or Next.js runtime imports. */
 declare function AudioPlayer(props: AudioPlayerProps): react_jsx_runtime.JSX.Element | null;
 
-export { AudioPlayer, type AudioPlayerProps, type AudioPlayerSource, type AudioPlayerVariant };
+/**
+ * Follow-along narration highlighting.
+ *
+ * The platform's TTS pipeline stores word timings with every narration
+ * it synthesizes: `{version: 1, duration_ms, words}` where each word is
+ * `[text, start_ms, end_ms, sentence_index]` over the narration script
+ * (the article's markdown rendered to plain text). The article body a
+ * site renders is HTML from that same markdown, so the two word
+ * sequences correspond nearly one-to-one; this module aligns them and
+ * paints the spoken word and sentence with the CSS Custom Highlight
+ * API — no DOM mutation, no per-word spans.
+ *
+ * Everything degrades to nothing: unsupported browser (no
+ * `CSS.highlights`), missing timings, or a body that no longer matches
+ * the narration simply means no highlight.
+ */
+interface NarrationTimings {
+    version: number;
+    duration_ms?: number;
+    /** [text, start_ms, end_ms, sentence_index] */
+    words: [string, number, number, number][];
+}
+declare function narrationHighlightSupported(): boolean;
+
+export { AudioPlayer, type AudioPlayerNarration, type AudioPlayerProps, type AudioPlayerSource, type AudioPlayerVariant, type NarrationTimings, narrationHighlightSupported };

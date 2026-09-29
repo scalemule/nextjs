@@ -8,6 +8,11 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
+import {
+  NarrationHighlighter,
+  narrationHighlightSupported,
+  parseTimingsPayload,
+} from './narration-highlight'
 import './audio-player.css'
 
 export interface AudioPlayerSource {
@@ -16,6 +21,22 @@ export interface AudioPlayerSource {
   expires_at?: string | null
   waveform_peaks?: number[] | null
   ai_generated?: boolean
+  /** Whether narration word timings exist for this recording. */
+  has_word_timings?: boolean
+}
+/**
+ * Follow-along highlighting for article narration. When set (and the
+ * recording has word timings), the player shows a highlight toggle —
+ * off by default; the reader's choice persists per browser. Enabled,
+ * the word and sentence being read are painted via the CSS Custom
+ * Highlight API on the element `targetId`, and the page scrolls along
+ * gently. `timingsUrl` is fetched lazily on first enable and must
+ * return the timings JSON (raw or in a {timings}/{data:{timings}}
+ * envelope).
+ */
+export interface AudioPlayerNarration {
+  timingsUrl: string
+  targetId: string
 }
 export type AudioPlayerVariant = 'waveform' | 'compact' | 'inline'
 export interface AudioPlayerProps {
@@ -26,6 +47,7 @@ export interface AudioPlayerProps {
   label?: string
   className?: string
   style?: CSSProperties
+  narration?: AudioPlayerNarration
   /**
    * Defaults to none so a list does not download every recording.
    * A player that does not already know its length uses metadata anyway,
@@ -43,6 +65,7 @@ export interface AudioPlayerProps {
 
 const SPEEDS = [1, 1.25, 1.5, 2, 3]
 const PLAY_EVENT = 'scalemule:audio:play'
+const HIGHLIGHT_PREF_KEY = 'scalemule:audio:highlight'
 const positive = (n: number | undefined | null) =>
   n != null && Number.isFinite(n) && n > 0 ? n : 0
 const durationOf = (audio: AudioPlayerSource) =>
@@ -70,6 +93,7 @@ function PlayerSession({
   onPlaybackError,
   playbackRateStorageKey = 'scalemule:audio:playback-rate',
   exclusivePlayback = true,
+  narration,
 }: AudioPlayerProps) {
   const media = useRef<HTMLAudioElement>(null)
   const alive = useRef(true)
@@ -88,6 +112,110 @@ function PlayerSession({
   const sliderId = useId()
   const labelId = useId()
   const rate = useRef(1)
+
+  /* Follow-along highlighting. Off until the reader turns it on; their
+   * choice persists per browser. The timings fetch and the DOM walk
+   * only ever run after the first enable. */
+  const narrationOffered =
+    !!narration && audio.has_word_timings !== false && narrationHighlightSupported()
+  const [highlightOn, setHighlightOn] = useState(false)
+  const [highlightBusy, setHighlightBusy] = useState(false)
+  const highlighter = useRef<NarrationHighlighter | null>(null)
+  const highlightAbort = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    if (!narrationOffered) return
+    try {
+      if (window.localStorage.getItem(HIGHLIGHT_PREF_KEY) === '1') {
+        void enableHighlight(false)
+      }
+    } catch {
+      /* Storage is optional. */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [narrationOffered])
+
+  useEffect(() => {
+    return () => {
+      highlightAbort.current?.abort()
+      highlighter.current?.destroy()
+      highlighter.current = null
+    }
+  }, [])
+
+  async function enableHighlight(persist: boolean) {
+    if (!narration) return
+    if (persist) {
+      try {
+        window.localStorage.setItem(HIGHLIGHT_PREF_KEY, '1')
+      } catch {
+        /* Storage is optional. */
+      }
+    }
+    if (highlighter.current) {
+      highlighter.current.resumeFollowing()
+      setHighlightOn(true)
+      return
+    }
+    if (highlightBusy) return
+    const controller = new AbortController()
+    highlightAbort.current = controller
+    setHighlightBusy(true)
+    try {
+      const resp = await fetch(narration.timingsUrl, { signal: controller.signal })
+      if (!resp.ok) throw new Error(`timings ${resp.status}`)
+      const timings = parseTimingsPayload(await resp.json())
+      const target = document.getElementById(narration.targetId)
+      if (!timings || !target) throw new Error('timings or target missing')
+      const instance = new NarrationHighlighter(target, timings)
+      if (instance.matchRatio() < 0.5) {
+        /* The rendered body no longer matches the narration script;
+         * highlighting would paint the wrong words. */
+        instance.destroy()
+        throw new Error('article text does not match narration')
+      }
+      highlighter.current = instance
+      setHighlightOn(true)
+      const element = media.current
+      if (element) instance.update(element.currentTime * 1000)
+    } catch {
+      setHighlightOn(false)
+    } finally {
+      if (highlightAbort.current === controller) highlightAbort.current = null
+      setHighlightBusy(false)
+    }
+  }
+
+  function disableHighlight() {
+    try {
+      window.localStorage.setItem(HIGHLIGHT_PREF_KEY, '0')
+    } catch {
+      /* Storage is optional. */
+    }
+    highlightAbort.current?.abort()
+    highlighter.current?.clear()
+    setHighlightOn(false)
+  }
+
+  /* Drive the highlight from the media clock: a rAF loop while
+   * playing (timeupdate alone is ~4 Hz — too coarse for words), one
+   * shot per position change while paused (seeks stay in sync). */
+  useEffect(() => {
+    if (!highlightOn || !highlighter.current) return
+    const element = media.current
+    if (!element) return
+    if (!playing) {
+      highlighter.current.update(element.currentTime * 1000)
+      return
+    }
+    let frame = 0
+    const tick = () => {
+      highlighter.current?.update(element.currentTime * 1000)
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [highlightOn, playing, position])
 
   useEffect(() => {
     alive.current = true
@@ -234,6 +362,8 @@ function PlayerSession({
       media.current.currentTime = target
       resume.current = target
       setPosition(target)
+      // A deliberate seek re-engages follow-along scrolling.
+      highlighter.current?.resumeFollowing()
     } catch {
       /* A browser may not allow seeking until metadata is available. */
     }
@@ -416,6 +546,29 @@ function PlayerSession({
         )}
       </div>
       <div className="sm-audio__actions">
+        {narrationOffered && (
+          <button
+            type="button"
+            className={`sm-audio__highlight${highlightOn ? ' sm-audio__highlight--on' : ''}`}
+            aria-pressed={highlightOn}
+            disabled={highlightBusy}
+            onClick={() => (highlightOn ? disableHighlight() : void enableHighlight(true))}
+            aria-label={
+              highlightOn
+                ? 'Turn off follow-along highlighting'
+                : 'Highlight the text as it is read'
+            }
+            title={
+              highlightOn
+                ? 'Turn off follow-along highlighting'
+                : 'Highlight the text as it is read'
+            }
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 5h16v2.5H4zm0 5.75h16v2.5H4zM4 16.5h9v2.5H4z" />
+            </svg>
+          </button>
+        )}
         <button
           type="button"
           className="sm-audio__speed"
