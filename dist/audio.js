@@ -23,7 +23,11 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var audio_exports = {};
 __export(audio_exports, {
   AudioPlayer: () => AudioPlayer,
-  narrationHighlightSupported: () => narrationHighlightSupported
+  NarrationHighlighter: () => NarrationHighlighter,
+  SENTENCE_HIGHLIGHT: () => SENTENCE_HIGHLIGHT,
+  WORD_HIGHLIGHT: () => WORD_HIGHLIGHT,
+  narrationHighlightSupported: () => narrationHighlightSupported,
+  parseTimingsPayload: () => parseTimingsPayload
 });
 module.exports = __toCommonJS(audio_exports);
 
@@ -680,5 +684,9 @@ function PlayerSession({
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   AudioPlayer,
-  narrationHighlightSupported
+  NarrationHighlighter,
+  SENTENCE_HIGHLIGHT,
+  WORD_HIGHLIGHT,
+  narrationHighlightSupported,
+  parseTimingsPayload
 });

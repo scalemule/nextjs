@@ -73,6 +73,37 @@ interface NarrationTimings {
     /** [text, start_ms, end_ms, sentence_index] */
     words: [string, number, number, number][];
 }
+declare const WORD_HIGHLIGHT = "sm-narration-word";
+declare const SENTENCE_HIGHLIGHT = "sm-narration-sentence";
 declare function narrationHighlightSupported(): boolean;
+/**
+ * Owns the live highlight for one narration player. Build once per
+ * (timings, article body) pair; drive with `update(currentTimeMs)`.
+ */
+declare class NarrationHighlighter {
+    private words;
+    private ranges;
+    private sentenceRanges;
+    private currentWord;
+    private currentSentence;
+    private follow;
+    private detachUserScroll;
+    private reducedMotion;
+    constructor(root: Element, timings: NarrationTimings);
+    /** Fraction of narration words found in the article body. A low
+     * ratio means the body diverged from the script; callers may prefer
+     * to hide the toggle below ~0.5. */
+    matchRatio(): number;
+    private attachUserScroll;
+    /** Re-engage auto-scroll (the reader pressed the toggle or sought). */
+    resumeFollowing(): void;
+    update(timeMs: number): void;
+    private scrollTo;
+    clear(): void;
+    destroy(): void;
+}
+/** Parse a fetched timings payload; accepts the raw timings object or
+ * common envelopes ({timings}, {data:{timings}}). */
+declare function parseTimingsPayload(body: unknown): NarrationTimings | null;
 
-export { AudioPlayer, type AudioPlayerNarration, type AudioPlayerProps, type AudioPlayerSource, type AudioPlayerVariant, type NarrationTimings, narrationHighlightSupported };
+export { AudioPlayer, type AudioPlayerNarration, type AudioPlayerProps, type AudioPlayerSource, type AudioPlayerVariant, NarrationHighlighter, type NarrationTimings, SENTENCE_HIGHLIGHT, WORD_HIGHLIGHT, narrationHighlightSupported, parseTimingsPayload };

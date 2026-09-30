@@ -659,5 +659,9 @@ function PlayerSession({
 }
 export {
   AudioPlayer,
-  narrationHighlightSupported
+  NarrationHighlighter,
+  SENTENCE_HIGHLIGHT,
+  WORD_HIGHLIGHT,
+  narrationHighlightSupported,
+  parseTimingsPayload
 };
