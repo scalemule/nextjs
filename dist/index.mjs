@@ -2959,19 +2959,7 @@ var styles = {
     color: "#334155",
     boxShadow: "0 1px 3px rgba(15, 23, 42, 0.08)",
     cursor: "pointer"
-  },
-  refreshButton: {
-    borderRadius: "9999px",
-    border: "1px solid #cad5e2",
-    backgroundColor: "rgba(255, 255, 255, 0.75)",
-    padding: "0.5rem 1rem",
-    fontSize: "0.875rem",
-    fontWeight: 600,
-    color: "#334155",
-    cursor: "pointer"
-  },
-  disabled: { cursor: "not-allowed", opacity: 0.6 }
-};
+  }};
 function NarrationPlayer({
   audio,
   className,
@@ -2979,7 +2967,6 @@ function NarrationPlayer({
   narrationLabel = "AI-Narrated",
   refreshing = false,
   onRefresh,
-  showRefreshButton = false,
   onPlaybackError
 }) {
   const audioRef = useRef(null);
@@ -3110,12 +3097,6 @@ function NarrationPlayer({
         break;
     }
   }
-  function handleManualRefresh() {
-    if (!onRefresh || refreshing) return;
-    Promise.resolve(onRefresh()).catch(() => {
-      onPlaybackError?.();
-    });
-  }
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
   const expiresLabel = audio.expires_at ? new Date(audio.expires_at).toLocaleTimeString([], {
     hour: "numeric",
@@ -3238,30 +3219,18 @@ function NarrationPlayer({
           ] })
         ] })
       ] }),
-      /* @__PURE__ */ jsxs("div", { style: styles.controls, children: [
-        /* @__PURE__ */ jsxs(
-          "button",
-          {
-            type: "button",
-            onClick: () => setSpeed((currentSpeed) => getNextSpeed(currentSpeed)),
-            style: styles.secondaryButton,
-            children: [
-              speed,
-              "\xD7"
-            ]
-          }
-        ),
-        onRefresh && showRefreshButton && /* @__PURE__ */ jsx(
-          "button",
-          {
-            type: "button",
-            onClick: handleManualRefresh,
-            disabled: refreshing,
-            style: refreshing ? { ...styles.refreshButton, ...styles.disabled } : styles.refreshButton,
-            children: refreshing ? "Refreshing\u2026" : "Refresh"
-          }
-        )
-      ] })
+      /* @__PURE__ */ jsx("div", { style: styles.controls, children: /* @__PURE__ */ jsxs(
+        "button",
+        {
+          type: "button",
+          onClick: () => setSpeed((currentSpeed) => getNextSpeed(currentSpeed)),
+          style: styles.secondaryButton,
+          children: [
+            speed,
+            "\xD7"
+          ]
+        }
+      ) })
     ] })
   ] });
 }

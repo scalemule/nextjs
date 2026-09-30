@@ -340,7 +340,6 @@ function PlayerSession({
   style,
   preload = "none",
   onRefresh,
-  showRefreshButton = false,
   onPlaybackError,
   playbackRateStorageKey = "scalemule:audio:playback-rate",
   exclusivePlayback = true,
@@ -756,19 +755,9 @@ function PlayerSession({
                 "\xD7"
               ]
             }
-          ),
-          onRefresh && showRefreshButton && /* @__PURE__ */ jsx(
-            "button",
-            {
-              type: "button",
-              className: "sm-audio__refresh",
-              disabled: busy,
-              onClick: () => void recover(true),
-              children: "Refresh"
-            }
           )
         ] }),
-        (busy || error) && /* @__PURE__ */ jsx("p", { className: "sm-audio__status", role: "status", children: busy ? "Refreshing audio\u2026" : error })
+        (busy || error) && /* @__PURE__ */ jsx("p", { className: "sm-audio__status", role: "status", children: busy ? "Loading audio\u2026" : error })
       ]
     }
   );

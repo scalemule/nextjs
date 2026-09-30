@@ -486,10 +486,11 @@ interface NarrationPlayerProps {
     narrationLabel?: string;
     refreshing?: boolean;
     onRefresh?: () => void | Promise<void>;
+    /** @deprecated No-op: no manual Refresh control is ever shown. */
     showRefreshButton?: boolean;
     onPlaybackError?: () => void;
 }
-declare function NarrationPlayer({ audio, className, providerLabel, narrationLabel, refreshing, onRefresh, showRefreshButton, onPlaybackError, }: NarrationPlayerProps): react_jsx_runtime.JSX.Element | null;
+declare function NarrationPlayer({ audio, className, providerLabel, narrationLabel, refreshing, onRefresh, onPlaybackError, }: NarrationPlayerProps): react_jsx_runtime.JSX.Element | null;
 
 /**
  * Conversation kinds recognized by the chat realtime channel naming scheme.

@@ -42,6 +42,11 @@ interface AudioPlayerProps {
     preload?: 'none' | 'metadata';
     /** Called at most once automatically per play attempt. Honor signal to cancel network work. */
     onRefresh?: (signal: AbortSignal) => Promise<AudioPlayerSource>;
+    /**
+     * @deprecated No-op. Players never show a manual Refresh control: expired
+     * URLs are refreshed silently through `onRefresh`. Kept so existing callers
+     * still compile.
+     */
     showRefreshButton?: boolean;
     onPlaybackError?: () => void;
     /** Shared with the existing ScaleMule blog player. Set null to disable persistence. */

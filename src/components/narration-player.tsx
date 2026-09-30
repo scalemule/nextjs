@@ -41,6 +41,7 @@ export interface NarrationPlayerProps {
   narrationLabel?: string
   refreshing?: boolean
   onRefresh?: () => void | Promise<void>
+  /** @deprecated No-op: no manual Refresh control is ever shown. */
   showRefreshButton?: boolean
   onPlaybackError?: () => void
 }
@@ -199,7 +200,6 @@ export function NarrationPlayer({
   narrationLabel = 'AI-Narrated',
   refreshing = false,
   onRefresh,
-  showRefreshButton = false,
   onPlaybackError,
 }: NarrationPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -348,13 +348,6 @@ export function NarrationPlayer({
     }
   }
 
-  function handleManualRefresh(): void {
-    if (!onRefresh || refreshing) return
-    Promise.resolve(onRefresh()).catch(() => {
-      onPlaybackError?.()
-    })
-  }
-
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0
   const expiresLabel = audio.expires_at
     ? new Date(audio.expires_at).toLocaleTimeString([], {
@@ -479,16 +472,6 @@ export function NarrationPlayer({
           >
             {speed}×
           </button>
-          {onRefresh && showRefreshButton && (
-            <button
-              type="button"
-              onClick={handleManualRefresh}
-              disabled={refreshing}
-              style={refreshing ? { ...styles.refreshButton, ...styles.disabled } : styles.refreshButton}
-            >
-              {refreshing ? 'Refreshing…' : 'Refresh'}
-            </button>
-          )}
         </div>
       </div>
     </div>
