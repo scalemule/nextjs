@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
 } from 'react'
 import {
@@ -14,6 +15,8 @@ import {
   parseTimingsPayload,
 } from './narration-highlight'
 import './audio-player.css'
+
+const subscribeNever = () => () => {}
 
 export interface AudioPlayerSource {
   url: string | null
@@ -120,8 +123,15 @@ function PlayerSession({
   /* Follow-along highlighting. Off until the reader turns it on; their
    * choice persists per browser. The timings fetch and the DOM walk
    * only ever run after the first enable. */
+  const highlightSupported = useSyncExternalStore(
+    subscribeNever,
+    narrationHighlightSupported,
+    // The server can't detect support; render the toggle only after
+    // hydration so server and client markup always match.
+    () => false
+  )
   const narrationOffered =
-    !!narration && audio.has_word_timings !== false && narrationHighlightSupported()
+    !!narration && audio.has_word_timings !== false && highlightSupported
   const [highlightOn, setHighlightOn] = useState(false)
   const [highlightBusy, setHighlightBusy] = useState(false)
   const highlighter = useRef<NarrationHighlighter | null>(null)

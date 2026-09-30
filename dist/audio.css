@@ -173,9 +173,10 @@
 .sm-audio__waveform {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: min(3px, 1%);
   height: 48px;
   margin-top: 12px;
+  overflow: hidden;
 }
 .sm-audio__waveform span {
   flex: 1;
