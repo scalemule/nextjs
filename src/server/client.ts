@@ -206,13 +206,13 @@ export class ScaleMuleServer {
               : { code: 'REFRESH_FAILED', message: 'Auto-refresh failed' }
             
             this.onAutoRefreshFailed?.(refreshApiError)
-            throw new ScaleMuleApiError(error) // Throw original 401 error
+            throw new ScaleMuleApiError(error, response.status) // Throw original 401 error
           } finally {
             this.onRefreshEnd?.()
           }
         }
 
-        throw new ScaleMuleApiError(error)
+        throw new ScaleMuleApiError(error, response.status)
       }
 
       // Unwrap envelope: backend may return { data: T } or raw T
@@ -280,6 +280,9 @@ export class ScaleMuleServer {
     ): Promise<{ session_token: string; expires_at: string }> => {
       return this.request<{ session_token: string; expires_at: string }>('POST', '/v1/auth/refresh', {
         sessionToken,
+        // The auth service reads the token to rotate from the body, not the
+        // Authorization header; without it every refresh is rejected.
+        body: { session_token: sessionToken },
         clientContext: options?.clientContext,
         isAutoRefresh: options?.isAutoRefresh,
         onTokenRotated: options?.onTokenRotated
