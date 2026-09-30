@@ -272,22 +272,6 @@ it('deduplicates error bursts and handles rejected refresh without an unhandled 
   expect(onRefresh).toHaveBeenCalledTimes(1)
 })
 
-it('reloads a refreshed stable URL without losing position or starting paused audio', async () => {
-  const onRefresh = vi.fn().mockResolvedValue(source)
-  const { container } = render(
-    <AudioPlayer audio={source} onRefresh={onRefresh} showRefreshButton />
-  )
-  const media = element(container)
-  metadata(media)
-  tick(media, 47)
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-  await waitFor(() => expect(load).toHaveBeenCalledTimes(1))
-  media.currentTime = 0
-  metadata(media)
-  expect(media.currentTime).toBe(47)
-  expect(play).not.toHaveBeenCalled()
-})
-
 it('aborts in-flight refresh and ignores its result after article change', async () => {
   let resolve!: (audio: AudioPlayerSource) => void
   let signal: AbortSignal | undefined
@@ -384,20 +368,27 @@ it('lets a reader cancel pending playback while refresh finishes', async () => {
   expect(play).not.toHaveBeenCalled()
 })
 
-it('keeps the saved position visible while a refreshed paused source waits for metadata', async () => {
-  const onRefresh = vi.fn().mockResolvedValue({ ...source, url: source.url + '?new=1' })
-  const { container } = render(<AudioPlayer audio={source} onRefresh={onRefresh} showRefreshButton />)
-  const media = element(container)
-  metadata(media)
-  tick(media, 47)
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-  await waitFor(() => expect(media.src).toContain('new=1'))
-  // Chromium resets currentTime even though preload=none has not loaded replacement metadata.
-  Object.defineProperty(media, 'readyState', { configurable: true, value: 0 })
-  tick(media, 0)
-  expect(screen.getByText('0:40 remaining')).toBeTruthy()
-  expect(container.textContent).toContain('0:47')
-  metadata(media)
-  expect(media.currentTime).toBe(47)
-  expect(play).not.toHaveBeenCalled()
+
+it('never renders a manual Refresh control, even when asked to', () => {
+  const onRefresh = vi.fn().mockResolvedValue(source)
+  for (const variant of ['waveform', 'compact', 'inline'] as const) {
+    const { unmount } = render(
+      <AudioPlayer audio={source} onRefresh={onRefresh} showRefreshButton variant={variant} />
+    )
+    expect(screen.queryByRole('button', { name: /refresh/i })).toBeNull()
+    expect(screen.queryByText(/^refresh$/i)).toBeNull()
+    unmount()
+  }
+})
+
+it('NarrationPlayer never renders a manual Refresh control either', async () => {
+  const { NarrationPlayer } = await import('./narration-player')
+  render(
+    <NarrationPlayer
+      audio={{ file_id: 'f', status: 'ready', url: source.url, duration_ms: 87000 } as never}
+      onRefresh={vi.fn().mockResolvedValue(undefined) as never}
+      showRefreshButton
+    />
+  )
+  expect(screen.queryByRole('button', { name: /refresh/i })).toBeNull()
 })

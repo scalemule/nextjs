@@ -56,6 +56,11 @@ export interface AudioPlayerProps {
   preload?: 'none' | 'metadata'
   /** Called at most once automatically per play attempt. Honor signal to cancel network work. */
   onRefresh?: (signal: AbortSignal) => Promise<AudioPlayerSource>
+  /**
+   * @deprecated No-op. Players never show a manual Refresh control: expired
+   * URLs are refreshed silently through `onRefresh`. Kept so existing callers
+   * still compile.
+   */
   showRefreshButton?: boolean
   onPlaybackError?: () => void
   /** Shared with the existing ScaleMule blog player. Set null to disable persistence. */
@@ -89,7 +94,6 @@ function PlayerSession({
   style,
   preload = 'none',
   onRefresh,
-  showRefreshButton = false,
   onPlaybackError,
   playbackRateStorageKey = 'scalemule:audio:playback-rate',
   exclusivePlayback = true,
@@ -577,20 +581,10 @@ function PlayerSession({
         >
           {speed}×
         </button>
-        {onRefresh && showRefreshButton && (
-          <button
-            type="button"
-            className="sm-audio__refresh"
-            disabled={busy}
-            onClick={() => void recover(true)}
-          >
-            Refresh
-          </button>
-        )}
       </div>
       {(busy || error) && (
         <p className="sm-audio__status" role="status">
-          {busy ? 'Refreshing audio…' : error}
+          {busy ? 'Loading audio…' : error}
         </p>
       )}
     </div>
