@@ -99,15 +99,46 @@ function wordIndexAt(words, timeMs) {
   }
   return ans;
 }
-function narrationHighlightSupported() {
-  return typeof window !== "undefined" && typeof CSS !== "undefined" && "highlights" in CSS && typeof globalThis.Highlight === "function";
+function mergeLineBoxes(rects) {
+  const lines = [];
+  const sorted = rects.filter((r) => r.width > 0 && r.height > 0).sort((a, b) => a.top - b.top || a.left - b.left);
+  for (const r of sorted) {
+    const center = r.top + r.height / 2;
+    const line = lines.find((l) => {
+      const lc = l.top + l.height / 2;
+      return Math.abs(lc - center) < Math.min(l.height, r.height) / 2;
+    });
+    if (!line) {
+      lines.push({ ...r });
+      continue;
+    }
+    const right = Math.max(line.left + line.width, r.left + r.width);
+    const bottom = Math.max(line.top + line.height, r.top + r.height);
+    line.left = Math.min(line.left, r.left);
+    line.top = Math.min(line.top, r.top);
+    line.width = right - line.left;
+    line.height = bottom - line.top;
+  }
+  return lines;
 }
+function narrationHighlightSupported() {
+  return typeof window !== "undefined" && typeof document !== "undefined" && typeof Range !== "undefined" && typeof Range.prototype.getClientRects === "function";
+}
+var PAD_X = 2;
+var PAD_Y = 1;
 var NarrationHighlighter = class {
   constructor(root, timings) {
     this.currentWord = -2;
     this.currentSentence = -2;
     this.follow = true;
     this.detachUserScroll = null;
+    this.layer = null;
+    this.sentenceLayer = null;
+    this.wordLayer = null;
+    this.restoreRootStyle = null;
+    this.resizeObserver = null;
+    this.onWindowResize = null;
+    this.root = root;
     this.words = timings.words;
     const domWords = collectDomWords(root);
     const matches = alignWords(
@@ -127,13 +158,12 @@ var NarrationHighlighter = class {
         return null;
       }
     });
-    this.sentenceRanges = /* @__PURE__ */ new Map();
+    this.sentenceWords = /* @__PURE__ */ new Map();
     this.words.forEach((w, i) => {
-      const range = this.ranges[i];
-      if (!range) return;
-      const list = this.sentenceRanges.get(w[3]);
-      if (list) list.push(range);
-      else this.sentenceRanges.set(w[3], [range]);
+      if (!this.ranges[i]) return;
+      const list = this.sentenceWords.get(w[3]);
+      if (list) list.push(i);
+      else this.sentenceWords.set(w[3], [i]);
     });
     this.reducedMotion = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.attachUserScroll(doc);
@@ -162,31 +192,109 @@ var NarrationHighlighter = class {
     this.follow = true;
     this.currentSentence = -2;
   }
+  /** Lazily creates the overlay layer behind the article text. */
+  ensureLayer() {
+    if (this.layer) return true;
+    const root = this.root;
+    const doc = root.ownerDocument;
+    if (!doc || typeof root.style === "undefined") return false;
+    const view = doc.defaultView;
+    const computed = view?.getComputedStyle(root);
+    const previous = { position: root.style.position, isolation: root.style.isolation };
+    if (!computed || computed.position === "static") root.style.position = "relative";
+    root.style.isolation = "isolate";
+    this.restoreRootStyle = () => {
+      root.style.position = previous.position;
+      root.style.isolation = previous.isolation;
+    };
+    const make = () => {
+      const el = doc.createElement("div");
+      el.style.position = "absolute";
+      el.style.inset = "0";
+      el.style.pointerEvents = "none";
+      return el;
+    };
+    this.layer = make();
+    this.layer.setAttribute("aria-hidden", "true");
+    this.layer.setAttribute("data-sm-narration-layer", "");
+    this.layer.style.zIndex = "-1";
+    this.sentenceLayer = make();
+    this.wordLayer = make();
+    this.layer.append(this.sentenceLayer, this.wordLayer);
+    root.prepend(this.layer);
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => this.repaint());
+      this.resizeObserver.observe(root);
+    }
+    if (view) {
+      this.onWindowResize = () => this.repaint();
+      view.addEventListener("resize", this.onWindowResize, { passive: true });
+    }
+    return true;
+  }
+  /** Line boxes for the given word indexes, in layer coordinates. */
+  boxesFor(wordIndexes) {
+    const root = this.root;
+    const origin = root.getBoundingClientRect();
+    const rects = [];
+    for (const i of wordIndexes) {
+      const range = this.ranges[i];
+      if (!range || typeof range.getClientRects !== "function") continue;
+      for (const r of Array.from(range.getClientRects())) {
+        rects.push({
+          left: r.left - origin.left - root.clientLeft + root.scrollLeft,
+          top: r.top - origin.top - root.clientTop + root.scrollTop,
+          width: r.width,
+          height: r.height
+        });
+      }
+    }
+    return mergeLineBoxes(rects);
+  }
+  paint(target, boxes, kind) {
+    if (!target) return;
+    const doc = target.ownerDocument;
+    const color = kind === "word" ? "var(--sm-narration-word, rgba(36, 99, 70, 0.32))" : "var(--sm-narration-sentence, rgba(36, 99, 70, 0.12))";
+    const nodes = boxes.map((b) => {
+      const el = doc.createElement("div");
+      el.setAttribute("data-sm-narration", kind);
+      el.className = kind === "word" ? WORD_HIGHLIGHT : SENTENCE_HIGHLIGHT;
+      el.style.position = "absolute";
+      el.style.left = `${b.left - PAD_X}px`;
+      el.style.top = `${b.top - PAD_Y}px`;
+      el.style.width = `${b.width + PAD_X * 2}px`;
+      el.style.height = `${b.height + PAD_Y * 2}px`;
+      el.style.borderRadius = "4px";
+      el.style.background = color;
+      return el;
+    });
+    target.replaceChildren(...nodes);
+  }
+  /** Re-lays out the current highlight (after resize / reflow). */
+  repaint() {
+    if (this.currentWord < 0) return;
+    const sentence = this.words[this.currentWord]?.[3];
+    this.paint(this.sentenceLayer, this.boxesFor(this.sentenceWords.get(sentence) ?? []), "sentence");
+    this.paint(this.wordLayer, this.boxesFor([this.currentWord]), "word");
+  }
   update(timeMs) {
     if (!narrationHighlightSupported()) return;
     const idx = wordIndexAt(this.words, timeMs);
     if (idx === this.currentWord) return;
     this.currentWord = idx;
-    const registry = CSS.highlights;
     if (idx < 0) {
-      registry.delete(WORD_HIGHLIGHT);
-      registry.delete(SENTENCE_HIGHLIGHT);
-      this.currentSentence = -2;
+      this.clear();
       return;
     }
-    const wordRange = this.ranges[idx];
-    if (wordRange) registry.set(WORD_HIGHLIGHT, new Highlight(wordRange));
-    else registry.delete(WORD_HIGHLIGHT);
+    if (!this.ensureLayer()) return;
+    this.paint(this.wordLayer, this.ranges[idx] ? this.boxesFor([idx]) : [], "word");
     const sentence = this.words[idx][3];
     if (sentence !== this.currentSentence) {
       this.currentSentence = sentence;
-      const ranges = this.sentenceRanges.get(sentence) ?? [];
-      if (ranges.length > 0) {
-        registry.set(SENTENCE_HIGHLIGHT, new Highlight(...ranges));
-        this.scrollTo(ranges[0]);
-      } else {
-        registry.delete(SENTENCE_HIGHLIGHT);
-      }
+      const members = this.sentenceWords.get(sentence) ?? [];
+      this.paint(this.sentenceLayer, this.boxesFor(members), "sentence");
+      const first = members.length ? this.ranges[members[0]] : null;
+      if (first) this.scrollTo(first);
     }
   }
   scrollTo(range) {
@@ -202,15 +310,23 @@ var NarrationHighlighter = class {
     }
   }
   clear() {
-    if (!narrationHighlightSupported()) return;
-    const registry = CSS.highlights;
-    registry.delete(WORD_HIGHLIGHT);
-    registry.delete(SENTENCE_HIGHLIGHT);
+    this.sentenceLayer?.replaceChildren();
+    this.wordLayer?.replaceChildren();
     this.currentWord = -2;
     this.currentSentence = -2;
   }
   destroy() {
     this.clear();
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    if (this.onWindowResize) {
+      this.root.ownerDocument?.defaultView?.removeEventListener("resize", this.onWindowResize);
+      this.onWindowResize = null;
+    }
+    this.layer?.remove();
+    this.layer = this.sentenceLayer = this.wordLayer = null;
+    this.restoreRootStyle?.();
+    this.restoreRootStyle = null;
     this.detachUserScroll?.();
     this.detachUserScroll = null;
   }

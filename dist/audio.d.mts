@@ -60,12 +60,12 @@ declare function AudioPlayer(props: AudioPlayerProps): react_jsx_runtime.JSX.Ele
  * (the article's markdown rendered to plain text). The article body a
  * site renders is HTML from that same markdown, so the two word
  * sequences correspond nearly one-to-one; this module aligns them and
- * paints the spoken word and sentence with the CSS Custom Highlight
- * API — no DOM mutation, no per-word spans.
+ * paints the spoken word and sentence as boxes in an overlay layer
+ * behind the text — the article's own DOM is never rewritten.
  *
- * Everything degrades to nothing: unsupported browser (no
- * `CSS.highlights`), missing timings, or a body that no longer matches
- * the narration simply means no highlight.
+ * Everything degrades to nothing: no layout APIs (SSR), missing
+ * timings, or a body that no longer matches the narration simply means
+ * no highlight.
  */
 interface NarrationTimings {
     version: number;
@@ -79,16 +79,30 @@ declare function narrationHighlightSupported(): boolean;
 /**
  * Owns the live highlight for one narration player. Build once per
  * (timings, article body) pair; drive with `update(currentTimeMs)`.
+ *
+ * Paints into an overlay layer behind the article text (positioned boxes
+ * computed from the words' line rectangles) rather than the CSS Custom
+ * Highlight API: WebKit leaves stale ::highlight paint behind while the
+ * page scrolls, and per-word highlight ranges render as ragged, gapped
+ * boxes. Colors come from --sm-narration-sentence / --sm-narration-word
+ * on the article body (or any ancestor).
  */
 declare class NarrationHighlighter {
     private words;
     private ranges;
-    private sentenceRanges;
+    private sentenceWords;
     private currentWord;
     private currentSentence;
     private follow;
     private detachUserScroll;
     private reducedMotion;
+    private root;
+    private layer;
+    private sentenceLayer;
+    private wordLayer;
+    private restoreRootStyle;
+    private resizeObserver;
+    private onWindowResize;
     constructor(root: Element, timings: NarrationTimings);
     /** Fraction of narration words found in the article body. A low
      * ratio means the body diverged from the script; callers may prefer
@@ -97,6 +111,13 @@ declare class NarrationHighlighter {
     private attachUserScroll;
     /** Re-engage auto-scroll (the reader pressed the toggle or sought). */
     resumeFollowing(): void;
+    /** Lazily creates the overlay layer behind the article text. */
+    private ensureLayer;
+    /** Line boxes for the given word indexes, in layer coordinates. */
+    private boxesFor;
+    private paint;
+    /** Re-lays out the current highlight (after resize / reflow). */
+    private repaint;
     update(timeMs: number): void;
     private scrollTo;
     clear(): void;

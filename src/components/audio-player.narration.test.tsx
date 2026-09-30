@@ -21,20 +21,27 @@ const timings = {
   ],
 }
 
-class FakeHighlight {
-  ranges: AbstractRange[]
-  constructor(...ranges: AbstractRange[]) {
-    this.ranges = ranges
+let body: HTMLDivElement
+let originalRects: typeof Range.prototype.getClientRects | undefined
+
+// jsdom has no layout: give each word range one 60×20 box, two words per
+// line, so the overlay can be asserted on.
+function stubLayout() {
+  originalRects = Range.prototype.getClientRects
+  Range.prototype.getClientRects = function (this: Range) {
+    const all = body.textContent ?? ''
+    const index = all.indexOf(this.toString())
+    const word = all.slice(0, index).split(/\s+/).filter(Boolean).length
+    const box = { left: (word % 2) * 70, top: Math.floor(word / 2) * 24, width: 60, height: 20 }
+    return [box] as unknown as DOMRectList
   }
 }
 
-let registry: Map<string, unknown>
-let body: HTMLDivElement
+const boxes = (kind: 'word' | 'sentence') =>
+  Array.from(body.querySelectorAll<HTMLElement>(`[data-sm-narration="${kind}"]`))
 
 beforeEach(() => {
-  registry = new Map()
-  ;(globalThis as Record<string, unknown>).Highlight = FakeHighlight
-  ;(globalThis as Record<string, unknown>).CSS = { highlights: registry }
+  stubLayout()
   if (typeof localStorage.getItem !== 'function') {
     const store = new Map<string, string>()
     Object.defineProperty(globalThis, 'localStorage', {
@@ -65,13 +72,13 @@ afterEach(() => {
   cleanup()
   body.remove()
   vi.unstubAllGlobals()
-  delete (globalThis as Record<string, unknown>).Highlight
-  delete (globalThis as Record<string, unknown>).CSS
+  if (originalRects) Range.prototype.getClientRects = originalRects
+  else delete (Range.prototype as { getClientRects?: unknown }).getClientRects
 })
 
 describe('narration highlight toggle', () => {
-  it('is hidden without the browser API', () => {
-    delete (globalThis as Record<string, unknown>).CSS
+  it('is hidden without layout APIs', () => {
+    delete (Range.prototype as { getClientRects?: unknown }).getClientRects
     render(<AudioPlayer audio={source} narration={narration} />)
     expect(screen.queryByRole('button', { name: /highlight the text/i })).toBeNull()
   })
@@ -85,7 +92,7 @@ describe('narration highlight toggle', () => {
 
   it('is off by default, fetches timings on enable and paints from the clock', async () => {
     const { container } = render(<AudioPlayer audio={source} narration={narration} />)
-    expect(registry.size).toBe(0)
+    expect(boxes('word')).toHaveLength(0)
     const toggle = screen.getByRole('button', { name: /highlight the text/i })
     fireEvent.click(toggle)
     await waitFor(() =>
@@ -98,11 +105,16 @@ describe('narration highlight toggle', () => {
     fireEvent.loadedMetadata(audio)
     audio.currentTime = 0.6 // 600ms → "world."
     fireEvent.timeUpdate(audio)
-    await waitFor(() => expect(registry.has('sm-narration-word')).toBe(true))
-    const word = registry.get('sm-narration-word') as FakeHighlight
-    expect((word.ranges[0] as Range).toString()).toBe('world.')
-    const sentence = registry.get('sm-narration-sentence') as FakeHighlight
-    expect(sentence.ranges.length).toBe(2)
+    await waitFor(() => expect(boxes('word')).toHaveLength(1))
+    // "world." is word 1 → second slot on the first line.
+    expect(boxes('word')[0].style.left).toBe('68px')
+    // "Hello world." is one sentence on one line → ONE continuous band
+    // spanning both words and the gap (not two per-word boxes).
+    expect(boxes('sentence')).toHaveLength(1)
+    expect(boxes('sentence')[0].style.width).toBe('134px')
+    // The layer sits behind the text inside an isolated body.
+    expect(body.querySelector('[data-sm-narration-layer]')?.getAttribute('aria-hidden')).toBe('true')
+    expect(body.style.isolation).toBe('isolate')
   })
 
   it('turning it off clears the paint and persists the choice', async () => {
@@ -112,7 +124,8 @@ describe('narration highlight toggle', () => {
       expect(screen.getByRole('button', { name: /turn off follow-along/i })).toBeTruthy()
     )
     fireEvent.click(screen.getByRole('button', { name: /turn off follow-along/i }))
-    expect(registry.size).toBe(0)
+    expect(boxes('word')).toHaveLength(0)
+    expect(boxes('sentence')).toHaveLength(0)
     expect(localStorage.getItem('scalemule:audio:highlight')).toBe('0')
   })
 })

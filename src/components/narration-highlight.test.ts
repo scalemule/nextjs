@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   alignWords,
   collectDomWords,
+  mergeLineBoxes,
+  NarrationHighlighter,
   normalizeWord,
   parseTimingsPayload,
   wordIndexAt,
@@ -91,5 +93,90 @@ describe('parseTimingsPayload', () => {
     expect(parseTimingsPayload({ version: 1, words: [] })).toBeNull()
     expect(parseTimingsPayload({ version: 1, words: [['hi', 0, 1]] })).toBeNull()
     expect(parseTimingsPayload(null)).toBeNull()
+  })
+})
+
+describe('mergeLineBoxes', () => {
+  it('merges words on one line into a single band spanning the gaps', () => {
+    const boxes = mergeLineBoxes([
+      { left: 0, top: 0, width: 40, height: 20 },
+      { left: 50, top: 1, width: 30, height: 19 },
+      { left: 90, top: 0, width: 20, height: 20 },
+    ])
+    expect(boxes).toEqual([{ left: 0, top: 0, width: 110, height: 20 }])
+  })
+
+  it('keeps separate lines separate', () => {
+    const boxes = mergeLineBoxes([
+      { left: 0, top: 30, width: 40, height: 20 },
+      { left: 0, top: 0, width: 40, height: 20 },
+      { left: 50, top: 30, width: 40, height: 20 },
+    ])
+    expect(boxes).toHaveLength(2)
+    expect(boxes[0].top).toBe(0)
+    expect(boxes[1]).toEqual({ left: 0, top: 30, width: 90, height: 20 })
+  })
+
+  it('drops empty rects', () => {
+    expect(mergeLineBoxes([{ left: 0, top: 0, width: 0, height: 20 }])).toEqual([])
+  })
+})
+
+describe('NarrationHighlighter overlay', () => {
+  const original = Range.prototype.getClientRects
+  afterEach(() => {
+    if (original) Range.prototype.getClientRects = original
+    else delete (Range.prototype as { getClientRects?: unknown }).getClientRects
+    document.body.innerHTML = ''
+  })
+
+  function setup() {
+    const root = document.createElement('div')
+    root.innerHTML = '<p>One two.</p> <p>Three four.</p>'
+    document.body.appendChild(root)
+    Range.prototype.getClientRects = function (this: Range) {
+      const text = root.textContent ?? ''
+      const word = text.slice(0, text.indexOf(this.toString())).split(/\s+/).filter(Boolean).length
+      return [{ left: (word % 2) * 50, top: Math.floor(word / 2) * 30, width: 40, height: 20 }] as unknown as DOMRectList
+    }
+    const h = new NarrationHighlighter(root, {
+      version: 1,
+      words: [
+        ['One', 0, 100, 0],
+        ['two.', 100, 200, 0],
+        ['Three', 200, 300, 1],
+        ['four.', 300, 400, 1],
+      ],
+    })
+    const q = (kind: string) => root.querySelectorAll<HTMLElement>(`[data-sm-narration="${kind}"]`)
+    return { root, h, q }
+  }
+
+  it('paints one band per sentence line and one word box', () => {
+    const { h, q } = setup()
+    h.update(150)
+    expect(q('sentence')).toHaveLength(1)
+    expect(q('sentence')[0].style.width).toBe('94px')
+    expect(q('word')).toHaveLength(1)
+  })
+
+  it('replaces the previous sentence and word (no stale paint)', () => {
+    const { h, q } = setup()
+    h.update(150)
+    h.update(350)
+    expect(q('sentence')).toHaveLength(1)
+    expect(q('sentence')[0].style.top).toBe('29px')
+    expect(q('word')).toHaveLength(1)
+    expect(q('word')[0].style.left).toBe('48px')
+  })
+
+  it('destroy removes the layer and restores the root', () => {
+    const { root, h } = setup()
+    h.update(150)
+    expect(root.querySelector('[data-sm-narration-layer]')).not.toBeNull()
+    h.destroy()
+    expect(root.querySelector('[data-sm-narration-layer]')).toBeNull()
+    expect(root.style.isolation).toBe('')
+    expect(root.style.position).toBe('')
   })
 })
