@@ -182,6 +182,9 @@ var ScaleMuleServer = class {
       refresh: async (sessionToken, options) => {
         return this.request("POST", "/v1/auth/refresh", {
           sessionToken,
+          // The auth service reads the token to rotate from the body, not the
+          // Authorization header; without it every refresh is rejected.
+          body: { session_token: sessionToken },
           clientContext: options?.clientContext,
           isAutoRefresh: options?.isAutoRefresh,
           onTokenRotated: options?.onTokenRotated
@@ -821,12 +824,12 @@ var ScaleMuleServer = class {
             if (this.debug) console.error("[ScaleMule Server] Auto-refresh failed:", refreshErr);
             const refreshApiError = refreshErr instanceof ScaleMuleApiError ? { code: refreshErr.code, message: refreshErr.message } : { code: "REFRESH_FAILED", message: "Auto-refresh failed" };
             this.onAutoRefreshFailed?.(refreshApiError);
-            throw new ScaleMuleApiError(error);
+            throw new ScaleMuleApiError(error, response.status);
           } finally {
             this.onRefreshEnd?.();
           }
         }
-        throw new ScaleMuleApiError(error);
+        throw new ScaleMuleApiError(error, response.status);
       }
       const data = responseData?.data !== void 0 ? responseData.data : responseData;
       return data;
@@ -926,6 +929,16 @@ function clearSession(responseBody, options = {}, status = 200) {
   headers2.append("Set-Cookie", createClearCookieHeader(SESSION_COOKIE_NAME, options));
   headers2.append("Set-Cookie", createClearCookieHeader(USER_ID_COOKIE_NAME, options));
   return new Response(JSON.stringify({ success: status < 300, data: responseBody }), {
+    status,
+    headers: headers2
+  });
+}
+function clearSessionWithError(error, options = {}, status = 401) {
+  const headers2 = new Headers();
+  headers2.set("Content-Type", "application/json");
+  headers2.append("Set-Cookie", createClearCookieHeader(SESSION_COOKIE_NAME, options));
+  headers2.append("Set-Cookie", createClearCookieHeader(USER_ID_COOKIE_NAME, options));
+  return new Response(JSON.stringify({ success: false, error }), {
     status,
     headers: headers2
   });
@@ -1145,6 +1158,24 @@ function validateCSRFToken(request) {
     return "CSRF token mismatch";
   }
   return void 0;
+}
+
+// src/session-errors.ts
+var SESSION_ENDED_CODES = /* @__PURE__ */ new Set([
+  "UNAUTHORIZED",
+  "INVALID_SESSION",
+  "SESSION_EXPIRED",
+  "SESSION_IDLE_EXPIRED",
+  "SESSION_ABSOLUTE_EXPIRED",
+  "SESSION_REVOKED",
+  "TOKEN_EXPIRED",
+  "TOKEN_INVALID"
+]);
+function isSessionEndedError(error) {
+  if (!error || typeof error !== "object") return false;
+  const { status, code } = error;
+  if (status === 401) return true;
+  return typeof code === "string" && SESSION_ENDED_CODES.has(code);
 }
 
 // src/server/routes.ts
@@ -1398,10 +1429,18 @@ function createAuthRoutes(config = {}) {
           let refreshData;
           try {
             refreshData = await sm.auth.refresh(session.sessionToken);
-          } catch {
-            return clearSession(
-              { message: "Session expired" },
-              cookieOptions
+          } catch (err) {
+            const apiErr = err instanceof ScaleMuleApiError ? err : null;
+            if (isSessionEndedError(apiErr)) {
+              return clearSessionWithError(
+                { code: apiErr?.code || "SESSION_EXPIRED", message: apiErr?.message || "Session expired" },
+                cookieOptions
+              );
+            }
+            return errorResponse(
+              apiErr?.code || "REFRESH_FAILED",
+              apiErr?.message || "Session refresh failed",
+              apiErr?.status && apiErr.status >= 400 ? apiErr.status : 503
             );
           }
           return withRefreshedSession(
