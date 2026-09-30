@@ -174,9 +174,11 @@
 .sm-audio__waveform {
   display: flex;
   align-items: center;
-  gap: 3px;
+  /* Scales down on phones so the bars never spill past the track. */
+  gap: min(3px, 1%);
   height: 48px;
   margin-top: 12px;
+  overflow: hidden;
 }
 .sm-audio__waveform span {
   flex: 1;

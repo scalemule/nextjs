@@ -343,6 +343,8 @@ function parseTimingsPayload(body) {
 
 // src/components/audio-player.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
+var subscribeNever = () => () => {
+};
 var SPEEDS = [1, 1.25, 1.5, 2, 3];
 var PLAY_EVENT = "scalemule:audio:play";
 var HIGHLIGHT_PREF_KEY = "scalemule:audio:highlight";
@@ -386,7 +388,14 @@ function PlayerSession({
   const sliderId = (0, import_react.useId)();
   const labelId = (0, import_react.useId)();
   const rate = (0, import_react.useRef)(1);
-  const narrationOffered = !!narration && audio.has_word_timings !== false && narrationHighlightSupported();
+  const highlightSupported = (0, import_react.useSyncExternalStore)(
+    subscribeNever,
+    narrationHighlightSupported,
+    // The server can't detect support; render the toggle only after
+    // hydration so server and client markup always match.
+    () => false
+  );
+  const narrationOffered = !!narration && audio.has_word_timings !== false && highlightSupported;
   const [highlightOn, setHighlightOn] = (0, import_react.useState)(false);
   const [highlightBusy, setHighlightBusy] = (0, import_react.useState)(false);
   const highlighter = (0, import_react.useRef)(null);
