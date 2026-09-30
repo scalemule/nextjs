@@ -9,12 +9,12 @@
  * (the article's markdown rendered to plain text). The article body a
  * site renders is HTML from that same markdown, so the two word
  * sequences correspond nearly one-to-one; this module aligns them and
- * paints the spoken word and sentence with the CSS Custom Highlight
- * API — no DOM mutation, no per-word spans.
+ * paints the spoken word and sentence as boxes in an overlay layer
+ * behind the text — the article's own DOM is never rewritten.
  *
- * Everything degrades to nothing: unsupported browser (no
- * `CSS.highlights`), missing timings, or a body that no longer matches
- * the narration simply means no highlight.
+ * Everything degrades to nothing: no layout APIs (SSR), missing
+ * timings, or a body that no longer matches the narration simply means
+ * no highlight.
  */
 
 export interface NarrationTimings {
@@ -116,37 +116,87 @@ export function wordIndexAt(words: [string, number, number, number][], timeMs: n
   return ans
 }
 
-interface HighlightRegistry {
-  set(name: string, highlight: unknown): void
-  delete(name: string): void
+/** A rectangle in the highlight layer's coordinate space. */
+export interface Box {
+  left: number
+  top: number
+  width: number
+  height: number
 }
 
-declare const Highlight: { new (...ranges: AbstractRange[]): unknown }
+/**
+ * Merges per-word rectangles into one box per visual line, spanning the
+ * gaps between words. Rects whose vertical centers lie within half the
+ * smaller height are on the same line.
+ */
+export function mergeLineBoxes(rects: Box[]): Box[] {
+  const lines: Box[] = []
+  const sorted = rects
+    .filter((r) => r.width > 0 && r.height > 0)
+    .sort((a, b) => a.top - b.top || a.left - b.left)
+  for (const r of sorted) {
+    const center = r.top + r.height / 2
+    const line = lines.find((l) => {
+      const lc = l.top + l.height / 2
+      return Math.abs(lc - center) < Math.min(l.height, r.height) / 2
+    })
+    if (!line) {
+      lines.push({ ...r })
+      continue
+    }
+    const right = Math.max(line.left + line.width, r.left + r.width)
+    const bottom = Math.max(line.top + line.height, r.top + r.height)
+    line.left = Math.min(line.left, r.left)
+    line.top = Math.min(line.top, r.top)
+    line.width = right - line.left
+    line.height = bottom - line.top
+  }
+  return lines
+}
 
 export function narrationHighlightSupported(): boolean {
   return (
     typeof window !== 'undefined' &&
-    typeof CSS !== 'undefined' &&
-    'highlights' in CSS &&
-    typeof (globalThis as { Highlight?: unknown }).Highlight === 'function'
+    typeof document !== 'undefined' &&
+    typeof Range !== 'undefined' &&
+    typeof Range.prototype.getClientRects === 'function'
   )
 }
+
+// Box padding around the text so bands read as a highlighter stroke.
+const PAD_X = 2
+const PAD_Y = 1
 
 /**
  * Owns the live highlight for one narration player. Build once per
  * (timings, article body) pair; drive with `update(currentTimeMs)`.
+ *
+ * Paints into an overlay layer behind the article text (positioned boxes
+ * computed from the words' line rectangles) rather than the CSS Custom
+ * Highlight API: WebKit leaves stale ::highlight paint behind while the
+ * page scrolls, and per-word highlight ranges render as ragged, gapped
+ * boxes. Colors come from --sm-narration-sentence / --sm-narration-word
+ * on the article body (or any ancestor).
  */
 export class NarrationHighlighter {
   private words: [string, number, number, number][]
   private ranges: (Range | null)[]
-  private sentenceRanges: Map<number, Range[]>
+  private sentenceWords: Map<number, number[]>
   private currentWord = -2
   private currentSentence = -2
   private follow = true
   private detachUserScroll: (() => void) | null = null
   private reducedMotion: boolean
+  private root: Element
+  private layer: HTMLDivElement | null = null
+  private sentenceLayer: HTMLDivElement | null = null
+  private wordLayer: HTMLDivElement | null = null
+  private restoreRootStyle: (() => void) | null = null
+  private resizeObserver: ResizeObserver | null = null
+  private onWindowResize: (() => void) | null = null
 
   constructor(root: Element, timings: NarrationTimings) {
+    this.root = root
     this.words = timings.words
     const domWords = collectDomWords(root)
     const matches = alignWords(
@@ -166,13 +216,12 @@ export class NarrationHighlighter {
         return null
       }
     })
-    this.sentenceRanges = new Map()
+    this.sentenceWords = new Map()
     this.words.forEach((w, i) => {
-      const range = this.ranges[i]
-      if (!range) return
-      const list = this.sentenceRanges.get(w[3])
-      if (list) list.push(range)
-      else this.sentenceRanges.set(w[3], [range])
+      if (!this.ranges[i]) return
+      const list = this.sentenceWords.get(w[3])
+      if (list) list.push(i)
+      else this.sentenceWords.set(w[3], [i])
     })
     this.reducedMotion =
       typeof window !== 'undefined' &&
@@ -208,32 +257,120 @@ export class NarrationHighlighter {
     this.currentSentence = -2 // force a scroll on the next update
   }
 
+  /** Lazily creates the overlay layer behind the article text. */
+  private ensureLayer(): boolean {
+    if (this.layer) return true
+    const root = this.root as HTMLElement
+    const doc = root.ownerDocument
+    if (!doc || typeof root.style === 'undefined') return false
+    const view = doc.defaultView
+    const computed = view?.getComputedStyle(root)
+    const previous = { position: root.style.position, isolation: root.style.isolation }
+    // The layer is absolutely positioned against the body and sits at
+    // z-index -1 inside an isolated stacking context: above the body's own
+    // background, below its text.
+    if (!computed || computed.position === 'static') root.style.position = 'relative'
+    root.style.isolation = 'isolate'
+    this.restoreRootStyle = () => {
+      root.style.position = previous.position
+      root.style.isolation = previous.isolation
+    }
+    const make = () => {
+      const el = doc.createElement('div')
+      el.style.position = 'absolute'
+      el.style.inset = '0'
+      el.style.pointerEvents = 'none'
+      return el
+    }
+    this.layer = make()
+    this.layer.setAttribute('aria-hidden', 'true')
+    this.layer.setAttribute('data-sm-narration-layer', '')
+    this.layer.style.zIndex = '-1'
+    this.sentenceLayer = make()
+    this.wordLayer = make()
+    this.layer.append(this.sentenceLayer, this.wordLayer)
+    root.prepend(this.layer)
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => this.repaint())
+      this.resizeObserver.observe(root)
+    }
+    if (view) {
+      this.onWindowResize = () => this.repaint()
+      view.addEventListener('resize', this.onWindowResize, { passive: true })
+    }
+    return true
+  }
+
+  /** Line boxes for the given word indexes, in layer coordinates. */
+  private boxesFor(wordIndexes: number[]): Box[] {
+    const root = this.root as HTMLElement
+    const origin = root.getBoundingClientRect()
+    const rects: Box[] = []
+    for (const i of wordIndexes) {
+      const range = this.ranges[i]
+      if (!range || typeof range.getClientRects !== 'function') continue
+      for (const r of Array.from(range.getClientRects())) {
+        rects.push({
+          left: r.left - origin.left - root.clientLeft + root.scrollLeft,
+          top: r.top - origin.top - root.clientTop + root.scrollTop,
+          width: r.width,
+          height: r.height,
+        })
+      }
+    }
+    return mergeLineBoxes(rects)
+  }
+
+  private paint(target: HTMLDivElement | null, boxes: Box[], kind: 'sentence' | 'word') {
+    if (!target) return
+    const doc = target.ownerDocument
+    const color =
+      kind === 'word'
+        ? 'var(--sm-narration-word, rgba(36, 99, 70, 0.32))'
+        : 'var(--sm-narration-sentence, rgba(36, 99, 70, 0.12))'
+    const nodes = boxes.map((b) => {
+      const el = doc.createElement('div')
+      el.setAttribute('data-sm-narration', kind)
+      el.className = kind === 'word' ? WORD_HIGHLIGHT : SENTENCE_HIGHLIGHT
+      el.style.position = 'absolute'
+      el.style.left = `${b.left - PAD_X}px`
+      el.style.top = `${b.top - PAD_Y}px`
+      el.style.width = `${b.width + PAD_X * 2}px`
+      el.style.height = `${b.height + PAD_Y * 2}px`
+      el.style.borderRadius = '4px'
+      el.style.background = color
+      return el
+    })
+    target.replaceChildren(...nodes)
+  }
+
+  /** Re-lays out the current highlight (after resize / reflow). */
+  private repaint() {
+    if (this.currentWord < 0) return
+    const sentence = this.words[this.currentWord]?.[3]
+    this.paint(this.sentenceLayer, this.boxesFor(this.sentenceWords.get(sentence) ?? []), 'sentence')
+    this.paint(this.wordLayer, this.boxesFor([this.currentWord]), 'word')
+  }
+
   update(timeMs: number) {
     if (!narrationHighlightSupported()) return
     const idx = wordIndexAt(this.words, timeMs)
     if (idx === this.currentWord) return
     this.currentWord = idx
-    const registry = (CSS as unknown as { highlights: HighlightRegistry }).highlights
     if (idx < 0) {
-      registry.delete(WORD_HIGHLIGHT)
-      registry.delete(SENTENCE_HIGHLIGHT)
-      this.currentSentence = -2
+      this.clear()
       return
     }
-    const wordRange = this.ranges[idx]
-    if (wordRange) registry.set(WORD_HIGHLIGHT, new Highlight(wordRange))
-    else registry.delete(WORD_HIGHLIGHT)
+    if (!this.ensureLayer()) return
+    this.paint(this.wordLayer, this.ranges[idx] ? this.boxesFor([idx]) : [], 'word')
 
     const sentence = this.words[idx][3]
     if (sentence !== this.currentSentence) {
       this.currentSentence = sentence
-      const ranges = this.sentenceRanges.get(sentence) ?? []
-      if (ranges.length > 0) {
-        registry.set(SENTENCE_HIGHLIGHT, new Highlight(...ranges))
-        this.scrollTo(ranges[0])
-      } else {
-        registry.delete(SENTENCE_HIGHLIGHT)
-      }
+      const members = this.sentenceWords.get(sentence) ?? []
+      this.paint(this.sentenceLayer, this.boxesFor(members), 'sentence')
+      const first = members.length ? this.ranges[members[0]] : null
+      if (first) this.scrollTo(first)
     }
   }
 
@@ -254,16 +391,24 @@ export class NarrationHighlighter {
   }
 
   clear() {
-    if (!narrationHighlightSupported()) return
-    const registry = (CSS as unknown as { highlights: HighlightRegistry }).highlights
-    registry.delete(WORD_HIGHLIGHT)
-    registry.delete(SENTENCE_HIGHLIGHT)
+    this.sentenceLayer?.replaceChildren()
+    this.wordLayer?.replaceChildren()
     this.currentWord = -2
     this.currentSentence = -2
   }
 
   destroy() {
     this.clear()
+    this.resizeObserver?.disconnect()
+    this.resizeObserver = null
+    if (this.onWindowResize) {
+      this.root.ownerDocument?.defaultView?.removeEventListener('resize', this.onWindowResize)
+      this.onWindowResize = null
+    }
+    this.layer?.remove()
+    this.layer = this.sentenceLayer = this.wordLayer = null
+    this.restoreRootStyle?.()
+    this.restoreRootStyle = null
     this.detachUserScroll?.()
     this.detachUserScroll = null
   }

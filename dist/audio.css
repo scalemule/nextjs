@@ -223,10 +223,3 @@
     flex-basis: 120px;
   }
 }
-::highlight(sm-narration-sentence) {
-  background-color: var(--sm-narration-sentence, rgba(36, 99, 70, 0.12));
-}
-::highlight(sm-narration-word) {
-  background-color: var(--sm-narration-word, rgba(36, 99, 70, 0.32));
-  color: inherit;
-}
