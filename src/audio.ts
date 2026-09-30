@@ -7,5 +7,15 @@ export type {
   AudioPlayerSource,
   AudioPlayerVariant,
 } from './components/audio-player'
-export { narrationHighlightSupported } from './components/narration-highlight'
+// The follow-along highlight engine is exported for sites with their own
+// player chrome (e.g. scalemule-web's BlogAudioPlayer): build a
+// NarrationHighlighter over the article body, drive it with
+// update(currentTimeMs), and honor matchRatio() before enabling.
+export {
+  NarrationHighlighter,
+  narrationHighlightSupported,
+  parseTimingsPayload,
+  SENTENCE_HIGHLIGHT,
+  WORD_HIGHLIGHT,
+} from './components/narration-highlight'
 export type { NarrationTimings } from './components/narration-highlight'
