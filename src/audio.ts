@@ -19,3 +19,11 @@ export {
   WORD_HIGHLIGHT,
 } from './components/narration-highlight'
 export type { NarrationTimings } from './components/narration-highlight'
+
+export { NetworkAudioProvider, NetworkAudioPlayer, ArticleAudioControls, useNetworkAudio,
+  useArticleNarration } from './components/network-audio-player'
+export type { NetworkAudioProviderProps, NetworkAudioPlayerProps, ArticleAudioControlsProps,
+  NetworkAudioContextValue } from './components/network-audio-player'
+export { NetworkAudioController } from './network-audio/controller'
+export type { NetworkAudioTrack, NetworkAudioSnapshot, ResolveNetworkAudio } from './network-audio/controller'
+export type { NetworkPlayerConnection, NetworkPlayerHostOptions, NetworkAudioCommand } from './network-audio/bridge'
