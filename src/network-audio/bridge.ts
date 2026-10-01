@@ -87,6 +87,7 @@ export class NetworkPlayerClient {
   private target: Window | null = null
   private connected = false
   private pending = false
+  private handoffRequested = false
   private openedAt = 0
   private lastSeen = 0
   private latest: NetworkAudioSnapshot | null = null
@@ -123,10 +124,13 @@ export class NetworkPlayerClient {
     this.lastSeen = Date.now()
     if (!this.connected) {
       const local = this.controller.getSnapshot()
-      const handoff = this.pending && !data.snapshot.queue.length && local.queue.length > 0
+      // A slow host may become ready after the initial connection notice.
+      // Preserve the reader's queue even when that ten-second notice has fired.
+      const handoff = this.handoffRequested && !data.snapshot.queue.length && local.queue.length > 0
       this.controller.pause()
       this.connected = true
       this.pending = false
+      this.handoffRequested = false
       if (handoff) this.post({ kind: 'adopt', snapshot: local, play: local.status === 'playing' || local.status === 'loading' })
     }
     this.latest = data.snapshot
@@ -145,6 +149,7 @@ export class NetworkPlayerClient {
       return
     }
     this.pending = true
+    this.handoffRequested = true
     this.openedAt = Date.now()
   }
   command(command: NetworkAudioCommand) {
@@ -156,6 +161,7 @@ export class NetworkPlayerClient {
   private disconnect(notice: string) {
     if (this.latest) this.controller.restore(this.latest)
     this.connected = false
+    this.handoffRequested = false
     this.target = null
     this.latest = null
     this.update(null, notice)

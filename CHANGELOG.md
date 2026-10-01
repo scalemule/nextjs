@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.50
+
+- Preserve the listening queue when a slow network-player window connects after the initial connection notice. The reader keeps playing while waiting and transfers its current queue and position once the host is ready.
+
 ## 0.1.49
 
 - Add `NetworkAudioProvider`, `NetworkAudioPlayer`, `ArticleAudioControls` and a headless controller to the audio entry. A layout-owned audio element keeps playing across article navigation, with a bounded queue, playback controls, an expandable advertisement slot and visible-article highlighting.
