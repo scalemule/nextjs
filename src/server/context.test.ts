@@ -98,3 +98,7 @@ describe('round-trip — extract then re-emit', () => {
     expect(outbound['x-anonymous-id']).toBe('visitor-42')
   })
 })
+
+it('also prefers the hosting ingress IP in Pages Router', () => {
+  expect(extractClientContextFromReq(mockNodeReq({ 'x-real-ip': '203.0.113.5', 'cf-connecting-ip': '198.51.100.9' })).ip).toBe('203.0.113.5')
+})

@@ -317,6 +317,9 @@ export function useAuth(): UseAuthReturn {
             if (!result.success || !result.data) throw result.error
             return { ...result, data: result.data }
           },
+        }).catch((err) => {
+          setError(err as ApiError)
+          throw err
         })
 
 

@@ -88,7 +88,7 @@ function useSecurityChallenge(recoveryUrl) {
         ),
         /* @__PURE__ */ jsxRuntime.jsx("button", { type: "submit", style: { padding: "10px 20px", borderRadius: 8, border: 0, background: "#2563eb", color: "#fff", cursor: "pointer" }, children: "Continue" }),
         /* @__PURE__ */ jsxRuntime.jsx("button", { type: "button", onClick: () => answer(null), style: { marginLeft: 12 }, children: "Cancel" }),
-        challenge.method === "email" && /* @__PURE__ */ jsxRuntime.jsxs("p", { children: [
+        challenge.method !== "totp" && /* @__PURE__ */ jsxRuntime.jsxs("p", { children: [
           /* @__PURE__ */ jsxRuntime.jsx("button", { type: "button", onClick: () => answer("resend"), children: "Send a new code" }),
           " ",
           /* @__PURE__ */ jsxRuntime.jsx("small", { children: "(wait 60 seconds between requests)" })
@@ -1595,6 +1595,9 @@ function useAuth() {
             if (!result.success || !result.data) throw result.error;
             return { ...result, data: result.data };
           }
+        }).catch((err) => {
+          setError(err);
+          throw err;
         });
         if ("requires_mfa" in response.data && response.data.requires_mfa) {
           return response.data;

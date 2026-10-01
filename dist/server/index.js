@@ -101,8 +101,9 @@ function extractClientContextFromReq(req) {
     return value;
   };
   let ip;
+  ip = validateIP(getHeader("x-real-ip"));
   const cfConnectingIp = getHeader("cf-connecting-ip");
-  if (cfConnectingIp) {
+  if (!ip && cfConnectingIp) {
     ip = validateIP(cfConnectingIp);
   }
   if (!ip) {
@@ -1406,11 +1407,22 @@ function createAuthRoutes(config = {}) {
         }
         case "mfa/verify": {
           const { pending_token, code, method } = body;
-          if (!pending_token || !code) return errorResponse("VALIDATION_ERROR", "MFA token and code required", 400);
+          if (!pending_token || !code || !["totp", "email", "sms", "backup_code"].includes(method)) return errorResponse("VALIDATION_ERROR", "MFA token, code, and valid method required", 400);
           const result = await sm.auth.completeMfa(pending_token, code, method, { clientContext });
           if (!result.session_token || !result.user) return errorResponse("MFA_FAILED", "Unable to complete sign-in", 400);
           await config.onLogin?.({ id: result.user.id, email: result.user.email });
-          return withSession(result, { ...result, sessionToken: result.session_token, userId: result.user.id }, cookieOptions);
+          const response = withSession(result, { user: result.user, sessionToken: result.session_token, userId: result.user.id }, cookieOptions);
+          if (config.enableAccountSwitcher) {
+            appendKnownAccountCookie(response.headers, {
+              userId: result.user.id,
+              email: result.user.email,
+              fullName: result.user.full_name ?? void 0,
+              avatarUrl: result.user.avatar_url ?? void 0,
+              provider: "email",
+              lastActiveAt: (/* @__PURE__ */ new Date()).toISOString()
+            }, getKnownAccountsCookieRaw(request), cookieOptions, config.accountSwitcherPrivacy);
+          }
+          return response;
         }
         // ==================== Login ====================
         case "login": {
@@ -1424,9 +1436,10 @@ function createAuthRoutes(config = {}) {
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null;
             const errorCode = apiErr?.code || "LOGIN_FAILED";
-            let status = errorCode === "LOGIN_CHALLENGE_REQUIRED" ? 202 : 400;
+            let status = ["LOGIN_CHALLENGE_REQUIRED", "MFA_REQUIRED"].includes(errorCode) ? 202 : 400;
+            if (errorCode === "CHALLENGE_RATE_LIMITED") status = 429;
             if (errorCode === "INVALID_CREDENTIALS" || errorCode === "UNAUTHORIZED") status = 401;
-            if (["EMAIL_NOT_VERIFIED", "PHONE_NOT_VERIFIED", "ACCOUNT_LOCKED", "ACCOUNT_DISABLED", "MFA_REQUIRED"].includes(errorCode)) {
+            if (["EMAIL_NOT_VERIFIED", "PHONE_NOT_VERIFIED", "ACCOUNT_LOCKED", "ACCOUNT_DISABLED"].includes(errorCode)) {
               status = 403;
             }
             return errorResponse(
@@ -1698,6 +1711,10 @@ function createAuthRoutes(config = {}) {
           return errorResponse("NOT_FOUND", `Unknown endpoint: ${path}`, 404);
       }
     } catch (err) {
+      if (path.startsWith("mfa/") && err instanceof ScaleMuleApiError) {
+        const status = ["CHALLENGE_RATE_LIMITED", "MFA_RATE_LIMITED", "MFA_MAX_ATTEMPTS"].includes(err.code) ? 429 : 400;
+        return errorResponse(err.code, err.message, status);
+      }
       console.error("[ScaleMule Auth] Error:", err);
       return errorResponse("SERVER_ERROR", "Internal server error", 500);
     }

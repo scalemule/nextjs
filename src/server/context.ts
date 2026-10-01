@@ -92,9 +92,9 @@ export function extractClientContext(request: NextRequestLike): ClientContext {
   const headers = request.headers
 
   // Extract IP address with priority order:
-  // 1. CF-Connecting-IP (Cloudflare - most reliable when behind CF)
-  // 2. DO-Connecting-IP (DigitalOcean App Platform / Load Balancers)
-  // 3. X-Real-IP (nginx proxy, DigitalOcean K8s ingress)
+  // 1. X-Real-IP (canonical hosting ingress)
+  // 2. CF-Connecting-IP (Cloudflare)
+  // 3. DO-Connecting-IP (DigitalOcean App Platform / Load Balancers)
   // 4. X-Forwarded-For (first IP - standard proxy header)
   // 5. X-Vercel-Forwarded-For (Vercel)
   // 6. True-Client-IP (Akamai, Cloudflare Enterprise)
@@ -221,9 +221,10 @@ export function extractClientContextFromReq(req: IncomingMessageLike): ClientCon
   // Extract IP address with priority order (same as App Router version)
   let ip: string | undefined
 
-  // Cloudflare
+  // Hosting ingress takes precedence, as in the App Router helper.
+  ip = validateIP(getHeader('x-real-ip'))
   const cfConnectingIp = getHeader('cf-connecting-ip')
-  if (cfConnectingIp) {
+  if (!ip && cfConnectingIp) {
     ip = validateIP(cfConnectingIp)
   }
 

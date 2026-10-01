@@ -39,7 +39,7 @@ export function useSecurityChallenge(recoveryUrl: string) {
           style={{ display: 'block', boxSizing: 'border-box', width: '100%', margin: '8px 0 20px', padding: 12, fontSize: 22, border: '1px solid #9ca3af', borderRadius: 8 }} />
         <button type="submit" style={{ padding: '10px 20px', borderRadius: 8, border: 0, background: '#2563eb', color: '#fff', cursor: 'pointer' }}>Continue</button>
         <button type="button" onClick={() => answer(null)} style={{ marginLeft: 12 }}>Cancel</button>
-        {challenge.method === 'email' && <p><button type="button" onClick={() => answer('resend')}>Send a new code</button> <small>(wait 60 seconds between requests)</small></p>}
+        {challenge.method !== 'totp' && <p><button type="button" onClick={() => answer('resend')}>Send a new code</button> <small>(wait 60 seconds between requests)</small></p>}
         <p><a href={recoveryUrl} onClick={() => answer(null)}>Reset your password</a></p>
       </form>
     </dialog>
