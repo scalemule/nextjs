@@ -107,8 +107,9 @@ export function extractClientContext(request: NextRequestLike, options: ClientCo
   // 7. request.ip (Next.js built-in)
   let ip: string | undefined
 
-  // The hosting ingress overwrites X-Real-IP. Prefer that authenticated
-  // transport value to optional CDN headers a browser could supply itself.
+  // Legacy precedence is preserved for existing integrations. These headers
+  // are trustworthy only when the actual ingress overwrites them and origin
+  // access is restricted; use trustedIpHeader to configure that boundary.
   ip = validateIP(headers.get('x-real-ip'))
   const cfConnectingIp = headers.get('cf-connecting-ip')
   if (!ip && cfConnectingIp) {

@@ -47,7 +47,7 @@ const AUTH_ROUTES = new Set([
 const PUBLIC_AUTH_ROUTES = new Set(['POST oauth/start', 'POST oauth/callback'])
 // Preserve the SDK's anonymous feature-flag and feedback APIs. The gateway
 // still validates the publishable key and each endpoint's tenant policy.
-const PUBLIC_DATA_ROUTES = new Set(['POST flags/evaluate', 'POST flags/evaluate/all', 'POST flags/evaluate/batch', 'GET feedback/items', 'POST feedback/submit'])
+const PUBLIC_DATA_ROUTES = new Set(['POST flags/evaluate', 'POST flags/evaluate/all', 'POST flags/evaluate/batch', 'GET feedback/widget-config', 'POST feedback/submit'])
 const MAX_BODY_BYTES = 25 * 1024 * 1024
 
 async function boundedBody(request: Request): Promise<Uint8Array | undefined> {

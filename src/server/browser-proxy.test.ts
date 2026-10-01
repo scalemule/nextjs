@@ -105,3 +105,15 @@ it('clears cookies when account deletion returns 204', async () => {
   expect(response.headers.getSetCookie()).toHaveLength(2)
   expect(response.headers.getSetCookie().every(c => c.includes('Max-Age=0'))).toBe(true)
 })
+
+
+it('loads public feedback policy before sign-in while keeping user items private', async () => {
+  session.mockResolvedValue(null)
+  fetcher.mockResolvedValueOnce(Response.json({ success: true, data: { enabled: false, allow_anonymous: false } }))
+  const configResponse = await browserProxy(request('v1/feedback/widget-config'), ['v1', 'feedback', 'widget-config'], config)
+  expect(configResponse.status).toBe(200)
+  expect((await configResponse.json()).data).toEqual({ enabled: false, allow_anonymous: false })
+  expect(fetcher.mock.calls[0][1].headers.has('authorization')).toBe(false)
+  expect((await browserProxy(request('v1/feedback/items'), ['v1', 'feedback', 'items'], config)).status).toBe(401)
+  expect(fetcher).toHaveBeenCalledOnce()
+})
