@@ -85,7 +85,7 @@ export async function browserProxy(request: Request, path: string[], config: Bro
   if (session) headers.set('Authorization', `Bearer ${session.sessionToken}`)
   // Explicit list: never copy Cookie, Authorization, app IDs, forwarding or
   // internal-platform headers supplied by the browser.
-  for (const name of ['content-type', 'accept', 'user-agent', 'range', 'if-none-match', 'x-idempotency-key', 'x-sm-workspace-id']) {
+  for (const name of ['origin', 'content-type', 'accept', 'user-agent', 'range', 'if-none-match', 'x-idempotency-key', 'x-sm-workspace-id']) {
     const value = request.headers.get(name)
     if (value) headers.set(name, value)
   }

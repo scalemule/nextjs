@@ -1456,7 +1456,7 @@ async function browserProxy(request, path, config) {
   target.search = new URL(request.url).search;
   const headers3 = new Headers({ "x-api-key": key });
   if (session) headers3.set("Authorization", `Bearer ${session.sessionToken}`);
-  for (const name of ["content-type", "accept", "user-agent", "range", "if-none-match", "x-idempotency-key", "x-sm-workspace-id"]) {
+  for (const name of ["origin", "content-type", "accept", "user-agent", "range", "if-none-match", "x-idempotency-key", "x-sm-workspace-id"]) {
     const value = request.headers.get(name);
     if (value) headers3.set(name, value);
   }

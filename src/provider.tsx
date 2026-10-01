@@ -442,7 +442,7 @@ export function ScaleMuleProvider({
                 client.setCookieSession(data.data.user.id)
                 setUser(data.data.user)
                 setCachedUser(data.data.user)
-                // Set the session token on the client so API calls include Authorization header
+                // Explicit bearer compatibility mode may still supply a token.
                 if (data.data.sessionToken) {
                   await client.setSession(data.data.sessionToken, data.data.userId || '')
                 }
@@ -461,6 +461,7 @@ export function ScaleMuleProvider({
             // (proxy 500, parse error, mid-deploy blip) leaves the app
             // looking logged-in even though no valid session exists.
             if (mounted) {
+              client.setCookieSession(null)
               setUser(null)
               setCachedUser(null)
               if (debug) {

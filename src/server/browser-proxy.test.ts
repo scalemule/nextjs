@@ -28,8 +28,9 @@ describe('cookie-authenticated browser proxy', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
   })
   it('mints tickets on the configured public gateway, preserving the browser routing path', async () => {
-    await browserProxy(request('v1/realtime/ws/ticket', { method: 'POST' }), ['v1', 'realtime', 'ws', 'ticket'], { ...config, browserGatewayUrl: 'https://public.example.com' })
+    await browserProxy(request('v1/realtime/ws/ticket', { method: 'POST', headers: { origin: 'https://app.example.com' } }), ['v1', 'realtime', 'ws', 'ticket'], { ...config, browserGatewayUrl: 'https://public.example.com' })
     expect(fetcher.mock.calls[0][0].origin).toBe('https://public.example.com')
+    expect(fetcher.mock.calls[0][1].headers.get('origin')).toBe('https://app.example.com')
   })
   it('rejects cross-origin requests and other tenant keys before sending credentials', async () => {
     for (const headers of [{ 'sec-fetch-site': 'cross-site', origin: 'https://attacker.example' }, { 'x-api-key': 'sm_pb_other_app' }, { 'x-api-key': '' }] as Record<string, string>[]) {

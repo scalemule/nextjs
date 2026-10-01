@@ -1307,6 +1307,7 @@ function ScaleMuleProvider({
             }
           } catch {
             if (mounted) {
+              client.setCookieSession(null);
               setUser(null);
               setCachedUser(null);
               if (debug) {
