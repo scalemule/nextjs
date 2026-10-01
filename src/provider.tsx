@@ -601,7 +601,7 @@ export function ScaleMuleProvider({
       setError,
       analyticsProxyUrl,
       authProxyUrl,
-      publishableKey,
+      publishableKey: cookieSession ? browserKey : publishableKey,
       apiKey,
       gatewayUrl: resolvedGatewayUrl,
       environment: environment || undefined,
@@ -609,7 +609,7 @@ export function ScaleMuleProvider({
       accountSwitcherPrivacy,
       bootstrapFlags,
     }),
-    [requestSecurityCode, client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
+    [requestSecurityCode, client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, browserKey, cookieSession, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
   )
 
   return (

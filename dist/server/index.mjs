@@ -1399,11 +1399,16 @@ function isSameOriginRequest(request) {
   }
   return true;
 }
-var SERVICES = /* @__PURE__ */ new Set(["storage", "photo", "video", "audio", "media", "tts", "social", "chat", "realtime", "money", "billing", "flags", "notifications", "search", "presence", "conference", "gallop", "data", "forms", "preferences"]);
+var SERVICES = /* @__PURE__ */ new Set(["storage", "photo", "video", "audio", "media", "tts", "social", "chat", "realtime", "money", "billing", "flags", "notifications", "search", "presence", "conference", "gallop", "data", "forms", "preferences", "feedback", "referrals"]);
 var AUTH_ROUTES = /* @__PURE__ */ new Set([
   "GET me",
   "GET mfa/status",
   "GET oauth/providers",
+  "PATCH profile",
+  "POST change-password",
+  "POST change-email",
+  "POST delete-account",
+  "POST export-data",
   "POST mfa/setup",
   "POST mfa/verify",
   "POST mfa/disable",
@@ -1412,6 +1417,7 @@ var AUTH_ROUTES = /* @__PURE__ */ new Set([
   "POST oauth/callback"
 ]);
 var PUBLIC_AUTH_ROUTES = /* @__PURE__ */ new Set(["POST oauth/start", "POST oauth/callback"]);
+var PUBLIC_DATA_ROUTES = /* @__PURE__ */ new Set(["POST flags/evaluate", "POST flags/evaluate/all", "POST flags/evaluate/batch", "GET feedback/items", "POST feedback/submit"]);
 var MAX_BODY_BYTES = 25 * 1024 * 1024;
 async function boundedBody(request) {
   if (request.method === "GET" || request.method === "HEAD" || !request.body) return void 0;
@@ -1449,7 +1455,7 @@ async function browserProxy(request, path, config) {
   const authRoute = path[1] === "auth" && (AUTH_ROUTES.has(authOperation) || request.method === "DELETE" && path[2] === "oauth" && path[3] === "providers" && path.length === 5);
   if (path[0] !== "v1" || !(SERVICES.has(path[1]) || authRoute) || path.some((part) => !part || part === "." || part === ".." || /[\\/%\u0000-\u001f]/.test(part))) return error("NOT_FOUND", 404);
   const session = await getSession({ allowBearer: false });
-  if (!session && !(authRoute && PUBLIC_AUTH_ROUTES.has(authOperation))) return error("UNAUTHORIZED", 401);
+  if (!session && !(authRoute && PUBLIC_AUTH_ROUTES.has(authOperation)) && !PUBLIC_DATA_ROUTES.has(`${request.method} ${path.slice(1).join("/")}`)) return error("UNAUTHORIZED", 401);
   const gateway = resolveGatewayUrl({ ...config.client, gatewayUrl: config.browserGatewayUrl || process.env.NEXT_PUBLIC_SCALEMULE_GATEWAY_URL || config.client?.gatewayUrl });
   const target = new URL(`${gateway.replace(/\/$/, "")}/${path.map(encodeURIComponent).join("/")}`);
   target.search = new URL(request.url).search;
@@ -1475,6 +1481,9 @@ async function browserProxy(request, path, config) {
     if (authRoute) {
       const payload = await upstream.json();
       const data = payload?.data || payload;
+      if (authOperation === "POST delete-account" && upstream.ok && payload.success !== false) {
+        for (const cookie of clearSession({}, config.cookies).headers.getSetCookie()) outputHeaders.append("Set-Cookie", cookie);
+      }
       const token = data?.session_token;
       if (typeof token === "string" && data?.user?.id && upstream.ok && payload.success !== false) {
         const established = withSession({ session_token: token, user: data.user }, {}, config.cookies);

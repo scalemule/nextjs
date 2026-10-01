@@ -62,7 +62,7 @@ vi.mock('@scalemule/sdk', () => ({
   ScaleMule: mockScaleMule,
 }))
 
-import { ScaleMuleProvider, useMoneyClient } from './provider'
+import { ScaleMuleProvider, useMoneyClient, useScaleMule } from './provider'
 
 describe('ScaleMuleProvider money integration', () => {
   beforeEach(() => {
@@ -231,13 +231,14 @@ it.each(['prop', 'environment'])('cookie proxy uses the %s publishable key in al
   const wrapper = ({ children }: { children: React.ReactNode }) => (
     <ScaleMuleProvider apiKey="proxy-mode" publishableKey={source === 'prop' ? key : undefined} authProxyUrl="/api/auth">{children}</ScaleMuleProvider>
   )
-  const { unmount } = renderHook(() => useMoneyClient(), { wrapper })
+  const { result, unmount } = renderHook(() => useScaleMule(), { wrapper })
   await waitFor(() => expect(mockClient.setCookieSession).toHaveBeenCalledWith('user'))
   for (const factory of [mockCreateClient, mockCreateMoneyClient, mockScaleMule]) {
     expect(factory).toHaveBeenCalledWith(expect.objectContaining({ apiKey: key }))
   }
   expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({ gatewayUrl: '/api/auth/client', cookieSession: true }))
   expect(mockScaleMule).toHaveBeenCalledWith(expect.objectContaining({ baseUrl: '/api/auth/client', realtimeUrl: 'https://api.scalemule.com' }))
+  expect(result.current.publishableKey).toBe(key)
   unmount()
   vi.unstubAllEnvs()
 })

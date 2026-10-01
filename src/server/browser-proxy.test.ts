@@ -68,3 +68,21 @@ describe('cookie-authenticated browser proxy', () => {
     expect(response.headers.getSetCookie().join(';')).toContain('sm_session=oauth-secret')
   })
 })
+
+it.each([['PATCH', 'profile'], ['POST', 'change-password'], ['POST', 'change-email'], ['POST', 'delete-account'], ['POST', 'export-data']])('preserves authenticated useUser operation %s %s', async (method, operation) => {
+  const response = await browserProxy(request(`v1/auth/${operation}`, { method }), ['v1', 'auth', operation], config)
+  expect(response.status).toBe(200)
+  expect(fetcher.mock.calls[0][1].headers.get('authorization')).toBe('Bearer cookie-secret')
+  if (operation === 'delete-account') {
+    expect(response.headers.getSetCookie()).toHaveLength(2)
+    expect(response.headers.getSetCookie().every(c => c.includes('Max-Age=0'))).toBe(true)
+  }
+})
+
+it('preserves anonymous flag evaluation without adding an identity', async () => {
+  session.mockResolvedValue(null)
+  const response = await browserProxy(request('v1/flags/evaluate/all', { method: 'POST' }), ['v1', 'flags', 'evaluate', 'all'], config)
+  expect(response.status).toBe(200)
+  expect(fetcher.mock.calls[0][1].headers.has('authorization')).toBe(false)
+  expect(fetcher.mock.calls[0][1].headers.get('x-api-key')).toBe(config.publishableKey)
+})

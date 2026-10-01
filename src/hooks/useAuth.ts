@@ -395,6 +395,7 @@ export function useAuth(): UseAuthReturn {
       } catch {
         // Ignore errors - we're logging out anyway
       }
+      await client.clearSession()
       setUser(null)
       return
     }
@@ -1156,6 +1157,7 @@ export function useAuth(): UseAuthReturn {
       // Log out current session — session cookie cleared, known accounts cookie preserved
       if (authProxyUrl) {
         await proxyFetch(authProxyUrl, 'switch-account')
+        await client.clearSession()
       } else {
         const sessionToken = client.getSessionToken()
         if (sessionToken) {

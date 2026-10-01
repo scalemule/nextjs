@@ -1,5 +1,5 @@
 /** Cookie-authenticated transport for browser SDK data calls. */
-import { getSession, withSession, withRefreshedSession, type SessionCookieOptions } from './cookies'
+import { getSession, withSession, withRefreshedSession, clearSession, type SessionCookieOptions } from './cookies'
 import { resolveGatewayUrl, type ServerConfig } from './client'
 
 export interface BrowserProxyConfig {
@@ -37,13 +37,17 @@ export function isSameOriginRequest(request: Request): boolean {
 // Data APIs available with a publishable key + validated user session. Auth and
 // platform administration are deliberately absent: those have dedicated routes
 // that consume credentials and set cookies without returning session tokens.
-const SERVICES = new Set(['storage', 'photo', 'video', 'audio', 'media', 'tts', 'social', 'chat', 'realtime', 'money', 'billing', 'flags', 'notifications', 'search', 'presence', 'conference', 'gallop', 'data', 'forms', 'preferences'])
+const SERVICES = new Set(['storage', 'photo', 'video', 'audio', 'media', 'tts', 'social', 'chat', 'realtime', 'money', 'billing', 'flags', 'notifications', 'search', 'presence', 'conference', 'gallop', 'data', 'forms', 'preferences', 'feedback', 'referrals'])
 const AUTH_ROUTES = new Set([
   'GET me', 'GET mfa/status', 'GET oauth/providers',
+  'PATCH profile', 'POST change-password', 'POST change-email', 'POST delete-account', 'POST export-data',
   'POST mfa/setup', 'POST mfa/verify', 'POST mfa/disable', 'POST mfa/backup-codes',
   'POST oauth/start', 'POST oauth/callback',
 ])
 const PUBLIC_AUTH_ROUTES = new Set(['POST oauth/start', 'POST oauth/callback'])
+// Preserve the SDK's anonymous feature-flag and feedback APIs. The gateway
+// still validates the publishable key and each endpoint's tenant policy.
+const PUBLIC_DATA_ROUTES = new Set(['POST flags/evaluate', 'POST flags/evaluate/all', 'POST flags/evaluate/batch', 'GET feedback/items', 'POST feedback/submit'])
 const MAX_BODY_BYTES = 25 * 1024 * 1024
 
 async function boundedBody(request: Request): Promise<Uint8Array | undefined> {
@@ -77,7 +81,7 @@ export async function browserProxy(request: Request, path: string[], config: Bro
   const authRoute = path[1] === 'auth' && (AUTH_ROUTES.has(authOperation) || (request.method === 'DELETE' && path[2] === 'oauth' && path[3] === 'providers' && path.length === 5))
   if (path[0] !== 'v1' || !(SERVICES.has(path[1]) || authRoute) || path.some(part => !part || part === '.' || part === '..' || /[\\/%\u0000-\u001f]/.test(part))) return error('NOT_FOUND', 404)
   const session = await getSession({ allowBearer: false })
-  if (!session && !(authRoute && PUBLIC_AUTH_ROUTES.has(authOperation))) return error('UNAUTHORIZED', 401)
+  if (!session && !(authRoute && PUBLIC_AUTH_ROUTES.has(authOperation)) && !PUBLIC_DATA_ROUTES.has(`${request.method} ${path.slice(1).join('/')}`)) return error('UNAUTHORIZED', 401)
   const gateway = resolveGatewayUrl({ apiKey: key, ...config.client, gatewayUrl: config.browserGatewayUrl || process.env.NEXT_PUBLIC_SCALEMULE_GATEWAY_URL || config.client?.gatewayUrl })
   const target = new URL(`${gateway.replace(/\/$/, '')}/${path.map(encodeURIComponent).join('/')}`)
   target.search = new URL(request.url).search
@@ -105,6 +109,9 @@ export async function browserProxy(request: Request, path: string[], config: Bro
     if (authRoute) {
       const payload = await upstream.json()
       const data = payload?.data || payload
+      if (authOperation === 'POST delete-account' && upstream.ok && payload.success !== false) {
+        for (const cookie of clearSession({}, config.cookies).headers.getSetCookie()) outputHeaders.append('Set-Cookie', cookie)
+      }
       const token = data?.session_token
       if (typeof token === 'string' && data?.user?.id && upstream.ok && payload.success !== false) {
         const established = withSession({ session_token: token, user: data.user }, {}, config.cookies)

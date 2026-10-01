@@ -1427,7 +1427,7 @@ function ScaleMuleProvider({
       setError,
       analyticsProxyUrl,
       authProxyUrl,
-      publishableKey,
+      publishableKey: cookieSession ? browserKey : publishableKey,
       apiKey,
       gatewayUrl: resolvedGatewayUrl,
       environment: environment || void 0,
@@ -1435,7 +1435,7 @@ function ScaleMuleProvider({
       accountSwitcherPrivacy,
       bootstrapFlags
     }),
-    [requestSecurityCode, client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
+    [requestSecurityCode, client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, browserKey, cookieSession, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
   );
   return /* @__PURE__ */ jsxs(ScaleMuleContext.Provider, { value, children: [
     children,
@@ -1664,6 +1664,7 @@ function useAuth() {
         await proxyFetch(authProxyUrl, "logout");
       } catch {
       }
+      await client.clearSession();
       setUser(null);
       return;
     }
@@ -2213,6 +2214,7 @@ function useAuth() {
       if (!target) return null;
       if (authProxyUrl) {
         await proxyFetch(authProxyUrl, "switch-account");
+        await client.clearSession();
       } else {
         const sessionToken = client.getSessionToken();
         if (sessionToken) {
