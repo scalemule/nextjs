@@ -47,6 +47,7 @@ vi.mock('./client', () => ({
 }))
 
 vi.mock('next/headers', () => ({
+  headers: vi.fn().mockResolvedValue(new Headers()),
   cookies: vi.fn().mockResolvedValue({
     get: vi.fn().mockReturnValue(null),
   }),
@@ -380,4 +381,18 @@ it('uses the same partitioned policy after handoff for rotation and logout', asy
   expect(loggedOut.headers.getSetCookie().filter(c => c.includes('Partitioned'))).toHaveLength(2)
   expect(loggedOut.headers.getSetCookie().every(c => c.includes('Max-Age=0'))).toBe(true)
   vi.mocked(cookies).mockResolvedValue({ get: () => null } as never)
+})
+
+it('protected cookie auth routes ignore bearer headers unless compatibility is explicit', async () => {
+  const { headers, cookies } = await import('next/headers')
+  vi.mocked(cookies).mockResolvedValue({ get: () => null } as never)
+  vi.mocked(headers).mockResolvedValue(new Headers({ authorization: 'Bearer caller-token', 'x-sm-user-id': 'caller-user' }) as never)
+  mockMe.mockReset().mockResolvedValue({ id: 'caller-user' })
+  const response = await createAuthRoutes().GET(new Request('https://example.com/api/auth/me'), contextFor('me'))
+  expect(response.status).toBe(401)
+  expect(mockMe).not.toHaveBeenCalled()
+  const compatible = await createAuthRoutes({ sessionMode: 'bearer' }).GET(new Request('https://example.com/api/auth/me'), contextFor('me'))
+  expect(compatible.status).toBe(200)
+  expect(mockMe).toHaveBeenCalledWith('caller-token', expect.any(Object))
+  vi.mocked(headers).mockResolvedValue(new Headers() as never)
 })

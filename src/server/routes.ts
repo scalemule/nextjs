@@ -311,7 +311,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
         // ==================== Logout ====================
         case 'logout': {
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           let rotated: string | null = null
           if (session) {
@@ -410,7 +410,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
         // Supports both authenticated (session-based) and unauthenticated (email-based) resend
         case 'resend-verification': {
           const { email } = body
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           let rotated: string | null = null
           if (email) {
@@ -461,7 +461,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
         // ==================== Refresh Session ====================
         case 'refresh': {
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           if (!session) {
             return errorResponse('UNAUTHORIZED', 'Authentication required', 401)
@@ -487,7 +487,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
         // ==================== Change Password ====================
         case 'change-password': {
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           if (!session) {
             return errorResponse('UNAUTHORIZED', 'Authentication required', 401)
@@ -540,7 +540,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('NOT_FOUND', 'Account switcher not enabled', 404)
           }
 
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
           if (session) {
             try {
               await sm.auth.logout(session.sessionToken)
@@ -633,7 +633,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return resp;
           };
 
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           if (!session) {
             return withNorm(errorResponse('UNAUTHORIZED', 'Authentication required', 401))
@@ -670,7 +670,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
         // ==================== Get Session Status ====================
         case 'session': {
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
           return successResponse({
             authenticated: !!session,
             userId: session?.userId || null,
@@ -706,7 +706,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
         // ==================== Delete Account ====================
         case 'me':
         case 'account': {
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           if (!session) {
             return errorResponse('UNAUTHORIZED', 'Authentication required', 401)
@@ -752,7 +752,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
         // ==================== Update Profile ====================
         case 'me':
         case 'profile': {
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           if (!session) {
             return errorResponse('UNAUTHORIZED', 'Authentication required', 401)
