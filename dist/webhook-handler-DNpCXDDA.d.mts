@@ -1,5 +1,5 @@
 import { MoneyClient } from '@scalemule/money';
-import { A as ApiError, a2 as RegisterRequest, q as ClientContext, U as User, L as LoginResponse, y as LoginRequest, c as ListFilesParams, w as ListFilesResponse, ac as StorageFile, ai as UploadResponse } from './index-D47h1trI.mjs';
+import { A as ApiError, a3 as RegisterRequest, q as ClientContext, U as User, L as LoginResponse, y as LoginRequest, c as ListFilesParams, w as ListFilesResponse, ad as StorageFile, aj as UploadResponse } from './index-2PnO4RAF.mjs';
 
 /**
  * Server-Side ScaleMule Client

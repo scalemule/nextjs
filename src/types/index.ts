@@ -249,7 +249,9 @@ export interface CookieLoginResponse {
   user: User
   userId: string
 }
-export type AuthLoginResponse = LoginResponse | CookieLoginResponse
+/** Legacy custom proxies may omit the backend's session expiry metadata. */
+export type ProxyBearerLoginResponse = Pick<LoginResponse, 'session_token' | 'user'> & Partial<Omit<LoginResponse, 'session_token' | 'user'>>
+export type AuthLoginResponse = LoginResponse | CookieLoginResponse | ProxyBearerLoginResponse
 export type CookieOAuthCallbackResponse = Omit<OAuthCallbackResponse, 'session_token'> & { authenticated: true }
 
 export interface LoginDeviceInfo {

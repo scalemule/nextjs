@@ -38,7 +38,7 @@ import type {
 } from '../types'
 
 // Legacy custom proxies may still supply a token; shared cookie routes do not.
-interface ProxyLoginData { user: User; userId?: string; sessionToken?: string; session_token?: string }
+interface ProxyLoginData extends Partial<LoginResponse> { user: User; userId?: string; sessionToken?: string }
 function cookieLoginResult(user: User): CookieLoginResponse {
   return { authenticated: true, userId: user.id, user }
 }
@@ -344,14 +344,14 @@ export function useAuth(): UseAuthReturn {
         if (!responseUser) throw new ScaleMuleApiError({ code: 'LOGIN_FAILED', message: 'Sign-in did not return a user' })
         setUser(responseUser)
 
-        // Set session token on client so API requests include Authorization header
-        const sessionToken = 'sessionToken' in loginData ? loginData.sessionToken : undefined
-        const userId = 'userId' in loginData ? loginData.userId : undefined
-        if (sessionToken) {
-          await client.setSession(sessionToken, userId || responseUser?.id || '')
+        if (client.usesCookieSession()) {
+          client.setCookieSession(responseUser.id)
+          return cookieLoginResult(responseUser)
         }
-
-        return cookieLoginResult(loginData.user)
+        const sessionToken = loginData.sessionToken || loginData.session_token
+        if (!sessionToken) throw new ScaleMuleApiError({ code: 'LOGIN_FAILED', message: 'Sign-in did not return a session' })
+        await client.setSession(sessionToken, loginData.userId || responseUser.id)
+        return { ...loginData, session_token: sessionToken }
       }
 
       let loginResult: LoginResponse | LoginResponseWithMFA
@@ -921,7 +921,7 @@ export function useAuth(): UseAuthReturn {
           if (!sessionToken) throw new ScaleMuleApiError({ code: 'MFA_FAILED', message: 'Sign-in did not return a session' })
           await client.setSession(sessionToken, result.data.user.id)
           setUser(result.data.user)
-          return cookieLoginResult(result.data.user)
+          return { ...result.data, session_token: sessionToken }
         } else {
           mfaResult = await client.post<LoginResponse>('/v1/auth/mfa/verify', { pending_token: challengeToken, code, method })
         }
@@ -1091,14 +1091,14 @@ export function useAuth(): UseAuthReturn {
         if (!responseUser) throw new ScaleMuleApiError({ code: 'LOGIN_FAILED', message: 'Sign-in did not return a user' })
         setUser(responseUser)
 
-        // Set session token on client so API requests include Authorization header
-        const sessionToken = 'sessionToken' in loginData ? loginData.sessionToken : undefined
-        const userId = 'userId' in loginData ? loginData.userId : undefined
-        if (sessionToken) {
-          await client.setSession(sessionToken, userId || responseUser?.id || '')
+        if (client.usesCookieSession()) {
+          client.setCookieSession(responseUser.id)
+          return cookieLoginResult(responseUser)
         }
-
-        return cookieLoginResult(loginData.user)
+        const sessionToken = loginData.sessionToken || loginData.session_token
+        if (!sessionToken) throw new ScaleMuleApiError({ code: 'LOGIN_FAILED', message: 'Sign-in did not return a session' })
+        await client.setSession(sessionToken, loginData.userId || responseUser.id)
+        return { ...loginData, session_token: sessionToken }
       }
 
       let phoneLoginData: LoginResponse

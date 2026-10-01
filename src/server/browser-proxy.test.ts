@@ -81,9 +81,10 @@ it.each([['PATCH', 'profile'], ['POST', 'change-password'], ['POST', 'change-ema
 
 it('preserves anonymous flag evaluation without adding an identity', async () => {
   session.mockResolvedValue(null)
-  const response = await browserProxy(request('v1/flags/evaluate/all', { method: 'POST' }), ['v1', 'flags', 'evaluate', 'all'], config)
+  const response = await browserProxy(request('v1/flags/evaluate/all', { method: 'POST', headers: { 'x-anonymous-id': 'visitor-one' } }), ['v1', 'flags', 'evaluate', 'all'], config)
   expect(response.status).toBe(200)
   expect(fetcher.mock.calls[0][1].headers.has('authorization')).toBe(false)
+  expect(fetcher.mock.calls[0][1].headers.get('x-anonymous-id')).toBe('visitor-one')
   expect(fetcher.mock.calls[0][1].headers.get('x-api-key')).toBe(config.publishableKey)
 })
 

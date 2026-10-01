@@ -147,6 +147,7 @@ export type {
   LoginRequest,
   LoginResponse,
   CookieLoginResponse,
+  ProxyBearerLoginResponse,
   AuthLoginResponse,
   CookieOAuthCallbackResponse,
   LoginResponseWithMFA,

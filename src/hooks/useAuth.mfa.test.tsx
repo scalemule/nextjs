@@ -48,3 +48,20 @@ it.each([false, true])('refresh only adopts a returned token in bearer compatibi
   unmount()
   vi.unstubAllGlobals()
 })
+
+
+it.each(['sessionToken', 'session_token'])('preserves explicit bearer login and MFA return values from %s proxies', async (tokenField) => {
+  mocks.usesCookieSession.mockReturnValue(false)
+  const data = { [tokenField]: 'legacy-secret', user: { id: 'user', email: 'test@example.invalid' }, expires_at: '2030-01-01', absolute_expires_at: '2030-01-02' }
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 200, json: async () => ({ success: true, data }) }))
+  const { result, unmount } = renderHook(() => useAuth())
+  await act(async () => {
+    const login = await result.current.login({ email: data.user.email, password: 'password' })
+    expect(login).toMatchObject({ session_token: 'legacy-secret', expires_at: data.expires_at })
+    const mfa = await result.current.completeMFAChallenge('pending', '123456', 'totp')
+    expect(mfa).toMatchObject({ session_token: 'legacy-secret', expires_at: data.expires_at })
+  })
+  expect(mocks.setSession).toHaveBeenCalledWith('legacy-secret', 'user')
+  unmount()
+  vi.unstubAllGlobals()
+})

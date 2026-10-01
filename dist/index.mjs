@@ -1628,12 +1628,14 @@ function useAuth() {
         const responseUser = "user" in loginData2 ? loginData2.user : null;
         if (!responseUser) throw new ScaleMuleApiError({ code: "LOGIN_FAILED", message: "Sign-in did not return a user" });
         setUser(responseUser);
-        const sessionToken = "sessionToken" in loginData2 ? loginData2.sessionToken : void 0;
-        const userId = "userId" in loginData2 ? loginData2.userId : void 0;
-        if (sessionToken) {
-          await client.setSession(sessionToken, userId || responseUser?.id || "");
+        if (client.usesCookieSession()) {
+          client.setCookieSession(responseUser.id);
+          return cookieLoginResult(responseUser);
         }
-        return cookieLoginResult(loginData2.user);
+        const sessionToken = loginData2.sessionToken || loginData2.session_token;
+        if (!sessionToken) throw new ScaleMuleApiError({ code: "LOGIN_FAILED", message: "Sign-in did not return a session" });
+        await client.setSession(sessionToken, loginData2.userId || responseUser.id);
+        return { ...loginData2, session_token: sessionToken };
       }
       let loginResult;
       try {
@@ -2034,7 +2036,7 @@ function useAuth() {
           if (!sessionToken) throw new ScaleMuleApiError({ code: "MFA_FAILED", message: "Sign-in did not return a session" });
           await client.setSession(sessionToken, result.data.user.id);
           setUser(result.data.user);
-          return cookieLoginResult(result.data.user);
+          return { ...result.data, session_token: sessionToken };
         } else {
           mfaResult = await client.post("/v1/auth/mfa/verify", { pending_token: challengeToken, code, method });
         }
@@ -2168,12 +2170,14 @@ function useAuth() {
         const responseUser = "user" in loginData ? loginData.user : null;
         if (!responseUser) throw new ScaleMuleApiError({ code: "LOGIN_FAILED", message: "Sign-in did not return a user" });
         setUser(responseUser);
-        const sessionToken = "sessionToken" in loginData ? loginData.sessionToken : void 0;
-        const userId = "userId" in loginData ? loginData.userId : void 0;
-        if (sessionToken) {
-          await client.setSession(sessionToken, userId || responseUser?.id || "");
+        if (client.usesCookieSession()) {
+          client.setCookieSession(responseUser.id);
+          return cookieLoginResult(responseUser);
         }
-        return cookieLoginResult(loginData.user);
+        const sessionToken = loginData.sessionToken || loginData.session_token;
+        if (!sessionToken) throw new ScaleMuleApiError({ code: "LOGIN_FAILED", message: "Sign-in did not return a session" });
+        await client.setSession(sessionToken, loginData.userId || responseUser.id);
+        return { ...loginData, session_token: sessionToken };
       }
       let phoneLoginData;
       try {

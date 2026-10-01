@@ -1,4 +1,4 @@
-import { ab as StorageAdapter, A as ApiError } from './index-D47h1trI.mjs';
+import { ac as StorageAdapter, A as ApiError } from './index-2PnO4RAF.mjs';
 
 /**
  * ScaleMule API Client
