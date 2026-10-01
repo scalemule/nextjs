@@ -106,6 +106,14 @@ export async function browserProxy(request: Request, path: string[], config: Bro
       const refreshed = withRefreshedSession(rotated, session.userId, {}, config.cookies)
       for (const cookie of refreshed.headers.getSetCookie()) outputHeaders.append('Set-Cookie', cookie)
     }
+    // These statuses cannot carry a response body, including JSON. Consume
+    // rotation first, then preserve the upstream semantics without parsing.
+    if ([204, 205, 304].includes(upstream.status)) {
+      if (authOperation === 'POST delete-account' && upstream.ok) {
+        for (const cookie of clearSession({}, config.cookies).headers.getSetCookie()) outputHeaders.append('Set-Cookie', cookie)
+      }
+      return new Response(null, { status: upstream.status, headers: outputHeaders })
+    }
     if (authRoute) {
       const payload = await upstream.json()
       const data = payload?.data || payload

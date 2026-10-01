@@ -596,8 +596,8 @@ export function useAuth(): UseAuthReturn {
     setError(null)
 
     if (authProxyUrl) {
-      // Proxy mode: refresh via proxy (cookies handle session)
-      const response = await proxyFetch<{ user: User | null; message: string }>(
+      // Cookie mode keeps rotation server-side; explicit bearer mode adopts it.
+      const response = await proxyFetch<{ user?: User | null; message: string; sessionToken?: string; userId?: string }>(
         authProxyUrl, 'refresh'
       )
 
@@ -611,6 +611,9 @@ export function useAuth(): UseAuthReturn {
         throw err
       }
 
+      if (!client.usesCookieSession() && response.data?.sessionToken && response.data.userId) {
+        await client.setSession(response.data.sessionToken, response.data.userId)
+      }
       if (response.data?.user) {
         setUser(response.data.user)
       }

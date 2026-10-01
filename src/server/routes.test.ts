@@ -13,6 +13,7 @@ import { SESSION_COOKIE_NAME, USER_ID_COOKIE_NAME } from './cookies'
 
 // ─── Mocks ───────────────────────────────────────────────────────
 
+const mockRefresh = vi.fn()
 const mockMe = vi.fn()
 const mockVerifyEmail = vi.fn()
 const mockLogin = vi.fn()
@@ -33,7 +34,7 @@ vi.mock('./client', () => ({
       verifyEmail: mockVerifyEmail,
       logout: vi.fn(),
       me: mockMe,
-      refresh: vi.fn(),
+      refresh: mockRefresh,
       forgotPassword: vi.fn(),
       resetPassword: mockResetPassword,
       resendVerification: vi.fn(),
@@ -395,4 +396,22 @@ it('protected cookie auth routes ignore bearer headers unless compatibility is e
   expect(compatible.status).toBe(200)
   expect(mockMe).toHaveBeenCalledWith('caller-token', expect.any(Object))
   vi.mocked(headers).mockResolvedValue(new Headers() as never)
+})
+
+
+it.each(['cookie', 'bearer'] as const)('refresh exposes replacement credentials only in explicit bearer mode: %s', async (sessionMode) => {
+  const { cookies } = await import('next/headers')
+  vi.mocked(cookies).mockResolvedValue({ get: (key: string) => ({ value: key === 'sm_session' ? 'old-secret' : 'user' }) } as never)
+  mockRefresh.mockResolvedValueOnce({ session_token: 'new-secret' })
+  const response = await createAuthRoutes({ sessionMode }).POST(createRequest('refresh', {}), contextFor('refresh'))
+  expect(response.status).toBe(200)
+  const data = (await response.json()).data
+  expect(data.sessionToken).toBe(sessionMode === 'bearer' ? 'new-secret' : undefined)
+  expect(response.headers.getSetCookie().join(';')).toContain('sm_session=new-secret')
+  mockRefresh.mockRejectedValueOnce(new Error('Expired'))
+  const failed = await createAuthRoutes({ sessionMode }).POST(createRequest('refresh', {}), contextFor('refresh'))
+  expect(failed.status).toBe(401)
+  expect((await failed.json()).success).toBe(false)
+  expect(failed.headers.getSetCookie().every(c => c.includes('Max-Age=0'))).toBe(true)
+  vi.mocked(cookies).mockResolvedValue({ get: () => null } as never)
 })

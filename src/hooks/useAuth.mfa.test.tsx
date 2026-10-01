@@ -35,3 +35,16 @@ it('proxy logout clears legacy client credentials as well as server cookies', as
   unmount()
   vi.unstubAllGlobals()
 })
+
+
+it.each([false, true])('refresh only adopts a returned token in bearer compatibility mode (cookie=%s)', async (cookieMode) => {
+  mocks.setSession.mockClear()
+  mocks.usesCookieSession.mockReturnValue(cookieMode)
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ status: 200, json: async () => ({ success: true, data: { sessionToken: 'replacement', userId: 'user' } }) }))
+  const { result, unmount } = renderHook(() => useAuth())
+  await act(async () => { await result.current.refreshSession() })
+  if (cookieMode) expect(mocks.setSession).not.toHaveBeenCalled()
+  else expect(mocks.setSession).toHaveBeenCalledWith('replacement', 'user')
+  unmount()
+  vi.unstubAllGlobals()
+})

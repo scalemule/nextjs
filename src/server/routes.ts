@@ -473,14 +473,15 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           } catch {
             return clearSession(
               { message: 'Session expired' },
-              cookieOptions
+              cookieOptions,
+              401
             )
           }
 
           return withRefreshedSession(
             refreshData.session_token,
             session.userId,
-            { message: 'Session refreshed' },
+            { message: 'Session refreshed', ...(config.sessionMode === 'bearer' ? { sessionToken: refreshData.session_token, userId: session.userId } : {}) },
             cookieOptions
           )
         }

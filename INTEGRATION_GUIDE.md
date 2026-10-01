@@ -67,7 +67,7 @@ Create a single file that handles all authentication endpoints:
 // app/api/auth/[...scalemule]/route.ts
 import { createAuthRoutes } from '@scalemule/nextjs/server'
 
-export const { GET, POST, DELETE, PATCH } = createAuthRoutes()
+export const { GET, POST, PUT, DELETE, PATCH } = createAuthRoutes()
 ```
 
 This automatically creates these endpoints:
@@ -580,7 +580,7 @@ Creates drop-in route handlers for all auth endpoints.
 ```ts
 import { createAuthRoutes } from '@scalemule/nextjs/server'
 
-export const { GET, POST, DELETE, PATCH } = createAuthRoutes({
+export const { GET, POST, PUT, DELETE, PATCH } = createAuthRoutes({
   cookies: {
     maxAge: 30 * 24 * 60 * 60, // 30 days
     domain: '.yourdomain.com', // optional

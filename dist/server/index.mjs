@@ -1478,6 +1478,12 @@ async function browserProxy(request, path, config) {
       const refreshed = withRefreshedSession(rotated, session.userId, {}, config.cookies);
       for (const cookie of refreshed.headers.getSetCookie()) outputHeaders.append("Set-Cookie", cookie);
     }
+    if ([204, 205, 304].includes(upstream.status)) {
+      if (authOperation === "POST delete-account" && upstream.ok) {
+        for (const cookie of clearSession({}, config.cookies).headers.getSetCookie()) outputHeaders.append("Set-Cookie", cookie);
+      }
+      return new Response(null, { status: upstream.status, headers: outputHeaders });
+    }
     if (authRoute) {
       const payload = await upstream.json();
       const data = payload?.data || payload;
@@ -1797,13 +1803,14 @@ function createAuthRoutes(config = {}) {
           } catch {
             return clearSession(
               { message: "Session expired" },
-              cookieOptions
+              cookieOptions,
+              401
             );
           }
           return withRefreshedSession(
             refreshData.session_token,
             session.userId,
-            { message: "Session refreshed" },
+            { message: "Session refreshed", ...config.sessionMode === "bearer" ? { sessionToken: refreshData.session_token, userId: session.userId } : {} },
             cookieOptions
           );
         }

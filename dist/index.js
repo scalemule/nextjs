@@ -1859,6 +1859,9 @@ function useAuth() {
         setError(err);
         throw err;
       }
+      if (!client.usesCookieSession() && response.data?.sessionToken && response.data.userId) {
+        await client.setSession(response.data.sessionToken, response.data.userId);
+      }
       if (response.data?.user) {
         setUser(response.data.user);
       }

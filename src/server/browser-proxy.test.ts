@@ -86,3 +86,21 @@ it('preserves anonymous flag evaluation without adding an identity', async () =>
   expect(fetcher.mock.calls[0][1].headers.has('authorization')).toBe(false)
   expect(fetcher.mock.calls[0][1].headers.get('x-api-key')).toBe(config.publishableKey)
 })
+
+
+it.each([204, 205, 304])('preserves bodyless auth status %s and consumes rotation securely', async (status) => {
+  fetcher.mockResolvedValueOnce(new Response(null, { status, headers: { 'x-rotated-session-token': 'replacement-secret' } }))
+  const response = await browserProxy(request('v1/auth/me'), ['v1', 'auth', 'me'], config)
+  expect(response.status).toBe(status)
+  expect(await response.text()).toBe('')
+  expect(response.headers.get('x-rotated-session-token')).toBeNull()
+  expect(response.headers.getSetCookie().join(';')).toContain('sm_session=replacement-secret')
+})
+
+it('clears cookies when account deletion returns 204', async () => {
+  fetcher.mockResolvedValueOnce(new Response(null, { status: 204 }))
+  const response = await browserProxy(request('v1/auth/delete-account', { method: 'POST' }), ['v1', 'auth', 'delete-account'], config)
+  expect(response.status).toBe(204)
+  expect(response.headers.getSetCookie()).toHaveLength(2)
+  expect(response.headers.getSetCookie().every(c => c.includes('Max-Age=0'))).toBe(true)
+})

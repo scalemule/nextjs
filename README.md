@@ -20,7 +20,7 @@ npm install @scalemule/nextjs
 // app/api/auth/[...scalemule]/route.ts
 import { createAuthRoutes } from '@scalemule/nextjs/server'
 
-export const { GET, POST, DELETE, PATCH } = createAuthRoutes()
+export const { GET, POST, PUT, DELETE, PATCH } = createAuthRoutes()
 ```
 
 This creates all auth endpoints automatically:
@@ -81,7 +81,7 @@ SCALEMULE_COOKIE_DOMAIN=.yourdomain.com  # optional, for subdomain sharing
 ## Auth Route Options
 
 ```ts
-export const { GET, POST, DELETE, PATCH } = createAuthRoutes({
+export const { GET, POST, PUT, DELETE, PATCH } = createAuthRoutes({
   // CSRF validation (recommended for production)
   csrf: true,
 
@@ -125,7 +125,7 @@ For zero-config auth (reads from env vars):
 
 ```ts
 // app/api/auth/[...scalemule]/route.ts
-export { GET, POST, DELETE, PATCH } from '@scalemule/nextjs/server/auth'
+export { GET, POST, PUT, DELETE, PATCH } from '@scalemule/nextjs/server/auth'
 ```
 
 ## Proxy Mode (keep API keys server-side)
@@ -134,7 +134,7 @@ If you don't want a real ScaleMule API key in browser bundles, run the SDK in **
 
 ```ts
 // app/api/auth/[...scalemule]/route.ts
-export { GET, POST, DELETE, PATCH } from '@scalemule/nextjs/server/auth'
+export { GET, POST, PUT, DELETE, PATCH } from '@scalemule/nextjs/server/auth'
 ```
 
 ```ts
@@ -359,7 +359,7 @@ export function middleware(request) {
 ### Enable in Auth Routes
 
 ```ts
-export const { GET, POST, DELETE, PATCH } = createAuthRoutes({
+export const { GET, POST, PUT, DELETE, PATCH } = createAuthRoutes({
   csrf: true,  // validates x-csrf-token header against cookie
 })
 ```
