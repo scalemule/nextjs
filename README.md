@@ -2,6 +2,10 @@
 
 ScaleMule SDK for Next.js applications.
 
+For persistent article playback, a bottom player bar, listening queues and an
+opt-in player window that survives navigation across publications, see the
+[network audio integration guide](docs/network-audio.md).
+
 Server-side authentication with HTTP-only cookies, CSRF protection, webhook handling, secrets management, and client-side hooks.
 
 ## Install
