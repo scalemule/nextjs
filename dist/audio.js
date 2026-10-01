@@ -1279,6 +1279,7 @@ var NetworkPlayerClient = class {
 // src/components/network-audio-player.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
 var Context = (0, import_react2.createContext)(null);
+var NarrationRegistration = (0, import_react2.createContext)(null);
 var serverSnapshot = () => EMPTY_SNAPSHOT;
 function NetworkAudioProvider({ children, resolveAudio, connection, host, checkpointStorageKey }) {
   if (connection && host) throw new Error("Use connection on reader pages and host on the dedicated player route, not both.");
@@ -1287,6 +1288,16 @@ function NetworkAudioProvider({ children, resolveAudio, connection, host, checkp
   const [remoteSnapshot, setRemoteSnapshot] = (0, import_react2.useState)(null);
   const [notice, setNotice] = (0, import_react2.useState)(null);
   const [highlightEnabled, setHighlightEnabled] = (0, import_react2.useState)(false);
+  const [narrationTracks, setNarrationTracks] = (0, import_react2.useState)(() => /* @__PURE__ */ new Map());
+  const registerNarration = (0, import_react2.useCallback)((key) => {
+    const id = /* @__PURE__ */ Symbol();
+    setNarrationTracks((previous) => new Map(previous).set(id, key));
+    return () => setNarrationTracks((previous) => {
+      const next = new Map(previous);
+      next.delete(id);
+      return next;
+    });
+  }, []);
   const client = (0, import_react2.useRef)(null);
   (0, import_react2.useEffect)(() => {
     controller.setResolver(resolveAudio);
@@ -1350,19 +1361,22 @@ function NetworkAudioProvider({ children, resolveAudio, connection, host, checkp
   }, [controller]);
   const openNetworkPlayer = (0, import_react2.useCallback)(() => client.current?.open(), []);
   const activeSnapshot = remoteSnapshot ?? snapshot;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(Context.Provider, { value: {
+  const activeTrack = activeSnapshot.queue[activeSnapshot.index];
+  const highlightAvailable = !!activeTrack && [...narrationTracks.values()].includes(trackKey(activeTrack));
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Context.Provider, { value: {
     snapshot: activeSnapshot,
     remote: remoteSnapshot !== null,
     hosted: !!host,
     notice,
     command,
     openNetworkPlayer: connection ? openNetworkPlayer : void 0,
+    highlightAvailable,
     highlightEnabled,
     setHighlightEnabled
-  }, children: [
+  }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(NarrationRegistration.Provider, { value: registerNarration, children: [
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(NetworkMediaSession, {}),
     children
-  ] });
+  ] }) });
 }
 function useNetworkAudio() {
   const context = (0, import_react2.useContext)(Context);
@@ -1421,6 +1435,12 @@ var subscribeCapabilities = () => () => {
 function useArticleNarration(track, narration) {
   const { snapshot, highlightEnabled, setHighlightEnabled } = useNetworkAudio();
   const supported = (0, import_react2.useSyncExternalStore)(subscribeCapabilities, narrationHighlightSupported, () => false);
+  const registerNarration = (0, import_react2.useContext)(NarrationRegistration);
+  const narrationKey = trackKey(track);
+  const available = !!narration && supported;
+  (0, import_react2.useEffect)(() => {
+    if (available) return registerNarration?.(narrationKey);
+  }, [available, narrationKey, registerNarration]);
   const active = snapshot.queue[snapshot.index];
   const matching = !!active && trackKey(active) === trackKey(track);
   const clock = (0, import_react2.useRef)({ snapshot, received: 0 });
@@ -1474,26 +1494,88 @@ function useArticleNarration(track, narration) {
   }, [matching, highlightEnabled, supported, narration?.targetId, narration?.timingsUrl, track.id, track.publicationId]);
   return { highlightAvailable: !!narration && supported, highlightEnabled, setHighlightEnabled, matching };
 }
-function ArticleAudioControls({ track, narration, className = "" }) {
+function AudioIcon({ name }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("svg", { className: "sm-network-icon", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.7", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true", focusable: "false", children: [
+    name === "play" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "m9 5 11 7-11 7Z", fill: "currentColor", stroke: "none" }),
+    name === "pause" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M7 5h3v14H7zm7 0h3v14h-3z", fill: "currentColor", stroke: "none" }),
+    name === "queue" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M4 6h16M4 12h10M4 18h8m7-5v8m-4-4h8" }) }),
+    name === "check" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "m5 12 4 4L19 6" }),
+    name === "highlight" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_jsx_runtime2.Fragment, { children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "m7 14 7-9 5 4-7 9-5-4Zm0 0-3 5h8M16 3l5 4M3 22h17" }) }),
+    name === "next" && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "m6 5 10 7-10 7Z", fill: "currentColor", stroke: "none" }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M19 5v14" })
+    ] }),
+    name === "chevron" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "m7 10 5 5 5-5" }),
+    name === "external" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M14 4h6v6m0-6L10 14m10 1v5H4V4h5" })
+  ] });
+}
+var formatTime = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+var PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+function ArticleAudioControls({ track, narration, durationMs, className = "" }) {
   const { snapshot, command } = useNetworkAudio();
   const { highlightAvailable, highlightEnabled, setHighlightEnabled, matching } = useArticleNarration(track, narration);
   const playing = matching && (snapshot.status === "playing" || snapshot.status === "loading");
   const queued = snapshot.queue.some((item) => trackKey(item) === trackKey(track));
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `sm-network-article ${className}`, "aria-label": "Article audio", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: () => command(playing ? { action: "pause" } : { action: "playTrack", track }), children: playing ? "Pause article" : "Listen to article" }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", disabled: queued, onClick: () => command({ action: "enqueue", track }), children: queued ? "In your queue" : "Add to queue" }),
-    highlightAvailable && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", "aria-pressed": highlightEnabled, onClick: () => setHighlightEnabled(!highlightEnabled), children: "Highlight words" })
+  const duration = matching && snapshot.duration > 0 ? snapshot.duration : (durationMs ?? 0) / 1e3;
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `sm-network-article ${className}`, role: "group", "aria-label": "Article audio", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+      "button",
+      {
+        type: "button",
+        className: "sm-network-article__listen",
+        "aria-label": playing ? "Pause this story" : "Listen to this story",
+        onClick: () => command(playing ? { action: "pause" } : { action: "playTrack", track }),
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "sm-network-article__disc", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AudioIcon, { name: playing ? "pause" : "play" }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "sm-network-article__caption", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: playing ? "Pause this story" : "Listen to this story" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "sm-network-article__duration", children: matching && snapshot.status === "loading" ? "Loading audio\u2026" : duration > 0 ? `${formatTime(duration)} listening time` : "Article audio" })
+          ] })
+        ]
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "sm-network-article__actions", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+        "button",
+        {
+          type: "button",
+          className: "sm-network-article__queue",
+          "aria-label": queued ? "Queued" : "Add to queue",
+          disabled: queued,
+          onClick: () => command({ action: "enqueue", track }),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AudioIcon, { name: queued ? "check" : "queue" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: queued ? "Queued" : "Queue" })
+          ]
+        }
+      ),
+      highlightAvailable && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+        "button",
+        {
+          type: "button",
+          "aria-label": "Follow along: highlight words",
+          "aria-pressed": highlightEnabled,
+          title: "Highlight words as you listen",
+          onClick: () => setHighlightEnabled(!highlightEnabled),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AudioIcon, { name: "highlight" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: "Follow along" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "sm-network-toggle", "aria-hidden": "true" })
+          ]
+        }
+      )
+    ] })
   ] });
 }
-var formatTime = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 function NetworkAudioPlayer({ networkName = "Your listening queue", advertisement, className = "", style, fixed = true, renderArticleLink }) {
-  const { snapshot, remote, hosted, notice, command, openNetworkPlayer } = useNetworkAudio();
+  const { snapshot, remote, hosted, notice, command, openNetworkPlayer, highlightAvailable, highlightEnabled, setHighlightEnabled } = useNetworkAudio();
   const [expanded, setExpanded] = (0, import_react2.useState)(false);
   const [height, setHeight] = (0, import_react2.useState)(0);
   const bar = (0, import_react2.useRef)(null);
   const detailsId = (0, import_react2.useId)();
   const track = snapshot.queue[snapshot.index];
   const playing = snapshot.status === "playing" || snapshot.status === "loading";
+  const nextRate = PLAYBACK_RATES.find((rate) => rate > snapshot.rate) ?? 1;
   (0, import_react2.useEffect)(() => {
     const element = bar.current;
     if (!fixed || !element) return;
@@ -1512,24 +1594,83 @@ function NetworkAudioPlayer({ networkName = "Your listening queue", advertisemen
     fixed && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { "aria-hidden": "true", style: { height } }),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("section", { ref: bar, className: `sm-network-player ${fixed ? "sm-network-player--fixed" : ""} ${className}`, style, "aria-label": "Network audio player", children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "sm-network-player__row", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "sm-network-player__play", "aria-label": playing ? "Pause playback" : "Play playback", onClick: () => command({ action: playing ? "pause" : "play" }), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("svg", { viewBox: "0 0 24 24", "aria-hidden": "true", children: playing ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M6 4h4v16H6zm8 0h4v16h-4z" }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("path", { d: "M7 3v18l15-9z" }) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "sm-network-player__play", "aria-label": playing ? "Pause playback" : "Play playback", onClick: () => command({ action: playing ? "pause" : "play" }), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AudioIcon, { name: playing ? "pause" : "play" }) }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "sm-network-player__story", children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: remote ? "Playing in network window" : networkName }),
           !hosted && renderArticleLink ? renderArticleLink(track) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("a", { href: track.articleUrl, target: "_blank", rel: "noopener noreferrer", children: track.title }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("small", { children: track.publicationName })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "sm-network-player__timeline", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { type: "range", min: "0", max: snapshot.duration || 0, step: "0.1", value: Math.min(snapshot.position, snapshot.duration), disabled: !snapshot.duration, "aria-label": "Seek article audio", onChange: (e) => command({ action: "seek", value: Number(e.target.value) }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { style: { "--sm-progress": `${snapshot.duration ? Math.min(100, snapshot.position / snapshot.duration * 100) : 0}%` }, type: "range", min: "0", max: snapshot.duration || 0, step: "0.1", value: Math.min(snapshot.position, snapshot.duration), disabled: !snapshot.duration, "aria-label": "Seek article audio", onChange: (e) => command({ action: "seek", value: Number(e.target.value) }) }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: formatTime(snapshot.position) }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "sm-network-player__remaining", "aria-label": `${formatTime(Math.max(0, snapshot.duration - snapshot.position) / snapshot.rate)} remaining`, children: [
               formatTime(Math.max(0, snapshot.duration - snapshot.position) / snapshot.rate),
-              " remaining"
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "sm-network-player__remaining-label", children: " remaining" })
             ] })
           ] })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", disabled: snapshot.index + 1 >= snapshot.queue.length, onClick: () => command({ action: "select", value: snapshot.index + 1 }), children: "Next" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", "aria-expanded": expanded, "aria-controls": detailsId, onClick: () => setExpanded(!expanded), children: expanded ? "Collapse" : `Queue (${snapshot.queue.length})` })
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "sm-network-player__shortcuts", role: "group", "aria-label": "Playback shortcuts", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+            "button",
+            {
+              type: "button",
+              className: "sm-network-player__rate",
+              "aria-label": `Playback speed ${snapshot.rate}\xD7. ${nextRate > snapshot.rate ? "Speed up" : "Reset"} to ${nextRate}\xD7`,
+              title: `Playback speed: ${snapshot.rate}\xD7. Click for ${nextRate}\xD7`,
+              onClick: () => command({ action: "rate", value: nextRate }),
+              children: [
+                snapshot.rate,
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: "\xD7" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+            "button",
+            {
+              type: "button",
+              className: "sm-network-player__highlight",
+              "aria-label": "Follow along: highlight article words",
+              "aria-pressed": highlightAvailable && highlightEnabled,
+              disabled: !highlightAvailable,
+              title: highlightAvailable ? "Highlight words as you listen" : "Open the playing article to use word highlighting when available",
+              onClick: () => setHighlightEnabled(!highlightEnabled),
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AudioIcon, { name: "highlight" }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: "Follow along" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "button",
+            {
+              type: "button",
+              className: "sm-network-player__next",
+              "aria-label": "Next article",
+              title: "Next article",
+              disabled: snapshot.index + 1 >= snapshot.queue.length,
+              onClick: () => command({ action: "select", value: snapshot.index + 1 }),
+              children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AudioIcon, { name: "next" })
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+            "button",
+            {
+              type: "button",
+              className: "sm-network-player__queue",
+              "aria-label": expanded ? "Close queue" : `Queue (${snapshot.queue.length})`,
+              "aria-expanded": expanded,
+              "aria-controls": detailsId,
+              onClick: () => setExpanded(!expanded),
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AudioIcon, { name: "queue" }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "sm-network-player__queue-label", children: expanded ? "Close queue" : "Queue" }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "sm-network-player__count", children: snapshot.queue.length }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AudioIcon, { name: "chevron" })
+              ]
+            }
+          )
+        ] })
       ] }),
       (notice || snapshot.error) && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { role: "status", className: "sm-network-player__notice", children: notice ?? snapshot.error }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { id: detailsId, hidden: !expanded, className: "sm-network-player__details", children: [
@@ -1538,16 +1679,22 @@ function NetworkAudioPlayer({ networkName = "Your listening queue", advertisemen
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: () => command({ action: "seek", value: snapshot.position + 30 }), children: "Forward 30 seconds" }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { children: [
             "Speed ",
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("select", { value: snapshot.rate, onChange: (e) => command({ action: "rate", value: Number(e.target.value) }), children: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3].map((rate) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("option", { value: rate, children: [
-              rate,
-              "\xD7"
-            ] }, rate)) })
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "sm-network-player__select", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("select", { value: snapshot.rate, onChange: (e) => command({ action: "rate", value: Number(e.target.value) }), children: PLAYBACK_RATES.map((rate) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("option", { value: rate, children: [
+                rate,
+                "\xD7"
+              ] }, rate)) }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AudioIcon, { name: "chevron" })
+            ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { children: [
             "Volume ",
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { type: "range", min: "0", max: "1", step: "0.05", value: snapshot.volume, onChange: (e) => command({ action: "volume", value: Number(e.target.value) }) })
           ] }),
-          openNetworkPlayer && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: openNetworkPlayer, children: remote ? "Open player window" : "Listen across sites \u2197" }),
+          openNetworkPlayer && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("button", { type: "button", onClick: openNetworkPlayer, children: [
+            remote ? "Open player window" : "Listen across sites",
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(AudioIcon, { name: "external" })
+          ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", onClick: () => command({ action: "clear" }), children: "Stop and clear queue" })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "sm-network-player__expanded", children: [

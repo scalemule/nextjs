@@ -228,6 +228,7 @@ interface NetworkAudioContextValue {
     notice: string | null;
     command: (command: NetworkAudioCommand) => void;
     openNetworkPlayer?: () => void;
+    highlightAvailable: boolean;
     highlightEnabled: boolean;
     setHighlightEnabled: (enabled: boolean) => void;
 }
@@ -244,9 +245,11 @@ declare function useArticleNarration(track: NetworkAudioTrack, narration?: Audio
 interface ArticleAudioControlsProps {
     track: NetworkAudioTrack;
     narration?: AudioPlayerNarration;
+    /** Recording length shown before playback; resolved media supplies the live duration. */
+    durationMs?: number | null;
     className?: string;
 }
-declare function ArticleAudioControls({ track, narration, className }: ArticleAudioControlsProps): react_jsx_runtime.JSX.Element;
+declare function ArticleAudioControls({ track, narration, durationMs, className }: ArticleAudioControlsProps): react_jsx_runtime.JSX.Element;
 interface NetworkAudioPlayerProps {
     networkName?: string;
     /** Render an actual ad or sponsor creative here. The expanded slot is labeled Advertisement. */
