@@ -201,6 +201,16 @@ interface LoginResponse {
     device?: LoginDeviceInfo;
     risk?: LoginRiskInfo;
 }
+/** Browser auth succeeds through an HTTP-only cookie; no token is returned. */
+interface CookieLoginResponse {
+    authenticated: true;
+    user: User;
+    userId: string;
+}
+type AuthLoginResponse = LoginResponse | CookieLoginResponse;
+type CookieOAuthCallbackResponse = Omit<OAuthCallbackResponse, 'session_token'> & {
+    authenticated: true;
+};
 interface LoginDeviceInfo {
     id: string;
     name: string;
@@ -483,7 +493,7 @@ interface UseAuthReturn {
     /** Register a new user */
     register: (data: RegisterRequest) => Promise<User>;
     /** Login with email/password (may return MFA challenge) */
-    login: (data: LoginRequest) => Promise<LoginResponse | LoginResponseWithMFA>;
+    login: (data: LoginRequest) => Promise<AuthLoginResponse | LoginResponseWithMFA>;
     /** Logout current user */
     logout: () => Promise<void>;
     /** Request password reset email */
@@ -499,7 +509,7 @@ interface UseAuthReturn {
     /** Start OAuth flow for a provider */
     startOAuth: (config: OAuthConfig) => Promise<OAuthStartResponse>;
     /** Complete OAuth flow after redirect */
-    completeOAuth: (request: OAuthCallbackRequest) => Promise<OAuthCallbackResponse>;
+    completeOAuth: (request: OAuthCallbackRequest) => Promise<OAuthCallbackResponse | CookieOAuthCallbackResponse>;
     /** Get list of linked OAuth accounts */
     getLinkedAccounts: () => Promise<LinkedAccount[]>;
     /** Link a new OAuth account */
@@ -513,7 +523,7 @@ interface UseAuthReturn {
     /** Verify and enable MFA */
     verifyMFA: (request: MFAVerifyRequest) => Promise<void>;
     /** Complete MFA challenge during login */
-    completeMFAChallenge: (challengeToken: string, code: string, method: MFAMethod) => Promise<LoginResponse>;
+    completeMFAChallenge: (challengeToken: string, code: string, method: MFAMethod) => Promise<AuthLoginResponse>;
     /** Disable MFA */
     disableMFA: (password: string) => Promise<void>;
     /** Regenerate backup codes */
@@ -523,7 +533,7 @@ interface UseAuthReturn {
     /** Verify phone number */
     verifyPhone: (request: PhoneVerifyRequest) => Promise<void>;
     /** Login with phone number */
-    loginWithPhone: (request: PhoneLoginRequest) => Promise<LoginResponse>;
+    loginWithPhone: (request: PhoneLoginRequest) => Promise<AuthLoginResponse>;
     /**
      * All accounts that have previously logged in on this device.
      * Contains display metadata only — no tokens.
@@ -960,4 +970,4 @@ interface UseBillingReturn {
     }) => Promise<string | null>;
 }
 
-export { type RegisterRequest as $, type ApiError as A, type BatchTrackRequest as B, type ChangeEmailRequest as C, type DeviceFingerprint as D, type EnhancedAnalyticsEvent as E, type ForgotPasswordRequest as F, type MFASetupRequest as G, type MFAStatus as H, type MFATOTPSetupResponse as I, type MFAVerifyRequest as J, type KnownAccountInfo as K, type LoginResponse as L, type MFAChallengeResponse as M, type OAuthCallbackResponse as N, type OAuthCallbackRequest as O, type OAuthConfig as P, type OAuthProvider as Q, type OAuthStartResponse as R, type ScaleMuleConfig as S, type PageViewData as T, type User as U, type PayoutSchedule as V, type PhoneLoginRequest as W, type PhoneSendCodeRequest as X, type PhoneVerifyRequest as Y, type Profile as Z, type RefreshResponse as _, type UseAuthReturn as a, type ResetPasswordRequest as a0, ScaleMuleApiError as a1, type ScaleMuleEnvironment as a2, type Session as a3, type SignedUploadCompleteRequest as a4, type SignedUploadRequest as a5, type SignedUploadResponse as a6, type SignedUploadUrl as a7, type StorageAdapter as a8, type StorageFile as a9, type TrackEventResponse as aa, type TransactionSummary as ab, type UTMParams as ac, type UpdateProfileRequest as ad, type UploadOptions as ae, type UploadResponse as af, type VerifyEmailRequest as ag, type UseBillingReturn as b, type ListFilesParams as c, type UseContentReturn as d, type UseUserReturn as e, type UseAnalyticsOptions as f, type UseAnalyticsReturn as g, type AccountBalance as h, type AnalyticsEvent as i, type ApiResponse as j, type BillingPayment as k, type BillingPayout as l, type BillingRefund as m, type BillingTransaction as n, type ChangePasswordRequest as o, type ClientContext as p, type ConnectedAccount as q, type DeviceInfo as r, type LinkedAccount as s, type ListFilesResponse as t, type LoginDeviceInfo as u, type LoginRequest as v, type LoginResponseWithMFA as w, type LoginRiskInfo as x, type MFAMethod as y, type MFASMSSetupResponse as z };
+export { type PhoneVerifyRequest as $, type ApiError as A, type BatchTrackRequest as B, type ChangeEmailRequest as C, type DeviceFingerprint as D, type EnhancedAnalyticsEvent as E, type ForgotPasswordRequest as F, type LoginRiskInfo as G, type MFAMethod as H, type MFASMSSetupResponse as I, type MFASetupRequest as J, type KnownAccountInfo as K, type LoginResponse as L, type MFAChallengeResponse as M, type MFAStatus as N, type MFATOTPSetupResponse as O, type MFAVerifyRequest as P, type OAuthCallbackRequest as Q, type OAuthCallbackResponse as R, type ScaleMuleConfig as S, type OAuthConfig as T, type User as U, type OAuthProvider as V, type OAuthStartResponse as W, type PageViewData as X, type PayoutSchedule as Y, type PhoneLoginRequest as Z, type PhoneSendCodeRequest as _, type UseAuthReturn as a, type Profile as a0, type RefreshResponse as a1, type RegisterRequest as a2, type ResetPasswordRequest as a3, ScaleMuleApiError as a4, type ScaleMuleEnvironment as a5, type Session as a6, type SignedUploadCompleteRequest as a7, type SignedUploadRequest as a8, type SignedUploadResponse as a9, type SignedUploadUrl as aa, type StorageAdapter as ab, type StorageFile as ac, type TrackEventResponse as ad, type TransactionSummary as ae, type UTMParams as af, type UpdateProfileRequest as ag, type UploadOptions as ah, type UploadResponse as ai, type VerifyEmailRequest as aj, type UseBillingReturn as b, type ListFilesParams as c, type UseContentReturn as d, type UseUserReturn as e, type UseAnalyticsOptions as f, type UseAnalyticsReturn as g, type AccountBalance as h, type AnalyticsEvent as i, type ApiResponse as j, type AuthLoginResponse as k, type BillingPayment as l, type BillingPayout as m, type BillingRefund as n, type BillingTransaction as o, type ChangePasswordRequest as p, type ClientContext as q, type ConnectedAccount as r, type CookieLoginResponse as s, type CookieOAuthCallbackResponse as t, type DeviceInfo as u, type LinkedAccount as v, type ListFilesResponse as w, type LoginDeviceInfo as x, type LoginRequest as y, type LoginResponseWithMFA as z };

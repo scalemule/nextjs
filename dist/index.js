@@ -1479,6 +1479,9 @@ function useMoneyClient() {
   const { money } = useScaleMule();
   return money;
 }
+function cookieLoginResult(user) {
+  return { authenticated: true, userId: user.id, user };
+}
 function maskEmail(email) {
   const [local, domain] = email.split("@");
   if (!domain) return "***@***.***";
@@ -1643,15 +1646,14 @@ function useAuth() {
         }
         const loginData2 = response.data;
         const responseUser = "user" in loginData2 ? loginData2.user : null;
-        if (responseUser) {
-          setUser(responseUser);
-        }
+        if (!responseUser) throw new ScaleMuleApiError({ code: "LOGIN_FAILED", message: "Sign-in did not return a user" });
+        setUser(responseUser);
         const sessionToken = "sessionToken" in loginData2 ? loginData2.sessionToken : void 0;
         const userId = "userId" in loginData2 ? loginData2.userId : void 0;
         if (sessionToken) {
           await client.setSession(sessionToken, userId || responseUser?.id || "");
         }
-        return response.data;
+        return cookieLoginResult(loginData2.user);
       }
       let loginResult;
       try {
@@ -1936,7 +1938,8 @@ function useAuth() {
         }
         throw err;
       }
-      await client.setSession(callbackData.session_token, callbackData.user.id);
+      if (client.usesCookieSession()) client.setCookieSession(callbackData.user.id);
+      else if ("session_token" in callbackData) await client.setSession(callbackData.session_token, callbackData.user.id);
       setUser(callbackData.user);
       return callbackData;
     },
@@ -2042,10 +2045,12 @@ function useAuth() {
           if (client.usesCookieSession() && result.data.user) {
             client.setCookieSession(result.data.user.id);
             setUser(result.data.user);
-            return result.data;
+            return cookieLoginResult(result.data.user);
           }
           if (!sessionToken) throw new ScaleMuleApiError({ code: "MFA_FAILED", message: "Sign-in did not return a session" });
-          mfaResult = { ...result.data, session_token: sessionToken };
+          await client.setSession(sessionToken, result.data.user.id);
+          setUser(result.data.user);
+          return cookieLoginResult(result.data.user);
         } else {
           mfaResult = await client.post("/v1/auth/mfa/verify", { pending_token: challengeToken, code, method });
         }
@@ -2177,15 +2182,14 @@ function useAuth() {
         }
         const loginData = response.data;
         const responseUser = "user" in loginData ? loginData.user : null;
-        if (responseUser) {
-          setUser(responseUser);
-        }
+        if (!responseUser) throw new ScaleMuleApiError({ code: "LOGIN_FAILED", message: "Sign-in did not return a user" });
+        setUser(responseUser);
         const sessionToken = "sessionToken" in loginData ? loginData.sessionToken : void 0;
         const userId = "userId" in loginData ? loginData.userId : void 0;
         if (sessionToken) {
           await client.setSession(sessionToken, userId || responseUser?.id || "");
         }
-        return response.data;
+        return cookieLoginResult(loginData.user);
       }
       let phoneLoginData;
       try {

@@ -243,6 +243,15 @@ export interface LoginResponse {
   risk?: LoginRiskInfo
 }
 
+/** Browser auth succeeds through an HTTP-only cookie; no token is returned. */
+export interface CookieLoginResponse {
+  authenticated: true
+  user: User
+  userId: string
+}
+export type AuthLoginResponse = LoginResponse | CookieLoginResponse
+export type CookieOAuthCallbackResponse = Omit<OAuthCallbackResponse, 'session_token'> & { authenticated: true }
+
 export interface LoginDeviceInfo {
   id: string
   name: string
@@ -596,7 +605,7 @@ export interface UseAuthReturn {
   /** Register a new user */
   register: (data: RegisterRequest) => Promise<User>
   /** Login with email/password (may return MFA challenge) */
-  login: (data: LoginRequest) => Promise<LoginResponse | LoginResponseWithMFA>
+  login: (data: LoginRequest) => Promise<AuthLoginResponse | LoginResponseWithMFA>
   /** Logout current user */
   logout: () => Promise<void>
   /** Request password reset email */
@@ -614,7 +623,7 @@ export interface UseAuthReturn {
   /** Start OAuth flow for a provider */
   startOAuth: (config: OAuthConfig) => Promise<OAuthStartResponse>
   /** Complete OAuth flow after redirect */
-  completeOAuth: (request: OAuthCallbackRequest) => Promise<OAuthCallbackResponse>
+  completeOAuth: (request: OAuthCallbackRequest) => Promise<OAuthCallbackResponse | CookieOAuthCallbackResponse>
   /** Get list of linked OAuth accounts */
   getLinkedAccounts: () => Promise<LinkedAccount[]>
   /** Link a new OAuth account */
@@ -630,7 +639,7 @@ export interface UseAuthReturn {
   /** Verify and enable MFA */
   verifyMFA: (request: MFAVerifyRequest) => Promise<void>
   /** Complete MFA challenge during login */
-  completeMFAChallenge: (challengeToken: string, code: string, method: MFAMethod) => Promise<LoginResponse>
+  completeMFAChallenge: (challengeToken: string, code: string, method: MFAMethod) => Promise<AuthLoginResponse>
   /** Disable MFA */
   disableMFA: (password: string) => Promise<void>
   /** Regenerate backup codes */
@@ -642,7 +651,7 @@ export interface UseAuthReturn {
   /** Verify phone number */
   verifyPhone: (request: PhoneVerifyRequest) => Promise<void>
   /** Login with phone number */
-  loginWithPhone: (request: PhoneLoginRequest) => Promise<LoginResponse>
+  loginWithPhone: (request: PhoneLoginRequest) => Promise<AuthLoginResponse>
 
   // Account switcher methods
   /**
