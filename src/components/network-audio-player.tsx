@@ -198,7 +198,7 @@ export function useArticleNarration(track: NetworkAudioTrack, narration?: AudioP
   return { highlightAvailable: !!narration && supported, highlightEnabled, setHighlightEnabled, matching }
 }
 
-type AudioIconName = 'play' | 'pause' | 'queue' | 'check' | 'highlight' | 'next' | 'chevron' | 'external'
+type AudioIconName = 'play' | 'pause' | 'queue' | 'check' | 'highlight' | 'next' | 'chevron' | 'external' | 'close'
 function AudioIcon({ name }: { name: AudioIconName }) {
   return <svg className="sm-network-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
     {name === 'play' && <path d="m9 5 11 7-11 7Z" fill="currentColor" stroke="none" />}
@@ -209,6 +209,7 @@ function AudioIcon({ name }: { name: AudioIconName }) {
     {name === 'next' && <><path d="m6 5 10 7-10 7Z" fill="currentColor" stroke="none" /><path d="M19 5v14" /></>}
     {name === 'chevron' && <path d="m7 10 5 5 5-5" />}
     {name === 'external' && <path d="M14 4h6v6m0-6L10 14m10 1v5H4V4h5" />}
+    {name === 'close' && <path d="m6 6 12 12M18 6 6 18" />}
   </svg>
 }
 
@@ -302,6 +303,8 @@ export function NetworkAudioPlayer({ networkName = 'Your listening queue', adver
           <button type="button" className="sm-network-player__queue" aria-label={expanded ? 'Close queue' : `Queue (${snapshot.queue.length})`}
             aria-expanded={expanded} aria-controls={detailsId} onClick={() => setExpanded(!expanded)}><AudioIcon name="queue" /><span className="sm-network-player__queue-label">{expanded ? 'Close queue' : 'Queue'}</span><span className="sm-network-player__count">{snapshot.queue.length}</span><AudioIcon name="chevron" /></button>
         </div>
+        <button type="button" className="sm-network-player__close" aria-label="Close player" title="Stop playback, clear queue, and close player"
+          onClick={() => { setExpanded(false); command({ action: 'clear' }) }}><AudioIcon name="close" /></button>
       </div>
       {(notice || snapshot.error) && <p role="status" className="sm-network-player__notice">{notice ?? snapshot.error}</p>}
       <div id={detailsId} hidden={!expanded} className="sm-network-player__details">
