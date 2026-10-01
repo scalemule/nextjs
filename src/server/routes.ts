@@ -283,8 +283,8 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             })
           }
 
-          // Return user + session token with HTTP-only session cookie
-          // Client needs the token to set Authorization headers on API requests
+          // Consume the credential into an HTTP-only cookie. Only explicit
+          // bearer compatibility mode includes it in the identity response.
           const loginResponse = withSession(loginData, sessionData(loginData.user, loginData.session_token), cookieOptions)
 
           // Record this account in the known accounts cookie (account switcher)

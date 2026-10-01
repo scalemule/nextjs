@@ -1246,7 +1246,7 @@ var AUTH_ROUTES = /* @__PURE__ */ new Set([
   "POST oauth/callback"
 ]);
 var PUBLIC_AUTH_ROUTES = /* @__PURE__ */ new Set(["POST oauth/start", "POST oauth/callback"]);
-var PUBLIC_DATA_ROUTES = /* @__PURE__ */ new Set(["POST flags/evaluate", "POST flags/evaluate/all", "POST flags/evaluate/batch", "GET feedback/items", "POST feedback/submit"]);
+var PUBLIC_DATA_ROUTES = /* @__PURE__ */ new Set(["POST flags/evaluate", "POST flags/evaluate/all", "POST flags/evaluate/batch", "GET feedback/widget-config", "POST feedback/submit"]);
 var MAX_BODY_BYTES = 25 * 1024 * 1024;
 async function boundedBody(request) {
   if (request.method === "GET" || request.method === "HEAD" || !request.body) return void 0;
