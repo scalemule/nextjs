@@ -3909,6 +3909,28 @@ function useRealtime(options) {
   return { status, lastMessage, disconnect, subscribe, publish };
 }
 
+// src/url-privacy.ts
+function withoutAuthSecrets(value) {
+  if (!value) return value;
+  try {
+    const url = new URL(value);
+    let changed = false;
+    for (const name of [...url.searchParams.keys()]) {
+      if (/^(token|code|state|password|new_password|access_token|refresh_token|id_token|api_key|client_secret|challenge_token|challenge_code)$/i.test(name)) {
+        url.searchParams.delete(name);
+        changed = true;
+      }
+    }
+    if (url.hash) {
+      url.hash = "";
+      changed = true;
+    }
+    return changed ? url.toString() : value;
+  } catch {
+    return void 0;
+  }
+}
+
 // src/hooks/event-dedup.ts
 var DEFAULT_EVENT_DEDUP_MS = 300;
 var DEDUP_MAP_MAX = 200;
@@ -4178,19 +4200,19 @@ function useAnalytics(options = {}) {
       if (utm) setUtmParams(utm);
     }
     if (!landingPage.current) {
-      landingPage.current = window.location.href;
+      landingPage.current = withoutAuthSecrets(window.location.href) || null;
     }
     const storage = typeof sessionStorage !== "undefined" ? sessionStorage : void 0;
     const storedReferrer = getStorageItem(storage, SESSION_REFERRER_KEY);
     if (storedReferrer) {
-      originalReferrerRef.current = storedReferrer;
+      originalReferrerRef.current = withoutAuthSecrets(storedReferrer) || null;
     } else if (document.referrer) {
       try {
         const referrerUrl = new URL(document.referrer);
         const currentUrl = new URL(window.location.href);
         if (referrerUrl.hostname !== currentUrl.hostname) {
-          originalReferrerRef.current = document.referrer;
-          setStorageItem(storage, SESSION_REFERRER_KEY, document.referrer);
+          originalReferrerRef.current = withoutAuthSecrets(document.referrer) || null;
+          setStorageItem(storage, SESSION_REFERRER_KEY, withoutAuthSecrets(document.referrer) || "");
         }
       } catch {
       }
@@ -4230,10 +4252,10 @@ function useAnalytics(options = {}) {
         session_duration_seconds: Math.floor((Date.now() - sessionStartRef.current) / 1e3)
       };
       if (typeof window !== "undefined") {
-        fullEvent.page_url = window.location.href;
+        fullEvent.page_url = withoutAuthSecrets(window.location.href);
         fullEvent.page_title = document.title;
         fullEvent.referrer = originalReferrerRef.current || void 0;
-        fullEvent.document_referrer = document.referrer || void 0;
+        fullEvent.document_referrer = withoutAuthSecrets(document.referrer) || void 0;
       }
       return fullEvent;
     },
@@ -4316,9 +4338,9 @@ function useAnalytics(options = {}) {
         event_category: "navigation",
         properties: {
           ...data?.properties || {},
-          page_url: data?.page_url || (typeof window !== "undefined" ? window.location.href : void 0),
+          page_url: withoutAuthSecrets(data?.page_url || (typeof window !== "undefined" ? window.location.href : void 0)),
           page_title: data?.page_title || (typeof document !== "undefined" ? document.title : void 0),
-          referrer: data?.referrer || originalReferrerRef.current || void 0
+          referrer: withoutAuthSecrets(data?.referrer || originalReferrerRef.current || void 0)
         }
       };
       return trackEvent(pageEvent);

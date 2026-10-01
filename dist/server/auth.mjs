@@ -16,6 +16,28 @@ var ScaleMuleApiError = class extends Error {
   }
 };
 
+// src/url-privacy.ts
+function withoutAuthSecrets(value) {
+  if (!value) return value;
+  try {
+    const url = new URL(value);
+    let changed = false;
+    for (const name of [...url.searchParams.keys()]) {
+      if (/^(token|code|state|password|new_password|access_token|refresh_token|id_token|api_key|client_secret|challenge_token|challenge_code)$/i.test(name)) {
+        url.searchParams.delete(name);
+        changed = true;
+      }
+    }
+    if (url.hash) {
+      url.hash = "";
+      changed = true;
+    }
+    return changed ? url.toString() : value;
+  } catch {
+    return void 0;
+  }
+}
+
 // src/server/context.ts
 function validateIP(ip) {
   if (!ip) return void 0;
@@ -74,7 +96,7 @@ function extractClientContext(request) {
   }
   const userAgent = headers2.get("user-agent") || void 0;
   const deviceFingerprint = headers2.get("x-device-fingerprint") || void 0;
-  const referrer = headers2.get("referer") || void 0;
+  const referrer = withoutAuthSecrets(headers2.get("referer") || void 0);
   const anonymousId = headers2.get("x-anonymous-id") || void 0;
   return {
     ip,

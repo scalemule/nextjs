@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.52
+
+- Strip authentication secrets from automatic analytics URLs, landing pages, and forwarded referrers while preserving advertising attribution parameters.
+
 ## 0.1.51
 
 - Complete adaptive email challenges and enrolled MFA in the shared provider, including verification, retry, resend, cancellation, and recovery links. HTTP 202 challenges never create session cookies or enter error telemetry.
