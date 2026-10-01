@@ -351,7 +351,7 @@ describe('HTTP-only session boundary', () => {
 
 it('exchanges an iframe handoff into a partitioned cookie without disclosing the token', async () => {
   mockExchangeHandoff.mockResolvedValue({ session_token: 'handoff-session-secret', user_id: 'frame-user' })
-  const response = await createAuthRoutes({ handoffAudience: 'https://app.example.com', handoffCookies: { partitioned: true, sameSite: 'none', secure: true } }).POST(createRequest('handoff/exchange', { code: 'single-use-code', audience: 'https://attacker.invalid' }), contextFor('handoff/exchange'))
+  const response = await createAuthRoutes({ handoffAudience: 'https://app.example.com', cookies: { partitioned: true, sameSite: 'none', secure: true } }).POST(createRequest('handoff/exchange', { code: 'single-use-code', audience: 'https://attacker.invalid' }), contextFor('handoff/exchange'))
   expect(mockExchangeHandoff).toHaveBeenCalledWith('single-use-code', 'https://app.example.com')
   expect(await response.json()).toEqual({ success: true, data: { authenticated: true, userId: 'frame-user' } })
   const cookies = response.headers.getSetCookie().join(';')
@@ -359,4 +359,25 @@ it('exchanges an iframe handoff into a partitioned cookie without disclosing the
   expect(cookies).toContain('HttpOnly')
   expect(cookies).toContain('Secure')
   expect(cookies).toContain('Partitioned')
+})
+
+it('exports PUT from the preconfigured one-line auth entry point', async () => {
+  const entry = await import('./auth')
+  expect(typeof entry.PUT).toBe('function')
+})
+
+it('uses the same partitioned policy after handoff for rotation and logout', async () => {
+  const { cookies } = await import('next/headers')
+  vi.mocked(cookies).mockResolvedValue({ get: (key: string) => ({ value: key === 'sm_session' ? 'existing-secret' : 'user' }) } as never)
+  mockMe.mockImplementation(async (_token, options) => {
+    options.onTokenRotated('rotated-secret')
+    return { id: 'user' }
+  })
+  const routes = createAuthRoutes({ handoffAudience: 'https://app.example.com', cookies: { partitioned: true, sameSite: 'none', secure: true } })
+  const rotated = await routes.GET(new Request('https://example.com/api/auth/me'), contextFor('me'))
+  expect(rotated.headers.getSetCookie().filter(c => c.includes('rotated-secret')).every(c => c.includes('Partitioned'))).toBe(true)
+  const loggedOut = await routes.POST(createRequest('logout', {}), contextFor('logout'))
+  expect(loggedOut.headers.getSetCookie().filter(c => c.includes('Partitioned'))).toHaveLength(2)
+  expect(loggedOut.headers.getSetCookie().every(c => c.includes('Max-Age=0'))).toBe(true)
+  vi.mocked(cookies).mockResolvedValue({ get: () => null } as never)
 })

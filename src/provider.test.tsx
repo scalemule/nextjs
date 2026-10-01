@@ -24,6 +24,7 @@ const {
     resolveSessionPending: vi.fn(),
     setSession: vi.fn().mockResolvedValue(undefined),
     setSessionToken: vi.fn(),
+    setCookieSession: vi.fn(),
     get: vi.fn(),
   }
 
@@ -219,4 +220,24 @@ describe('ScaleMuleProvider member-auth bridge', () => {
       expect(userResolver).toHaveBeenCalled()
     })
   })
+})
+
+it.each(['prop', 'environment'])('cookie proxy uses the %s publishable key in all browser clients', async source => {
+  vi.clearAllMocks()
+  const key = 'sm_pb_cookie_transport'
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ success: true, data: { user: { id: 'user' } } })))
+  mockClient.getSessionToken.mockReturnValue(null)
+  if (source === 'environment') vi.stubEnv('NEXT_PUBLIC_SCALEMULE_PUBLISHABLE_KEY', key)
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <ScaleMuleProvider apiKey="proxy-mode" publishableKey={source === 'prop' ? key : undefined} authProxyUrl="/api/auth">{children}</ScaleMuleProvider>
+  )
+  const { unmount } = renderHook(() => useMoneyClient(), { wrapper })
+  await waitFor(() => expect(mockClient.setCookieSession).toHaveBeenCalledWith('user'))
+  for (const factory of [mockCreateClient, mockCreateMoneyClient, mockScaleMule]) {
+    expect(factory).toHaveBeenCalledWith(expect.objectContaining({ apiKey: key }))
+  }
+  expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({ gatewayUrl: '/api/auth/client', cookieSession: true }))
+  expect(mockScaleMule).toHaveBeenCalledWith(expect.objectContaining({ baseUrl: '/api/auth/client', realtimeUrl: 'https://api.scalemule.com' }))
+  unmount()
+  vi.unstubAllEnvs()
 })

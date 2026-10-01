@@ -246,7 +246,7 @@ export function clearSession<T extends Record<string, unknown>>(
  * const user = await sm.auth.me(session.sessionToken)
  * ```
  */
-export async function getSession(): Promise<SessionData | null> {
+export async function getSession(options: { allowBearer?: boolean } = {}): Promise<SessionData | null> {
   const cookieStore = await cookies()
 
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)
@@ -259,6 +259,8 @@ export async function getSession(): Promise<SessionData | null> {
       expiresAt: new Date(), // Note: actual expiry is managed by ScaleMule backend
     }
   }
+
+  if (options.allowBearer === false) return null
 
   // Bearer fallback for cookieless contexts (e.g. partitioned iframes in
   // embedded apps): the SDK session token is the same credential the cookie

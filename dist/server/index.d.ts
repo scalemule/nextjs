@@ -188,7 +188,9 @@ declare function clearSession<T extends Record<string, unknown>>(responseBody: T
  * const user = await sm.auth.me(session.sessionToken)
  * ```
  */
-declare function getSession(): Promise<SessionData | null>;
+declare function getSession(options?: {
+    allowBearer?: boolean;
+}): Promise<SessionData | null>;
 /**
  * Get session from a Request object (for edge/middleware)
  *
@@ -275,8 +277,6 @@ declare function requireSession(): Promise<SessionData>;
 interface AuthRoutesConfig {
     /** Fixed server-controlled audience used for OAuth-to-iframe session transfer. */
     handoffAudience?: string;
-    /** Cookie policy when consuming a handoff in a partitioned embedded frame. */
-    handoffCookies?: SessionCookieOptions;
     /** Network boundary used to attest the browser IP on server-side auth calls. */
     clientContext?: ClientContextOptions;
     /** Publishable key for the cookie-authenticated browser data proxy. */

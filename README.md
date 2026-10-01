@@ -499,7 +499,7 @@ For OAuth popups authenticating embedded frames, call
 the server callback after successful OAuth. Send its `code` to the exact opener
 origin. The iframe posts `{ code }` to `<authProxyUrl>/handoff/exchange` and then
 refreshes `/me`. Configure the factory's fixed `handoffAudience` and
-`handoffCookies: { partitioned: true, sameSite: 'none', secure: true }`. Codes last
+`cookies: { partitioned: true, sameSite: 'none', secure: true }`. This same cookie policy governs login, handoff, rotation and logout. Codes last
 60 seconds, are tenant/audience-bound, consume atomically once, and cannot recover
 a revoked session. The platform requires the customer's secret API key to issue
 or consume them. Never expose a generic browser endpoint for issuing codes from

@@ -42,8 +42,6 @@ import { browserProxy, isSameOriginRequest } from './browser-proxy'
 export interface AuthRoutesConfig {
   /** Fixed server-controlled audience used for OAuth-to-iframe session transfer. */
   handoffAudience?: string
-  /** Cookie policy when consuming a handoff in a partitioned embedded frame. */
-  handoffCookies?: SessionCookieOptions
   /** Network boundary used to attest the browser IP on server-side auth calls. */
   clientContext?: ClientContextOptions
   /** Publishable key for the cookie-authenticated browser data proxy. */
@@ -226,7 +224,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           if (!config.handoffAudience) return errorResponse('HANDOFF_DISABLED', 'Session transfer is not configured', 404)
           if (typeof body.code !== 'string' || !body.code || body.code.length > 256) return errorResponse('INVALID_HANDOFF', 'Invalid sign-in transfer', 400)
           const result = await sm.auth.exchangeSessionHandoff(body.code, config.handoffAudience)
-          return withRefreshedSession(result.session_token, result.user_id, { authenticated: true, userId: result.user_id }, config.handoffCookies || cookieOptions)
+          return withRefreshedSession(result.session_token, result.user_id, { authenticated: true, userId: result.user_id }, cookieOptions)
         }
 
         case 'mfa/send-code': {

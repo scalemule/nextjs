@@ -4,7 +4,7 @@
  * Usage in your Next.js app:
  * ```ts
  * // app/api/auth/[...scalemule]/route.ts
- * export { GET, POST, DELETE, PATCH } from '@scalemule/nextjs/server/auth'
+ * export { GET, POST, DELETE, PATCH, PUT } from '@scalemule/nextjs/server/auth'
  * ```
  *
  * Configuration via environment variables:
@@ -34,5 +34,10 @@ declare const PATCH: (request: Request, context: {
         scalemule?: string[];
     }>;
 }) => Promise<Response>;
+declare const PUT: (request: Request, context: {
+    params: Promise<{
+        scalemule?: string[];
+    }>;
+}) => Promise<Response>;
 
-export { DELETE, GET, PATCH, POST };
+export { DELETE, GET, PATCH, POST, PUT };

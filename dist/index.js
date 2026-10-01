@@ -1178,6 +1178,7 @@ function ScaleMuleProvider({
   const requestSecurityCode = onSecurityChallenge || security.prompt;
   const memberMode = typeof getToken === "function";
   const cookieSession = !!authProxyUrl && !memberMode && sessionMode !== "bearer";
+  const browserKey = cookieSession ? publishableKey || process.env.NEXT_PUBLIC_SCALEMULE_PUBLISHABLE_KEY || apiKey : apiKey;
   const browserGateway = cookieSession ? `${authProxyUrl.replace(/\/$/, "")}/client` : void 0;
   const [user, setUser] = React.useState(null);
   const [initializing, setInitializing] = React.useState(true);
@@ -1189,7 +1190,7 @@ function ScaleMuleProvider({
   const resolvedGatewayUrl = gatewayUrl || (environment === "dev" ? "https://api-dev.scalemule.com" : "https://api.scalemule.com");
   const client = React.useMemo(
     () => createClient({
-      apiKey,
+      apiKey: browserKey,
       applicationId,
       environment,
       gatewayUrl: browserGateway || resolvedGatewayUrl,
@@ -1202,28 +1203,28 @@ function ScaleMuleProvider({
       // getToken() callback. Resolved in the init effect below.
       pendingSessionInit: !!authProxyUrl || memberMode
     }),
-    [apiKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug, storage, authProxyUrl, memberMode]
+    [browserKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug, storage, authProxyUrl, memberMode]
   );
   const money$1 = React.useMemo(
     () => money.createMoneyClient({
-      apiKey,
+      apiKey: browserKey,
       gatewayUrl: browserGateway || resolvedGatewayUrl,
       environment,
       accessToken: client.getSessionToken() || void 0,
       fetch: globalThis.fetch.bind(globalThis)
     }),
-    [apiKey, resolvedGatewayUrl, browserGateway, environment, client]
+    [browserKey, resolvedGatewayUrl, browserGateway, environment, client]
   );
   const baseClient = React.useMemo(() => {
     return new sdk.ScaleMule({
-      apiKey,
+      apiKey: browserKey,
       applicationId,
       baseUrl: browserGateway || resolvedGatewayUrl,
       realtimeUrl: cookieSession ? resolvedGatewayUrl : void 0,
       environment,
       debug
     });
-  }, [apiKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug]);
+  }, [browserKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug]);
   const [fetchedPolicy, setFetchedPolicy] = React.useState(void 0);
   const [tokenVersion, setTokenVersion] = React.useState(0);
   React.useEffect(() => {

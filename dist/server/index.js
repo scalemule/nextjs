@@ -1066,7 +1066,7 @@ function clearSession(responseBody, options = {}, status = 200) {
     headers: headers3
   });
 }
-async function getSession() {
+async function getSession(options = {}) {
   const cookieStore = await headers.cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
   const userIdCookie = cookieStore.get(USER_ID_COOKIE_NAME);
@@ -1078,6 +1078,7 @@ async function getSession() {
       // Note: actual expiry is managed by ScaleMule backend
     };
   }
+  if (options.allowBearer === false) return null;
   const headerStore = await headers.headers();
   return sessionFromAuthHeaders(
     headerStore.get("authorization"),
@@ -1449,7 +1450,7 @@ async function browserProxy(request, path, config) {
   const authOperation = `${request.method} ${path.slice(2).join("/")}`;
   const authRoute = path[1] === "auth" && (AUTH_ROUTES.has(authOperation) || request.method === "DELETE" && path[2] === "oauth" && path[3] === "providers" && path.length === 5);
   if (path[0] !== "v1" || !(SERVICES.has(path[1]) || authRoute) || path.some((part) => !part || part === "." || part === ".." || /[\\/%\u0000-\u001f]/.test(part))) return error("NOT_FOUND", 404);
-  const session = await getSession();
+  const session = await getSession({ allowBearer: false });
   if (!session && !(authRoute && PUBLIC_AUTH_ROUTES.has(authOperation))) return error("UNAUTHORIZED", 401);
   const gateway = resolveGatewayUrl({ ...config.client, gatewayUrl: config.browserGatewayUrl || process.env.NEXT_PUBLIC_SCALEMULE_GATEWAY_URL || config.client?.gatewayUrl });
   const target = new URL(`${gateway.replace(/\/$/, "")}/${path.map(encodeURIComponent).join("/")}`);
@@ -1583,7 +1584,7 @@ function createAuthRoutes(config = {}) {
           if (!config.handoffAudience) return errorResponse("HANDOFF_DISABLED", "Session transfer is not configured", 404);
           if (typeof body.code !== "string" || !body.code || body.code.length > 256) return errorResponse("INVALID_HANDOFF", "Invalid sign-in transfer", 400);
           const result = await sm.auth.exchangeSessionHandoff(body.code, config.handoffAudience);
-          return withRefreshedSession(result.session_token, result.user_id, { authenticated: true, userId: result.user_id }, config.handoffCookies || cookieOptions);
+          return withRefreshedSession(result.session_token, result.user_id, { authenticated: true, userId: result.user_id }, cookieOptions);
         }
         case "mfa/send-code": {
           const { pending_token, method } = body;

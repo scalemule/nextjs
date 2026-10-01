@@ -76,7 +76,7 @@ export async function browserProxy(request: Request, path: string[], config: Bro
   const authOperation = `${request.method} ${path.slice(2).join('/')}`
   const authRoute = path[1] === 'auth' && (AUTH_ROUTES.has(authOperation) || (request.method === 'DELETE' && path[2] === 'oauth' && path[3] === 'providers' && path.length === 5))
   if (path[0] !== 'v1' || !(SERVICES.has(path[1]) || authRoute) || path.some(part => !part || part === '.' || part === '..' || /[\\/%\u0000-\u001f]/.test(part))) return error('NOT_FOUND', 404)
-  const session = await getSession()
+  const session = await getSession({ allowBearer: false })
   if (!session && !(authRoute && PUBLIC_AUTH_ROUTES.has(authOperation))) return error('UNAUTHORIZED', 401)
   const gateway = resolveGatewayUrl({ apiKey: key, ...config.client, gatewayUrl: config.browserGatewayUrl || process.env.NEXT_PUBLIC_SCALEMULE_GATEWAY_URL || config.client?.gatewayUrl })
   const target = new URL(`${gateway.replace(/\/$/, '')}/${path.map(encodeURIComponent).join('/')}`)

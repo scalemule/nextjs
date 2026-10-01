@@ -22,6 +22,7 @@ describe('cookie-authenticated browser proxy', () => {
     const [url, init] = fetcher.mock.calls[0]
     expect(url.toString()).toBe('https://api.example.com/v1/storage/files')
     expect(init.headers.get('authorization')).toBe('Bearer cookie-secret')
+    expect(session).toHaveBeenCalledWith({ allowBearer: false })
     expect(init.headers.get('x-api-key')).toBe(config.publishableKey)
     for (const name of ['cookie', 'x-app-id', 'x-sm-internal-token', 'x-sm-forwarded-client-ip']) expect(init.headers.has(name)).toBe(false)
     expect(init.redirect).toBe('error')

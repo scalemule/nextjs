@@ -234,6 +234,7 @@ export function ScaleMuleProvider({
   const requestSecurityCode = onSecurityChallenge || security.prompt
   const memberMode = typeof getToken === 'function'
   const cookieSession = !!authProxyUrl && !memberMode && sessionMode !== 'bearer'
+  const browserKey = cookieSession ? (publishableKey || process.env.NEXT_PUBLIC_SCALEMULE_PUBLISHABLE_KEY || apiKey) : apiKey
   const browserGateway = cookieSession ? `${authProxyUrl.replace(/\/$/, '')}/client` : undefined
   const [user, setUser] = useState<User | null>(null)
   const [initializing, setInitializing] = useState(true)
@@ -257,7 +258,7 @@ export function ScaleMuleProvider({
   const client = useMemo(
     () =>
       createClient({
-        apiKey,
+        apiKey: browserKey,
         applicationId,
         environment,
         gatewayUrl: browserGateway || resolvedGatewayUrl,
@@ -270,19 +271,19 @@ export function ScaleMuleProvider({
         // getToken() callback. Resolved in the init effect below.
         pendingSessionInit: !!authProxyUrl || memberMode,
       }),
-    [apiKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug, storage, authProxyUrl, memberMode]
+    [browserKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug, storage, authProxyUrl, memberMode]
   )
 
   const money = useMemo(
     () =>
       createMoneyClient({
-        apiKey,
+        apiKey: browserKey,
         gatewayUrl: browserGateway || resolvedGatewayUrl,
         environment,
         accessToken: client.getSessionToken() || undefined,
         fetch: globalThis.fetch.bind(globalThis),
       }),
-    [apiKey, resolvedGatewayUrl, browserGateway, environment, client]
+    [browserKey, resolvedGatewayUrl, browserGateway, environment, client]
   )
 
   // Create a base SDK ScaleMule instance for realtime WebSocket support.
@@ -291,14 +292,14 @@ export function ScaleMuleProvider({
   // provides the RealtimeService with correct protocol handling.
   const baseClient = useMemo(() => {
     return new ScaleMule({
-      apiKey,
+      apiKey: browserKey,
       applicationId,
       baseUrl: browserGateway || resolvedGatewayUrl,
       realtimeUrl: cookieSession ? resolvedGatewayUrl : undefined,
       environment,
       debug,
     })
-  }, [apiKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug])
+  }, [browserKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug])
 
   // Auto-fetch the application's `media_policy` so customer apps don't
   // need to mirror it as a prop. Falls back to the prop if the fetch

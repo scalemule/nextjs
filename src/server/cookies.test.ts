@@ -8,8 +8,12 @@
  * The clear header must mirror the attributes used when setting the cookie.
  */
 
-import { describe, it, expect } from 'vitest'
-import { withSession, withRefreshedSession, clearSession, getSessionFromRequest, SESSION_COOKIE_NAME, USER_ID_COOKIE_NAME } from './cookies'
+import { describe, it, expect, vi } from 'vitest'
+vi.mock('next/headers', () => ({
+  cookies: vi.fn(async () => ({ get: () => undefined })),
+  headers: vi.fn(async () => new Headers({ authorization: 'Bearer caller-token', 'x-sm-user-id': 'caller-user' })),
+}))
+import { withSession, withRefreshedSession, clearSession, getSession, getSessionFromRequest, SESSION_COOKIE_NAME, USER_ID_COOKIE_NAME } from './cookies'
 
 function setCookieHeaders(res: Response): string[] {
   // Headers.getSetCookie() is available in the runtimes we target
@@ -106,4 +110,9 @@ it('clears legacy cookies before issuing partitioned sessions and clears both on
   const cleared = setCookieHeaders(clearSession({}, options))
   expect(cleared).toHaveLength(4)
   expect(cleared.every(c => c.includes('Max-Age=0'))).toBe(true)
+})
+
+it('cookie-only readers cannot authenticate using caller-supplied bearer headers', async () => {
+  expect(await getSession({ allowBearer: false })).toBeNull()
+  expect((await getSession())?.sessionToken).toBe('caller-token')
 })
