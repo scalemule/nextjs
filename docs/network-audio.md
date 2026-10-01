@@ -11,7 +11,7 @@ React at runtime. Existing `AudioPlayer` and `NarrationPlayer` APIs are unchange
 | Client-side navigation under the same provider | The same audio element continues playing. |
 | Leaving the narrated article | Highlighting is destroyed; audio continues. |
 | Returning to that article | Highlighting resumes at the current clock if enabled. |
-| Moving the reader tab to another participating domain | A previously opened network player window keeps playing. The destination bar reconnects. |
+| Following a network link in the original reader tab to another participating domain | A previously opened network player window keeps playing. The destination bar reconnects. |
 | Full navigation/reload without a network window | The old audio stops. An optional checkpoint restores the queue and position paused. |
 | Closing the network window | The reader restores the latest reported queue and position paused, with a Play prompt. |
 | Closing the reader tab | The network window can continue independently. |
@@ -24,8 +24,11 @@ policy. Once playing, navigation of its original reader tab does not replace its
 audio element. Browser/OS suspension can still interrupt media, especially on
 mobile. Test supported browsers before promising uninterrupted listening.
 
-This implementation reconnects the **original reader tab** across navigation.
-It does not discover unrelated tabs or synchronize devices. COOP headers that
+This implementation reconnects the **original reader tab** when readers follow
+links between participating sites. Direct address-bar or browser-initiated
+cross-site navigation can sever the window relationship: audio continues in the
+player window, but the destination bar may not reconnect. Use the player window's
+controls in that case. It does not discover unrelated tabs or synchronize devices. COOP headers that
 sever `window.opener`, sandbox restrictions and popup blockers can prevent the
 connection. Failed initial connections preserve local playback and show a notice.
 An unresponsive remote player never triggers automatic local playback, which
@@ -205,8 +208,10 @@ The automated suite covers article unmounts, highlighting cleanup/return, queue
 advancement, publication identity, stale/aborted requests, signed URL refresh,
 autoplay denial, bounded recovery, blocked popups, exact origin/source checks,
 remote reconnect and host closure. Also test real media in supported browsers:
-start in the reader, open the network window, navigate the original tab to another
-allowed origin, control playback from the destination, and close the host.
+start in the reader, open the network window, follow an actual network link in
+the original tab to another allowed origin, control playback from the destination,
+and close the host. Browser automation that changes the address directly does not
+exercise the same window relationship as clicking a site link.
 Verify ad consent and publication authorization in the actual applications.
 Release the SDK, integrate layouts/routes/resolvers in the participating sites,
 then deploy through their existing release process. These SDK changes alone do
