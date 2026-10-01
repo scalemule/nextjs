@@ -1,5 +1,7 @@
 'use client'
 
+import { withAdaptiveChallenge } from '../security-challenge'
+
 import { useCallback, useMemo, useState, useEffect } from 'react'
 import { ensureAnonymousId } from '@scalemule/sdk'
 import type { StorageAdapter } from '@scalemule/sdk'
@@ -234,7 +236,7 @@ async function proxyFetch<T>(
 }
 
 export function useAuth(): UseAuthReturn {
-  const { client, user, setUser, initializing, error, setError, authProxyUrl, enableAccountSwitcher, accountSwitcherPrivacy } = useScaleMule()
+  const { client, user, setUser, initializing, error, setError, authProxyUrl, enableAccountSwitcher, accountSwitcherPrivacy, requestSecurityCode } = useScaleMule()
 
   // ============================================================================
   // Basic Auth Methods
@@ -296,18 +298,30 @@ export function useAuth(): UseAuthReturn {
 
       if (authProxyUrl) {
         // Proxy mode: session managed by httpOnly cookies
-        const response = await proxyFetch<LoginResponse | LoginResponseWithMFA | { user: User }>(
-          authProxyUrl, 'login', { body: data }
-        )
-
-        if (!response.success || !response.data) {
-          const err = response.error || {
-            code: 'LOGIN_FAILED',
-            message: 'Login failed',
+        const response = await withAdaptiveChallenge(async (proof) => {
+          const result = await proxyFetch<LoginResponse | LoginResponseWithMFA | { user: User }>(
+            authProxyUrl, 'login', { body: { ...data, ...proof } }
+          )
+          if (!result.success || !result.data) {
+            throw result.error || { code: 'LOGIN_FAILED', message: 'Login failed' }
           }
-          setError(err)
+          return { ...result, data: result.data }
+        }, requestSecurityCode, {
+          send: async (pending_token, method) => {
+            const result = await proxyFetch(authProxyUrl, 'mfa/send-code', { body: { pending_token, method } })
+            if (!result.success) throw result.error
+            return result
+          },
+          verify: async (pending_token, code, method) => {
+            const result = await proxyFetch<LoginResponse>(authProxyUrl, 'mfa/verify', { body: { pending_token, code, method } })
+            if (!result.success || !result.data) throw result.error
+            return { ...result, data: result.data }
+          },
+        }).catch((err) => {
+          setError(err as ApiError)
           throw err
-        }
+        })
+
 
         // Check if MFA is required
         if ('requires_mfa' in response.data && (response.data as LoginResponseWithMFA).requires_mfa) {
@@ -334,7 +348,10 @@ export function useAuth(): UseAuthReturn {
 
       let loginResult: LoginResponse | LoginResponseWithMFA
       try {
-        loginResult = await client.post<LoginResponse | LoginResponseWithMFA>('/v1/auth/login', data)
+        loginResult = await withAdaptiveChallenge((proof) => client.post<LoginResponse | LoginResponseWithMFA>('/v1/auth/login', { ...data, ...proof }), requestSecurityCode, {
+          send: (pending_token, method) => client.post('/v1/auth/mfa/send-code', { pending_token, method }),
+          verify: (pending_token, code, method) => client.post<LoginResponse>('/v1/auth/mfa/verify', { pending_token, code, method }),
+        })
       } catch (err) {
         if (err instanceof ScaleMuleApiError) {
           setError(err)
@@ -355,7 +372,7 @@ export function useAuth(): UseAuthReturn {
 
       return loginData
     },
-    [client, setUser, setError, authProxyUrl]
+    [client, setUser, setError, authProxyUrl, requestSecurityCode]
   )
 
   /**
@@ -446,8 +463,18 @@ export function useAuth(): UseAuthReturn {
           throw err
         }
       }
+      await client.clearSession()
+      setUser(null)
+      // Remove the spent bearer token from the address bar and browser history.
+      if (typeof window !== 'undefined') {
+        const current = new URL(window.location.href)
+        if (current.searchParams.get('token') === token) {
+          current.searchParams.delete('token')
+          window.history.replaceState(window.history.state, '', current.toString())
+        }
+      }
     },
-    [client, setError, authProxyUrl]
+    [client, setUser, setError, authProxyUrl]
   )
 
   /**
@@ -869,11 +896,13 @@ export function useAuth(): UseAuthReturn {
 
       let mfaResult: LoginResponse
       try {
-        mfaResult = await client.post<LoginResponse>('/v1/auth/mfa/challenge', {
-          challenge_token: challengeToken,
-          code,
-          method,
-        })
+        if (authProxyUrl) {
+          const result = await proxyFetch<LoginResponse>(authProxyUrl, 'mfa/verify', { body: { pending_token: challengeToken, code, method } })
+          if (!result.success || !result.data) throw result.error
+          mfaResult = result.data
+        } else {
+          mfaResult = await client.post<LoginResponse>('/v1/auth/mfa/verify', { pending_token: challengeToken, code, method })
+        }
       } catch (err) {
         if (err instanceof ScaleMuleApiError) {
           setError(err)
@@ -887,7 +916,7 @@ export function useAuth(): UseAuthReturn {
 
       return mfaResult
     },
-    [client, setUser, setError]
+    [client, setUser, setError, authProxyUrl]
   )
 
   /**

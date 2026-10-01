@@ -252,3 +252,5 @@ export type {
   UsernameValidationResult,
   PhoneCountry,
 } from './validation'
+
+export type { SecurityChallenge, SecurityChallengePrompt } from './security-challenge'

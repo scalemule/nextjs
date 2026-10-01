@@ -164,7 +164,7 @@ export class ScaleMuleServer {
         // Non-JSON response
       }
 
-      if (!response.ok) {
+      if (!response.ok || responseData?.success === false) {
         const baseError: ApiError = (responseData?.error as ApiError) || {
           code: `HTTP_${response.status}`,
           message: (responseData?.message as string) || text || response.statusText,
@@ -246,6 +246,12 @@ export class ScaleMuleServer {
     /**
      * Login user - returns session token (store in HTTP-only cookie)
      */
+    sendMfaCode: async (pending_token: string, method: string, options?: { clientContext?: ClientContext }): Promise<{ success: boolean }> => {
+      return this.request('POST', '/v1/auth/mfa/send-code', { body: { pending_token, method }, clientContext: options?.clientContext })
+    },
+    completeMfa: async (pending_token: string, code: string, method: string, options?: { clientContext?: ClientContext }): Promise<LoginResponse> => {
+      return this.request('POST', '/v1/auth/mfa/verify', { body: { pending_token, code, method }, clientContext: options?.clientContext })
+    },
     login: async (data: LoginRequest, options?: { clientContext?: ClientContext }): Promise<LoginResponse> => {
       return this.request<LoginResponse>('POST', '/v1/auth/login', { body: data, clientContext: options?.clientContext })
     },

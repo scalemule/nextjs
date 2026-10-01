@@ -204,9 +204,31 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           return registerResponse
         }
 
+        case 'mfa/send-code': {
+          const { pending_token, method } = body
+          if (!pending_token || !['email', 'sms'].includes(method)) return errorResponse('VALIDATION_ERROR', 'MFA token and method required', 400)
+          return successResponse(await sm.auth.sendMfaCode(pending_token, method, { clientContext }))
+        }
+        case 'mfa/verify': {
+          const { pending_token, code, method } = body
+          if (!pending_token || !code || !['totp', 'email', 'sms', 'backup_code'].includes(method)) return errorResponse('VALIDATION_ERROR', 'MFA token, code, and valid method required', 400)
+          const result = await sm.auth.completeMfa(pending_token, code, method, { clientContext })
+          if (!result.session_token || !result.user) return errorResponse('MFA_FAILED', 'Unable to complete sign-in', 400)
+          await config.onLogin?.({ id: result.user.id, email: result.user.email })
+          const response = withSession(result, { user: result.user, sessionToken: result.session_token, userId: result.user.id }, cookieOptions)
+          if (config.enableAccountSwitcher) {
+            appendKnownAccountCookie(response.headers, {
+              userId: result.user.id, email: result.user.email,
+              fullName: result.user.full_name ?? undefined, avatarUrl: result.user.avatar_url ?? undefined,
+              provider: 'email', lastActiveAt: new Date().toISOString(),
+            }, getKnownAccountsCookieRaw(request), cookieOptions, config.accountSwitcherPrivacy)
+          }
+          return response
+        }
+
         // ==================== Login ====================
         case 'login': {
-          const { email, password, remember_me } = body
+          const { email, password, remember_me, device_fingerprint, challenge_token, challenge_code } = body
 
           if (!email || !password) {
             return errorResponse('VALIDATION_ERROR', 'Email and password required', 400)
@@ -214,13 +236,14 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
           let loginData
           try {
-            loginData = await sm.auth.login({ email, password, remember_me }, { clientContext })
+            loginData = await sm.auth.login({ email, password, remember_me, device_fingerprint, challenge_token, challenge_code }, { clientContext })
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
             const errorCode = apiErr?.code || 'LOGIN_FAILED'
-            let status = 400
+            let status = ['LOGIN_CHALLENGE_REQUIRED', 'MFA_REQUIRED'].includes(errorCode) ? 202 : 400
+            if (errorCode === 'CHALLENGE_RATE_LIMITED') status = 429
             if (errorCode === 'INVALID_CREDENTIALS' || errorCode === 'UNAUTHORIZED') status = 401
-            if (['EMAIL_NOT_VERIFIED', 'PHONE_NOT_VERIFIED', 'ACCOUNT_LOCKED', 'ACCOUNT_DISABLED', 'MFA_REQUIRED'].includes(errorCode)) {
+            if (['EMAIL_NOT_VERIFIED', 'PHONE_NOT_VERIFIED', 'ACCOUNT_LOCKED', 'ACCOUNT_DISABLED'].includes(errorCode)) {
               status = 403
             }
             return errorResponse(
@@ -324,7 +347,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             )
           }
 
-          return successResponse({ message: 'Password reset successful' })
+          return clearSession({ message: 'Password reset successful' }, cookieOptions)
         }
 
         // ==================== Verify Email ====================
@@ -557,6 +580,10 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           return errorResponse('NOT_FOUND', `Unknown endpoint: ${path}`, 404)
       }
     } catch (err) {
+      if (path.startsWith('mfa/') && err instanceof ScaleMuleApiError) {
+        const status = ['CHALLENGE_RATE_LIMITED', 'MFA_RATE_LIMITED', 'MFA_MAX_ATTEMPTS'].includes(err.code) ? 429 : 400
+        return errorResponse(err.code, err.message, status)
+      }
       console.error('[ScaleMule Auth] Error:', err)
       return errorResponse('SERVER_ERROR', 'Internal server error', 500)
     }

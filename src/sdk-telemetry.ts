@@ -37,6 +37,8 @@ export type SdkErrorPayload = {
 // `keepalive` so the request survives a page navigation that may
 // follow the failed call.
 export function reportSdkError(payload: SdkErrorPayload): void {
+  // Expected challenges carry a short-lived proof token; never send them to logs.
+  if (['LOGIN_CHALLENGE_REQUIRED', 'MFA_REQUIRED'].includes(payload.code)) return
   if (!endpoint) return
   if (typeof fetch === 'undefined') return
 

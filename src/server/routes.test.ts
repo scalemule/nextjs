@@ -16,11 +16,15 @@ import { SESSION_COOKIE_NAME, USER_ID_COOKIE_NAME } from './cookies'
 const mockVerifyEmail = vi.fn()
 const mockLogin = vi.fn()
 const mockRegister = vi.fn()
+const mockSendMfaCode = vi.fn()
+const mockCompleteMfa = vi.fn()
 
 vi.mock('./client', () => ({
   createServerClient: () => ({
     auth: {
       register: mockRegister,
+      sendMfaCode: mockSendMfaCode,
+      completeMfa: mockCompleteMfa,
       login: mockLogin,
       verifyEmail: mockVerifyEmail,
       logout: vi.fn(),
@@ -232,5 +236,52 @@ describe('register route cookie behavior', () => {
 
     const userIdCookie = cookies.find(c => c.startsWith(USER_ID_COOKIE_NAME))
     expect(userIdCookie).toContain('u-new')
+  })
+})
+
+describe('adaptive login route', () => {
+  it('forwards proof and never sets cookies for a challenge', async () => {
+    mockLogin.mockReset()
+    mockLogin.mockRejectedValue(new ScaleMuleApiError({ code: 'LOGIN_CHALLENGE_REQUIRED', message: JSON.stringify({ challenge_token: 'proof' }) }))
+    const response = await createAuthRoutes().POST(createRequest('login', { email: 'reader@example.com', password: 'correct', challenge_token: 'old', challenge_code: '123456' }), contextFor('login'))
+    expect(response.status).toBe(202)
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect((await response.json()).error.code).toBe('LOGIN_CHALLENGE_REQUIRED')
+    expect(mockLogin.mock.calls[0][0]).toMatchObject({ challenge_token: 'old', challenge_code: '123456' })
+  })
+})
+
+
+describe('MFA proxy routes', () => {
+  it('preserves incorrect-code and resend-limit errors without setting cookies', async () => {
+    for (const [path, mock, code, status] of [
+      ['mfa/verify', mockCompleteMfa, 'INVALID_MFA_CODE', 400],
+      ['mfa/send-code', mockSendMfaCode, 'CHALLENGE_RATE_LIMITED', 429],
+    ] as const) {
+      mock.mockRejectedValueOnce(new ScaleMuleApiError({ code, message: 'Try again' }))
+      const response = await createAuthRoutes().POST(createRequest(path, { pending_token: 'pending', method: 'email', code: '123456' }), contextFor(path))
+      expect(response.status).toBe(status)
+      expect((await response.json()).error.code).toBe(code)
+      expect(response.headers.get('set-cookie')).toBeNull()
+    }
+  })
+  it('completes the session and account switcher without returning extra backend tokens', async () => {
+    mockCompleteMfa.mockResolvedValueOnce({ user: { id: 'user-mfa', email: 'test@example.com' }, session_token: 'session', refresh_token: 'private-refresh' })
+    const response = await createAuthRoutes({ enableAccountSwitcher: true }).POST(createRequest('mfa/verify', { pending_token: 'pending', method: 'totp', code: '123456' }), contextFor('mfa/verify'))
+    expect(response.status).toBe(200)
+    expect(response.headers.getSetCookie().join(';')).toContain('HttpOnly')
+    const data = (await response.json()).data
+    expect(data).toMatchObject({ sessionToken: 'session', userId: 'user-mfa' })
+    expect(data).not.toHaveProperty('session_token')
+    expect(data).not.toHaveProperty('refresh_token')
+    expect(response.headers.getSetCookie().length).toBeGreaterThan(2)
+  })
+  it('rejects missing or invalid MFA methods before making upstream requests', async () => {
+    mockCompleteMfa.mockClear()
+    for (const method of [undefined, 'unknown']) {
+      const response = await createAuthRoutes().POST(createRequest('mfa/verify', { pending_token: 'pending', code: '123456', method }), contextFor('mfa/verify'))
+      expect(response.status).toBe(400)
+    }
+    expect(mockCompleteMfa).not.toHaveBeenCalled()
   })
 })

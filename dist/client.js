@@ -611,7 +611,7 @@ var ScaleMuleClient = class {
           responseData = text ? JSON.parse(text) : null;
         } catch {
         }
-        if (!response.ok) {
+        if (!response.ok || responseData?.success === false) {
           const rawError = responseData?.error;
           const baseError = rawError && typeof rawError === "object" ? rawError : { code: `HTTP_${response.status}`, message: typeof rawError === "string" ? rawError : responseData?.message || text || response.statusText };
           const error = withErrorContext(baseError, responseData, response.headers);
@@ -650,7 +650,7 @@ var ScaleMuleClient = class {
             continue;
           }
           if (this.debug) {
-            console.error("[ScaleMule] Request failed:", error);
+            console.error("[ScaleMule] Request failed:", ["LOGIN_CHALLENGE_REQUIRED", "MFA_REQUIRED"].includes(error.code) ? error.code : error);
           }
           throw new ScaleMuleApiError(error);
         }

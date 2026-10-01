@@ -40,6 +40,35 @@ API keys never reach the browser. Session tokens are HTTP-only cookies.
 
 Need the cookie/header lifecycle or the proxy-vs-direct decision tree? See [`docs/AUTH_PROXY_PATTERN.md`](./docs/AUTH_PROXY_PATTERN.md).
 
+## Adaptive sign-in and password recovery
+
+From 0.1.51, `useAuth().login()` handles email security challenges and enrolled MFA
+through the provider's shared verification dialog. Existing login forms need no
+challenge implementation. A session cookie is set only after verification succeeds.
+Codes can be retried or resent; users can cancel or follow the password recovery link.
+
+Set `passwordRecoveryUrl` on `ScaleMuleProvider` if your forgot-password page is not
+`/auth/forgot-password`. For custom UI, pass an async `onSecurityChallenge` callback
+that returns the entered code, `"resend"`, or `null` to cancel.
+
+Before enabling `adaptive_email_challenges_enabled` in the application's auth settings,
+deploy this SDK version to every login client and verify email delivery. The setting is
+server-controlled; older clients default to observation of soft risk signals. Existing
+account restrictions, abuse limits, and required MFA policies continue to apply.
+Required MFA enrollment for users without a configured factor is a separate flow.
+
+Configure the application's `public_auth_base_url` to its own auth pages, for example
+`https://yourdomain.com/auth`. Configure a verified sending domain separately in
+communication settings, for example `noreply@email.yourdomain.com`. The sending domain
+does not determine where recovery links land. Publish SPF, DKIM, and DMARC records and
+verify delivery before enabling the domain.
+
+Your public `/auth/reset-password` page calls `useAuth().resetPassword(token, newPassword)`. Keep this page accessible even when an old session cookie exists;
+set `Referrer-Policy: no-referrer` and `Cache-Control: no-store`. After success the SDK
+clears the browser session and removes the reset token from the URL. The backend
+invalidates other sessions and grants one subsequent password login relief from soft
+risk checks for 30 minutes; it does not bypass enrolled MFA or account suspension.
+
 ## Environment Variables
 
 ```bash
