@@ -1177,6 +1177,7 @@ var NetworkPlayerClient = class {
     this.target = null;
     this.connected = false;
     this.pending = false;
+    this.handoffRequested = false;
     this.openedAt = 0;
     this.lastSeen = 0;
     this.latest = null;
@@ -1193,10 +1194,11 @@ var NetworkPlayerClient = class {
       this.lastSeen = Date.now();
       if (!this.connected) {
         const local = this.controller.getSnapshot();
-        const handoff = this.pending && !data.snapshot.queue.length && local.queue.length > 0;
+        const handoff = this.handoffRequested && !data.snapshot.queue.length && local.queue.length > 0;
         this.controller.pause();
         this.connected = true;
         this.pending = false;
+        this.handoffRequested = false;
         if (handoff) this.post({ kind: "adopt", snapshot: local, play: local.status === "playing" || local.status === "loading" });
       }
       this.latest = data.snapshot;
@@ -1231,6 +1233,7 @@ var NetworkPlayerClient = class {
       return;
     }
     this.pending = true;
+    this.handoffRequested = true;
     this.openedAt = Date.now();
   }
   command(command) {
@@ -1242,6 +1245,7 @@ var NetworkPlayerClient = class {
   disconnect(notice) {
     if (this.latest) this.controller.restore(this.latest);
     this.connected = false;
+    this.handoffRequested = false;
     this.target = null;
     this.latest = null;
     this.update(null, notice);

@@ -79,3 +79,17 @@ it('host checks exact reader source, origin, schema, and article origin before c
   expect(controller.getSnapshot().rate).toBe(1.5)
   expect(reader.postMessage).toHaveBeenCalledWith(expect.objectContaining({ kind: 'state' }), 'https://lamorindapost.com')
 })
+
+it('preserves the local queue when a slow host becomes ready after the connection notice', async () => {
+  const target = { postMessage: vi.fn(), focus: vi.fn(), closed: false } as unknown as Window
+  vi.spyOn(window, 'open').mockReturnValue(target)
+  controller.restore(state)
+  const update = vi.fn()
+  const client = new NetworkPlayerClient(controller, { networkId: 'bay-area', playerUrl: `${origin}/listen` }, update)
+  dispose = () => client.dispose()
+  client.open()
+  await vi.advanceTimersByTimeAsync(11000)
+  expect(update).toHaveBeenLastCalledWith(null, expect.stringContaining('did not connect'))
+  message(target, origin, { kind: 'state', snapshot: EMPTY_SNAPSHOT })
+  expect(target.postMessage).toHaveBeenCalledWith(expect.objectContaining({ kind: 'adopt', snapshot: expect.objectContaining({ position: 27, queue: [track] }) }), origin)
+})
