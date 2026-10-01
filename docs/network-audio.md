@@ -84,6 +84,7 @@ players for the same article.
 import { ArticleAudioControls } from '@scalemule/nextjs/audio'
 
 <ArticleAudioControls
+  durationMs={article.audio?.duration_ms}
   track={{
     id: article.id,
     publicationId,
@@ -104,6 +105,8 @@ appends without interrupting playback. Identity is `(publicationId, id)` so IDs
 in different publications do not collide. The queue deduplicates entries and
 holds up to 100 articles. Finishing an article advances to the next one.
 Unavailable audio stops with a retry/choose-another message.
+
+The compact bar exposes a playback-speed shortcut (cycles upward through the available rates, then resets to 1×) and a Follow along toggle. The expanded Speed selector retains all rates, including 0.5× and 0.75×. The player highlighting shortcut is enabled only when the active article has mounted narration controls in this document; it shares the article toggle’s preference.
 
 `useArticleNarration(track, narration)` attaches the same behavior to custom
 controls. Highlighting is opt-in, applies only to the active article, clears
@@ -192,8 +195,8 @@ screens, keyboard controls, volume, speed, seek, skipping forward/backward,
 queue selection/removal and clearing the queue. Media Session play/pause/seek is
 registered where supported. Customize `--sm-player-paper`, `--sm-player-ink`,
 `--sm-player-muted`, `--sm-player-line`, `--sm-player-accent`, `--sm-player-soft`,
-and `--sm-player-z-index`. Typography inherits `--font-editorial` and
-`--font-inter`. Supply an appropriate palette for dark themes.
+and `--sm-player-z-index`. Typography uses `--sm-player-serif` and `--sm-player-sans`, falling back to
+`--font-editorial` and `--font-inter`. The article panel uses the same palette variables. Supply an appropriate palette for dark themes.
 
 Persistence is off by default. Where reader preferences permit it, set
 `checkpointStorageKey` to an application/network **and user-scoped** key.

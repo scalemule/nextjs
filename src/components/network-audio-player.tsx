@@ -28,10 +28,12 @@ export interface NetworkAudioContextValue {
   notice: string | null
   command: (command: NetworkAudioCommand) => void
   openNetworkPlayer?: () => void
+  highlightAvailable: boolean
   highlightEnabled: boolean
   setHighlightEnabled: (enabled: boolean) => void
 }
 const Context = createContext<NetworkAudioContextValue | null>(null)
+const NarrationRegistration = createContext<((key: string) => () => void) | null>(null)
 const serverSnapshot = () => EMPTY_SNAPSHOT
 
 /** Mount once in a persistent root layout, outside route keys/templates. */
@@ -42,6 +44,12 @@ export function NetworkAudioProvider({ children, resolveAudio, connection, host,
   const [remoteSnapshot, setRemoteSnapshot] = useState<NetworkAudioSnapshot | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [highlightEnabled, setHighlightEnabled] = useState(false)
+  const [narrationTracks, setNarrationTracks] = useState<ReadonlyMap<symbol, string>>(() => new Map())
+  const registerNarration = useCallback((key: string) => {
+    const id = Symbol()
+    setNarrationTracks(previous => new Map(previous).set(id, key))
+    return () => setNarrationTracks(previous => { const next = new Map(previous); next.delete(id); return next })
+  }, [])
   const client = useRef<NetworkPlayerClient | null>(null)
   useEffect(() => { controller.setResolver(resolveAudio) }, [controller, resolveAudio])
   useEffect(() => {
@@ -90,10 +98,14 @@ export function NetworkAudioProvider({ children, resolveAudio, connection, host,
   }, [controller])
   const openNetworkPlayer = useCallback(() => client.current?.open(), [])
   const activeSnapshot = remoteSnapshot ?? snapshot
+  const activeTrack = activeSnapshot.queue[activeSnapshot.index]
+  const highlightAvailable = !!activeTrack && [...narrationTracks.values()].includes(trackKey(activeTrack))
   return <Context.Provider value={{ snapshot: activeSnapshot, remote: remoteSnapshot !== null, hosted: !!host, notice, command,
-    openNetworkPlayer: connection ? openNetworkPlayer : undefined, highlightEnabled, setHighlightEnabled }}>
-    <NetworkMediaSession />
-    {children}
+    openNetworkPlayer: connection ? openNetworkPlayer : undefined, highlightAvailable, highlightEnabled, setHighlightEnabled }}>
+    <NarrationRegistration.Provider value={registerNarration}>
+      <NetworkMediaSession />
+      {children}
+    </NarrationRegistration.Provider>
   </Context.Provider>
 }
 
@@ -137,6 +149,12 @@ const subscribeCapabilities = () => () => {}
 export function useArticleNarration(track: NetworkAudioTrack, narration?: AudioPlayerNarration) {
   const { snapshot, highlightEnabled, setHighlightEnabled } = useNetworkAudio()
   const supported = useSyncExternalStore(subscribeCapabilities, narrationHighlightSupported, () => false)
+  const registerNarration = useContext(NarrationRegistration)
+  const narrationKey = trackKey(track)
+  const available = !!narration && supported
+  useEffect(() => {
+    if (available) return registerNarration?.(narrationKey)
+  }, [available, narrationKey, registerNarration])
   const active = snapshot.queue[snapshot.index]
   const matching = !!active && trackKey(active) === trackKey(track)
   const clock = useRef({ snapshot, received: 0 })
@@ -180,24 +198,53 @@ export function useArticleNarration(track: NetworkAudioTrack, narration?: AudioP
   return { highlightAvailable: !!narration && supported, highlightEnabled, setHighlightEnabled, matching }
 }
 
+type AudioIconName = 'play' | 'pause' | 'queue' | 'check' | 'highlight' | 'next' | 'chevron' | 'external'
+function AudioIcon({ name }: { name: AudioIconName }) {
+  return <svg className="sm-network-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+    {name === 'play' && <path d="m9 5 11 7-11 7Z" fill="currentColor" stroke="none" />}
+    {name === 'pause' && <path d="M7 5h3v14H7zm7 0h3v14h-3z" fill="currentColor" stroke="none" />}
+    {name === 'queue' && <><path d="M4 6h16M4 12h10M4 18h8m7-5v8m-4-4h8" /></>}
+    {name === 'check' && <path d="m5 12 4 4L19 6" />}
+    {name === 'highlight' && <><path d="m7 14 7-9 5 4-7 9-5-4Zm0 0-3 5h8M16 3l5 4M3 22h17" /></>}
+    {name === 'next' && <><path d="m6 5 10 7-10 7Z" fill="currentColor" stroke="none" /><path d="M19 5v14" /></>}
+    {name === 'chevron' && <path d="m7 10 5 5 5-5" />}
+    {name === 'external' && <path d="M14 4h6v6m0-6L10 14m10 1v5H4V4h5" />}
+  </svg>
+}
+
+const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
+const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3]
+
 export interface ArticleAudioControlsProps {
   track: NetworkAudioTrack
   narration?: AudioPlayerNarration
+  /** Recording length shown before playback; resolved media supplies the live duration. */
+  durationMs?: number | null
   className?: string
 }
-export function ArticleAudioControls({ track, narration, className = '' }: ArticleAudioControlsProps) {
+export function ArticleAudioControls({ track, narration, durationMs, className = '' }: ArticleAudioControlsProps) {
   const { snapshot, command } = useNetworkAudio()
   const { highlightAvailable, highlightEnabled, setHighlightEnabled, matching } = useArticleNarration(track, narration)
   const playing = matching && (snapshot.status === 'playing' || snapshot.status === 'loading')
   const queued = snapshot.queue.some(item => trackKey(item) === trackKey(track))
-  return <div className={`sm-network-article ${className}`} aria-label="Article audio">
-    <button type="button" onClick={() => command(playing ? { action: 'pause' } : { action: 'playTrack', track })}>{playing ? 'Pause article' : 'Listen to article'}</button>
-    <button type="button" disabled={queued} onClick={() => command({ action: 'enqueue', track })}>{queued ? 'In your queue' : 'Add to queue'}</button>
-    {highlightAvailable && <button type="button" aria-pressed={highlightEnabled} onClick={() => setHighlightEnabled(!highlightEnabled)}>Highlight words</button>}
+  const duration = matching && snapshot.duration > 0 ? snapshot.duration : (durationMs ?? 0) / 1000
+  return <div className={`sm-network-article ${className}`} role="group" aria-label="Article audio">
+    <button type="button" className="sm-network-article__listen" aria-label={playing ? 'Pause this story' : 'Listen to this story'}
+      onClick={() => command(playing ? { action: 'pause' } : { action: 'playTrack', track })}>
+      <span className="sm-network-article__disc"><AudioIcon name={playing ? 'pause' : 'play'} /></span>
+      <span className="sm-network-article__caption"><span>{playing ? 'Pause this story' : 'Listen to this story'}</span>
+        <span className="sm-network-article__duration">{matching && snapshot.status === 'loading' ? 'Loading audio…' : duration > 0 ? `${formatTime(duration)} listening time` : 'Article audio'}</span>
+      </span>
+    </button>
+    <div className="sm-network-article__actions">
+      <button type="button" className="sm-network-article__queue" aria-label={queued ? 'Queued' : 'Add to queue'} disabled={queued}
+        onClick={() => command({ action: 'enqueue', track })}><AudioIcon name={queued ? 'check' : 'queue'} /><span>{queued ? 'Queued' : 'Queue'}</span></button>
+      {highlightAvailable && <button type="button" aria-label="Follow along: highlight words" aria-pressed={highlightEnabled} title="Highlight words as you listen"
+        onClick={() => setHighlightEnabled(!highlightEnabled)}><AudioIcon name="highlight" /><span>Follow along</span><span className="sm-network-toggle" aria-hidden="true" /></button>}
+    </div>
   </div>
 }
 
-const formatTime = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
 export interface NetworkAudioPlayerProps {
   networkName?: string
   /** Render an actual ad or sponsor creative here. The expanded slot is labeled Advertisement. */
@@ -210,13 +257,14 @@ export interface NetworkAudioPlayerProps {
   renderArticleLink?: (track: NetworkAudioTrack) => ReactNode
 }
 export function NetworkAudioPlayer({ networkName = 'Your listening queue', advertisement, className = '', style, fixed = true, renderArticleLink }: NetworkAudioPlayerProps) {
-  const { snapshot, remote, hosted, notice, command, openNetworkPlayer } = useNetworkAudio()
+  const { snapshot, remote, hosted, notice, command, openNetworkPlayer, highlightAvailable, highlightEnabled, setHighlightEnabled } = useNetworkAudio()
   const [expanded, setExpanded] = useState(false)
   const [height, setHeight] = useState(0)
   const bar = useRef<HTMLElement>(null)
   const detailsId = useId()
   const track = snapshot.queue[snapshot.index]
   const playing = snapshot.status === 'playing' || snapshot.status === 'loading'
+  const nextRate = PLAYBACK_RATES.find(rate => rate > snapshot.rate) ?? 1
   useEffect(() => {
     const element = bar.current
     if (!fixed || !element) return
@@ -236,24 +284,33 @@ export function NetworkAudioPlayer({ networkName = 'Your listening queue', adver
     <section ref={bar} className={`sm-network-player ${fixed ? 'sm-network-player--fixed' : ''} ${className}`} style={style} aria-label="Network audio player">
       <div className="sm-network-player__row">
         <button type="button" className="sm-network-player__play" aria-label={playing ? 'Pause playback' : 'Play playback'} onClick={() => command({ action: playing ? 'pause' : 'play' })}>
-          <svg viewBox="0 0 24 24" aria-hidden="true">{playing ? <path d="M6 4h4v16H6zm8 0h4v16h-4z" /> : <path d="M7 3v18l15-9z" />}</svg>
+          <AudioIcon name={playing ? 'pause' : 'play'} />
         </button>
         <div className="sm-network-player__story"><span>{remote ? 'Playing in network window' : networkName}</span>{!hosted && renderArticleLink ? renderArticleLink(track) : <a href={track.articleUrl} target="_blank" rel="noopener noreferrer">{track.title}</a>}<small>{track.publicationName}</small></div>
         <div className="sm-network-player__timeline">
-          <input type="range" min="0" max={snapshot.duration || 0} step="0.1" value={Math.min(snapshot.position, snapshot.duration)} disabled={!snapshot.duration} aria-label="Seek article audio" onChange={e => command({ action: 'seek', value: Number(e.target.value) })} />
-          <div><span>{formatTime(snapshot.position)}</span><span>{formatTime(Math.max(0, snapshot.duration - snapshot.position) / snapshot.rate)} remaining</span></div>
+          <input style={{ '--sm-progress': `${snapshot.duration ? Math.min(100, snapshot.position / snapshot.duration * 100) : 0}%` } as CSSProperties} type="range" min="0" max={snapshot.duration || 0} step="0.1" value={Math.min(snapshot.position, snapshot.duration)} disabled={!snapshot.duration} aria-label="Seek article audio" onChange={e => command({ action: 'seek', value: Number(e.target.value) })} />
+          <div><span>{formatTime(snapshot.position)}</span><span className="sm-network-player__remaining" aria-label={`${formatTime(Math.max(0, snapshot.duration - snapshot.position) / snapshot.rate)} remaining`}>{formatTime(Math.max(0, snapshot.duration - snapshot.position) / snapshot.rate)}<span className="sm-network-player__remaining-label"> remaining</span></span></div>
         </div>
-        <button type="button" disabled={snapshot.index + 1 >= snapshot.queue.length} onClick={() => command({ action: 'select', value: snapshot.index + 1 })}>Next</button>
-        <button type="button" aria-expanded={expanded} aria-controls={detailsId} onClick={() => setExpanded(!expanded)}>{expanded ? 'Collapse' : `Queue (${snapshot.queue.length})`}</button>
+        <div className="sm-network-player__shortcuts" role="group" aria-label="Playback shortcuts">
+          <button type="button" className="sm-network-player__rate" aria-label={`Playback speed ${snapshot.rate}×. ${nextRate > snapshot.rate ? 'Speed up' : 'Reset'} to ${nextRate}×`}
+            title={`Playback speed: ${snapshot.rate}×. Click for ${nextRate}×`} onClick={() => command({ action: 'rate', value: nextRate })}>{snapshot.rate}<span>×</span></button>
+          <button type="button" className="sm-network-player__highlight" aria-label="Follow along: highlight article words" aria-pressed={highlightAvailable && highlightEnabled}
+            disabled={!highlightAvailable} title={highlightAvailable ? 'Highlight words as you listen' : 'Open the playing article to use word highlighting when available'}
+            onClick={() => setHighlightEnabled(!highlightEnabled)}><AudioIcon name="highlight" /><span>Follow along</span></button>
+          <button type="button" className="sm-network-player__next" aria-label="Next article" title="Next article" disabled={snapshot.index + 1 >= snapshot.queue.length}
+            onClick={() => command({ action: 'select', value: snapshot.index + 1 })}><AudioIcon name="next" /></button>
+          <button type="button" className="sm-network-player__queue" aria-label={expanded ? 'Close queue' : `Queue (${snapshot.queue.length})`}
+            aria-expanded={expanded} aria-controls={detailsId} onClick={() => setExpanded(!expanded)}><AudioIcon name="queue" /><span className="sm-network-player__queue-label">{expanded ? 'Close queue' : 'Queue'}</span><span className="sm-network-player__count">{snapshot.queue.length}</span><AudioIcon name="chevron" /></button>
+        </div>
       </div>
       {(notice || snapshot.error) && <p role="status" className="sm-network-player__notice">{notice ?? snapshot.error}</p>}
       <div id={detailsId} hidden={!expanded} className="sm-network-player__details">
         <div className="sm-network-player__tools">
           <button type="button" onClick={() => command({ action: 'seek', value: snapshot.position - 15 })}>Back 15 seconds</button>
           <button type="button" onClick={() => command({ action: 'seek', value: snapshot.position + 30 })}>Forward 30 seconds</button>
-          <label>Speed <select value={snapshot.rate} onChange={e => command({ action: 'rate', value: Number(e.target.value) })}>{[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3].map(rate => <option key={rate} value={rate}>{rate}×</option>)}</select></label>
+          <label>Speed <span className="sm-network-player__select"><select value={snapshot.rate} onChange={e => command({ action: 'rate', value: Number(e.target.value) })}>{PLAYBACK_RATES.map(rate => <option key={rate} value={rate}>{rate}×</option>)}</select><AudioIcon name="chevron" /></span></label>
           <label>Volume <input type="range" min="0" max="1" step="0.05" value={snapshot.volume} onChange={e => command({ action: 'volume', value: Number(e.target.value) })} /></label>
-          {openNetworkPlayer && <button type="button" onClick={openNetworkPlayer}>{remote ? 'Open player window' : 'Listen across sites ↗'}</button>}
+          {openNetworkPlayer && <button type="button" onClick={openNetworkPlayer}>{remote ? 'Open player window' : 'Listen across sites'}<AudioIcon name="external" /></button>}
           <button type="button" onClick={() => command({ action: 'clear' })}>Stop and clear queue</button>
         </div>
         <div className="sm-network-player__expanded">
