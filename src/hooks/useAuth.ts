@@ -14,6 +14,9 @@ import type {
   RegisterRequest,
   LoginRequest,
   LoginResponse,
+  AuthLoginResponse,
+  CookieLoginResponse,
+  CookieOAuthCallbackResponse,
   LoginResponseWithMFA,
   ApiError,
   OAuthConfig,
@@ -33,6 +36,12 @@ import type {
   PhoneLoginRequest,
   KnownAccountInfo,
 } from '../types'
+
+// Legacy custom proxies may still supply a token; shared cookie routes do not.
+interface ProxyLoginData extends Partial<LoginResponse> { user: User; userId?: string; sessionToken?: string }
+function cookieLoginResult(user: User): CookieLoginResponse {
+  return { authenticated: true, userId: user.id, user }
+}
 
 /**
  * Authentication hook for ScaleMule
@@ -175,7 +184,7 @@ async function proxyFetch<T>(
   options: { method?: string; body?: unknown } = {}
 ): Promise<{ success: boolean; data?: T; error?: ScaleMuleApiError }> {
   const method = options.method || 'POST'
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
 
   if (options.body) {
     headers['Content-Type'] = 'application/json'
@@ -250,7 +259,7 @@ export function useAuth(): UseAuthReturn {
       setError(null)
 
       if (authProxyUrl) {
-        const response = await proxyFetch<{ user: User; message: string; sessionToken?: string; userId?: string }>(
+        const response = await proxyFetch<{ user: User; message: string; authenticated?: boolean; sessionToken?: string; userId?: string }>(
           authProxyUrl, 'register', { body: data }
         )
 
@@ -269,7 +278,7 @@ export function useAuth(): UseAuthReturn {
         }
 
         // Hydrate user in context so route guards see isAuthenticated immediately
-        if (response.data.user) {
+        if (response.data.user && response.data.authenticated !== false) {
           setUser(response.data.user)
         }
 
@@ -293,13 +302,13 @@ export function useAuth(): UseAuthReturn {
    * May return MFA challenge if user has MFA enabled
    */
   const login = useCallback(
-    async (data: LoginRequest): Promise<LoginResponse | LoginResponseWithMFA> => {
+    async (data: LoginRequest): Promise<AuthLoginResponse | LoginResponseWithMFA> => {
       setError(null)
 
       if (authProxyUrl) {
         // Proxy mode: session managed by httpOnly cookies
         const response = await withAdaptiveChallenge(async (proof) => {
-          const result = await proxyFetch<LoginResponse | LoginResponseWithMFA | { user: User }>(
+          const result = await proxyFetch<ProxyLoginData | LoginResponseWithMFA>(
             authProxyUrl, 'login', { body: { ...data, ...proof } }
           )
           if (!result.success || !result.data) {
@@ -313,7 +322,7 @@ export function useAuth(): UseAuthReturn {
             return result
           },
           verify: async (pending_token, code, method) => {
-            const result = await proxyFetch<LoginResponse>(authProxyUrl, 'mfa/verify', { body: { pending_token, code, method } })
+            const result = await proxyFetch<ProxyLoginData>(authProxyUrl, 'mfa/verify', { body: { pending_token, code, method } })
             if (!result.success || !result.data) throw result.error
             return { ...result, data: result.data }
           },
@@ -329,21 +338,20 @@ export function useAuth(): UseAuthReturn {
         }
 
         // Proxy sets cookies. Extract user and session token from response.
-        const loginData = response.data as LoginResponse | { user: User; sessionToken?: string; userId?: string }
+        const loginData = response.data as ProxyLoginData
         const responseUser = 'user' in loginData ? loginData.user : null
 
-        if (responseUser) {
-          setUser(responseUser)
-        }
+        if (!responseUser) throw new ScaleMuleApiError({ code: 'LOGIN_FAILED', message: 'Sign-in did not return a user' })
+        setUser(responseUser)
 
-        // Set session token on client so API requests include Authorization header
-        const sessionToken = 'sessionToken' in loginData ? loginData.sessionToken : undefined
-        const userId = 'userId' in loginData ? loginData.userId : undefined
-        if (sessionToken) {
-          await client.setSession(sessionToken, userId || responseUser?.id || '')
+        if (client.usesCookieSession()) {
+          client.setCookieSession(responseUser.id)
+          return cookieLoginResult(responseUser)
         }
-
-        return response.data as LoginResponse
+        const sessionToken = loginData.sessionToken || loginData.session_token
+        if (!sessionToken) throw new ScaleMuleApiError({ code: 'LOGIN_FAILED', message: 'Sign-in did not return a session' })
+        await client.setSession(sessionToken, loginData.userId || responseUser.id)
+        return { ...loginData, session_token: sessionToken }
       }
 
       let loginResult: LoginResponse | LoginResponseWithMFA
@@ -387,6 +395,7 @@ export function useAuth(): UseAuthReturn {
       } catch {
         // Ignore errors - we're logging out anyway
       }
+      await client.clearSession()
       setUser(null)
       return
     }
@@ -587,8 +596,8 @@ export function useAuth(): UseAuthReturn {
     setError(null)
 
     if (authProxyUrl) {
-      // Proxy mode: refresh via proxy (cookies handle session)
-      const response = await proxyFetch<{ user: User | null; message: string }>(
+      // Cookie mode keeps rotation server-side; explicit bearer mode adopts it.
+      const response = await proxyFetch<{ user?: User | null; message: string; sessionToken?: string; userId?: string }>(
         authProxyUrl, 'refresh'
       )
 
@@ -602,6 +611,9 @@ export function useAuth(): UseAuthReturn {
         throw err
       }
 
+      if (!client.usesCookieSession() && response.data?.sessionToken && response.data.userId) {
+        await client.setSession(response.data.sessionToken, response.data.userId)
+      }
       if (response.data?.user) {
         setUser(response.data.user)
       }
@@ -715,7 +727,7 @@ export function useAuth(): UseAuthReturn {
    * ```
    */
   const completeOAuth = useCallback(
-    async (request: OAuthCallbackRequest): Promise<OAuthCallbackResponse> => {
+    async (request: OAuthCallbackRequest): Promise<OAuthCallbackResponse | CookieOAuthCallbackResponse> => {
       setError(null)
 
       // Verify state matches what we stored
@@ -733,9 +745,9 @@ export function useAuth(): UseAuthReturn {
         sessionStorage.removeItem('scalemule_oauth_state')
       }
 
-      let callbackData: OAuthCallbackResponse
+      let callbackData: OAuthCallbackResponse | CookieOAuthCallbackResponse
       try {
-        callbackData = await client.post<OAuthCallbackResponse>('/v1/auth/oauth/callback', request)
+        callbackData = await client.post<OAuthCallbackResponse | CookieOAuthCallbackResponse>('/v1/auth/oauth/callback', request)
       } catch (err) {
         if (err instanceof ScaleMuleApiError) {
           setError(err)
@@ -744,7 +756,8 @@ export function useAuth(): UseAuthReturn {
       }
 
       // Set session
-      await client.setSession(callbackData.session_token, callbackData.user.id)
+      if (client.usesCookieSession()) client.setCookieSession(callbackData.user.id)
+      else if ('session_token' in callbackData) await client.setSession(callbackData.session_token, callbackData.user.id)
       setUser(callbackData.user)
 
       return callbackData
@@ -891,17 +904,24 @@ export function useAuth(): UseAuthReturn {
    * Complete MFA challenge during login
    */
   const completeMFAChallenge = useCallback(
-    async (challengeToken: string, code: string, method: MFAMethod): Promise<LoginResponse> => {
+    async (challengeToken: string, code: string, method: MFAMethod): Promise<AuthLoginResponse> => {
       setError(null)
 
       let mfaResult: LoginResponse
       try {
         if (authProxyUrl) {
-          const result = await proxyFetch<LoginResponse & { sessionToken?: string }>(authProxyUrl, 'mfa/verify', { body: { pending_token: challengeToken, code, method } })
+          const result = await proxyFetch<ProxyLoginData>(authProxyUrl, 'mfa/verify', { body: { pending_token: challengeToken, code, method } })
           if (!result.success || !result.data) throw result.error
           const sessionToken = result.data.sessionToken || result.data.session_token
+          if (client.usesCookieSession() && result.data.user) {
+            client.setCookieSession(result.data.user.id)
+            setUser(result.data.user)
+            return cookieLoginResult(result.data.user)
+          }
           if (!sessionToken) throw new ScaleMuleApiError({ code: 'MFA_FAILED', message: 'Sign-in did not return a session' })
-          mfaResult = { ...result.data, session_token: sessionToken }
+          await client.setSession(sessionToken, result.data.user.id)
+          setUser(result.data.user)
+          return { ...result.data, session_token: sessionToken }
         } else {
           mfaResult = await client.post<LoginResponse>('/v1/auth/mfa/verify', { pending_token: challengeToken, code, method })
         }
@@ -1049,11 +1069,11 @@ export function useAuth(): UseAuthReturn {
    * Login with phone number
    */
   const loginWithPhone = useCallback(
-    async (request: PhoneLoginRequest): Promise<LoginResponse> => {
+    async (request: PhoneLoginRequest): Promise<AuthLoginResponse> => {
       setError(null)
 
       if (authProxyUrl) {
-        const response = await proxyFetch<LoginResponse | { user: User }>(
+        const response = await proxyFetch<ProxyLoginData>(
           authProxyUrl, 'phone/login', { body: request }
         )
 
@@ -1066,20 +1086,19 @@ export function useAuth(): UseAuthReturn {
           throw err
         }
 
-        const loginData = response.data as LoginResponse | { user: User; sessionToken?: string; userId?: string }
+        const loginData = response.data as ProxyLoginData
         const responseUser = 'user' in loginData ? loginData.user : null
-        if (responseUser) {
-          setUser(responseUser)
-        }
+        if (!responseUser) throw new ScaleMuleApiError({ code: 'LOGIN_FAILED', message: 'Sign-in did not return a user' })
+        setUser(responseUser)
 
-        // Set session token on client so API requests include Authorization header
-        const sessionToken = 'sessionToken' in loginData ? loginData.sessionToken : undefined
-        const userId = 'userId' in loginData ? loginData.userId : undefined
-        if (sessionToken) {
-          await client.setSession(sessionToken, userId || responseUser?.id || '')
+        if (client.usesCookieSession()) {
+          client.setCookieSession(responseUser.id)
+          return cookieLoginResult(responseUser)
         }
-
-        return response.data as LoginResponse
+        const sessionToken = loginData.sessionToken || loginData.session_token
+        if (!sessionToken) throw new ScaleMuleApiError({ code: 'LOGIN_FAILED', message: 'Sign-in did not return a session' })
+        await client.setSession(sessionToken, loginData.userId || responseUser.id)
+        return { ...loginData, session_token: sessionToken }
       }
 
       let phoneLoginData: LoginResponse
@@ -1141,6 +1160,7 @@ export function useAuth(): UseAuthReturn {
       // Log out current session — session cookie cleared, known accounts cookie preserved
       if (authProxyUrl) {
         await proxyFetch(authProxyUrl, 'switch-account')
+        await client.clearSession()
       } else {
         const sessionToken = client.getSessionToken()
         if (sessionToken) {

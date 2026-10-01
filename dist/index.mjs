@@ -43,7 +43,7 @@ function useSecurityChallenge(recoveryUrl) {
         event.preventDefault();
         answer(null);
       },
-      style: { border: "1px solid #d1d5db", borderRadius: 16, padding: 28, maxWidth: 420, width: "calc(100% - 48px)", color: "#111827", background: "#fff", boxSizing: "border-box" },
+      style: { border: "1px solid var(--sm-security-border, var(--site-hairline, #d1d5db))", borderRadius: 16, padding: 28, maxWidth: 420, width: "calc(100% - 48px)", color: "var(--sm-security-text, var(--site-ink, CanvasText))", background: "var(--sm-security-background, var(--site-bg-elevated, Canvas))", colorScheme: "light dark", boxSizing: "border-box" },
       children: /* @__PURE__ */ jsxs("form", { onSubmit: (event) => {
         event.preventDefault();
         if (code.trim()) answer(code.trim());
@@ -63,10 +63,10 @@ function useSecurityChallenge(recoveryUrl) {
             onChange: (event) => setCode(event.target.value),
             maxLength: 32,
             required: true,
-            style: { display: "block", boxSizing: "border-box", width: "100%", margin: "8px 0 20px", padding: 12, fontSize: 22, border: "1px solid #9ca3af", borderRadius: 8 }
+            style: { display: "block", boxSizing: "border-box", width: "100%", margin: "8px 0 20px", padding: 12, fontSize: 22, border: "1px solid var(--sm-security-border, var(--site-hairline-strong, #9ca3af))", background: "inherit", color: "inherit", borderRadius: 8 }
           }
         ),
-        /* @__PURE__ */ jsx("button", { type: "submit", style: { padding: "10px 20px", borderRadius: 8, border: 0, background: "#2563eb", color: "#fff", cursor: "pointer" }, children: "Continue" }),
+        /* @__PURE__ */ jsx("button", { type: "submit", style: { padding: "10px 20px", borderRadius: 8, border: 0, background: "var(--sm-security-accent, var(--site-accent, #2563eb))", color: "#fff", cursor: "pointer" }, children: "Continue" }),
         /* @__PURE__ */ jsx("button", { type: "button", onClick: () => answer(null), style: { marginLeft: 12 }, children: "Cancel" }),
         challenge.method !== "totp" && /* @__PURE__ */ jsxs("p", { children: [
           /* @__PURE__ */ jsx("button", { type: "button", onClick: () => answer("resend"), children: "Send a new code" }),
@@ -447,6 +447,7 @@ var ScaleMuleClient = class {
     // The shared helper also single-flights at the storage-adapter level.
     this.anonymousIdPromise = null;
     this.refreshPromise = null;
+    this.cookieSession = config.cookieSession === true;
     this.apiKey = config.apiKey;
     this.applicationId = config.applicationId || null;
     this.gatewayUrl = resolveGatewayUrl(config);
@@ -576,8 +577,13 @@ var ScaleMuleClient = class {
    * Initialize client by loading persisted session
    */
   async initialize() {
-    const token = await this.storage.getItem(SESSION_STORAGE_KEY);
-    const userId = await this.storage.getItem(USER_ID_STORAGE_KEY);
+    if (this.cookieSession) {
+      await this.storage.removeItem(SESSION_STORAGE_KEY);
+      await this.storage.removeItem(STORAGE_KEYS.SESSION_POOL);
+      await this.storage.removeItem(STORAGE_KEYS.ACTIVE_ACCOUNT);
+    }
+    const token = this.cookieSession ? null : await this.storage.getItem(SESSION_STORAGE_KEY);
+    const userId = this.cookieSession ? null : await this.storage.getItem(USER_ID_STORAGE_KEY);
     if (token) this.sessionToken = token;
     if (userId) this.userId = userId;
     const wsId = await this.storage.getItem(WORKSPACE_STORAGE_KEY);
@@ -623,6 +629,11 @@ var ScaleMuleClient = class {
    * Set session after login
    */
   async setSession(token, userId) {
+    if (this.cookieSession) {
+      this.setCookieSession(userId);
+      await this.storage.removeItem(SESSION_STORAGE_KEY);
+      return;
+    }
     this.sessionToken = token;
     this.userId = userId;
     await this.storage.setItem(SESSION_STORAGE_KEY, token);
@@ -643,8 +654,17 @@ var ScaleMuleClient = class {
    *
    * Pass `null` to clear without touching userId/storage.
    */
+  setCookieSession(userId) {
+    if (!this.cookieSession) return;
+    this.sessionToken = null;
+    this.userId = userId;
+    this.resolveSessionPending();
+  }
+  usesCookieSession() {
+    return this.cookieSession;
+  }
   setSessionToken(token) {
-    this.sessionToken = token;
+    this.sessionToken = this.cookieSession ? null : token;
     if (this.debug) {
       console.log("[ScaleMule] Session token", token ? "set (token-only)" : "cleared (token-only)");
     }
@@ -679,7 +699,7 @@ var ScaleMuleClient = class {
    * Check if client has an active session
    */
   isAuthenticated() {
-    return this.sessionToken !== null && this.userId !== null;
+    return (this.cookieSession || this.sessionToken !== null) && this.userId !== null;
   }
   /**
    * Build headers for a request
@@ -1117,6 +1137,7 @@ function ScaleMuleProvider({
   storage,
   analyticsProxyUrl,
   authProxyUrl,
+  sessionMode,
   telemetryEndpoint,
   publishableKey,
   enableAccountSwitcher,
@@ -1136,6 +1157,9 @@ function ScaleMuleProvider({
   const security = useSecurityChallenge(passwordRecoveryUrl);
   const requestSecurityCode = onSecurityChallenge || security.prompt;
   const memberMode = typeof getToken === "function";
+  const cookieSession = !!authProxyUrl && !memberMode && sessionMode !== "bearer";
+  const browserKey = cookieSession ? publishableKey || process.env.NEXT_PUBLIC_SCALEMULE_PUBLISHABLE_KEY || apiKey : apiKey;
+  const browserGateway = cookieSession ? `${authProxyUrl.replace(/\/$/, "")}/client` : void 0;
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState(null);
@@ -1146,10 +1170,11 @@ function ScaleMuleProvider({
   const resolvedGatewayUrl = gatewayUrl || (environment === "dev" ? "https://api-dev.scalemule.com" : "https://api.scalemule.com");
   const client = useMemo(
     () => createClient({
-      apiKey,
+      apiKey: browserKey,
       applicationId,
       environment,
-      gatewayUrl: resolvedGatewayUrl,
+      gatewayUrl: browserGateway || resolvedGatewayUrl,
+      cookieSession,
       debug,
       storage,
       // Make outbound API calls wait for the first token to land in any
@@ -1158,27 +1183,28 @@ function ScaleMuleProvider({
       // getToken() callback. Resolved in the init effect below.
       pendingSessionInit: !!authProxyUrl || memberMode
     }),
-    [apiKey, applicationId, environment, resolvedGatewayUrl, debug, storage, authProxyUrl, memberMode]
+    [browserKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug, storage, authProxyUrl, memberMode]
   );
   const money = useMemo(
     () => createMoneyClient({
-      apiKey,
-      gatewayUrl: resolvedGatewayUrl,
+      apiKey: browserKey,
+      gatewayUrl: browserGateway || resolvedGatewayUrl,
       environment,
       accessToken: client.getSessionToken() || void 0,
       fetch: globalThis.fetch.bind(globalThis)
     }),
-    [apiKey, resolvedGatewayUrl, environment, client]
+    [browserKey, resolvedGatewayUrl, browserGateway, environment, client]
   );
   const baseClient = useMemo(() => {
     return new ScaleMule({
-      apiKey,
+      apiKey: browserKey,
       applicationId,
-      baseUrl: resolvedGatewayUrl,
+      baseUrl: browserGateway || resolvedGatewayUrl,
+      realtimeUrl: cookieSession ? resolvedGatewayUrl : void 0,
       environment,
       debug
     });
-  }, [apiKey, applicationId, environment, resolvedGatewayUrl, debug]);
+  }, [browserKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug]);
   const [fetchedPolicy, setFetchedPolicy] = useState(void 0);
   const [tokenVersion, setTokenVersion] = useState(0);
   useEffect(() => {
@@ -1268,18 +1294,21 @@ function ScaleMuleProvider({
             const data = await response.json();
             if (mounted) {
               if (data.success && data.data?.user) {
+                client.setCookieSession(data.data.user.id);
                 setUser(data.data.user);
                 setCachedUser(data.data.user);
                 if (data.data.sessionToken) {
                   await client.setSession(data.data.sessionToken, data.data.userId || "");
                 }
               } else {
+                client.setCookieSession(null);
                 setUser(null);
                 setCachedUser(null);
               }
             }
           } catch {
             if (mounted) {
+              client.setCookieSession(null);
               setUser(null);
               setCachedUser(null);
               if (debug) {
@@ -1366,13 +1395,15 @@ function ScaleMuleProvider({
   }, [memberMode, memberTokenPollMs, getToken, client, baseClient, money, debug]);
   const handleSetUser = useCallback(
     (newUser) => {
+      client.setCookieSession(newUser?.id || null);
+      if (!newUser) baseClient.realtime.disconnect();
       setUser(newUser);
       setCachedUser(newUser);
       if (newUser === null && onLogout) {
         onLogout();
       }
     },
-    [onLogout]
+    [onLogout, client, baseClient]
   );
   const value = useMemo(
     () => ({
@@ -1396,7 +1427,7 @@ function ScaleMuleProvider({
       setError,
       analyticsProxyUrl,
       authProxyUrl,
-      publishableKey,
+      publishableKey: cookieSession ? browserKey : publishableKey,
       apiKey,
       gatewayUrl: resolvedGatewayUrl,
       environment: environment || void 0,
@@ -1404,7 +1435,7 @@ function ScaleMuleProvider({
       accountSwitcherPrivacy,
       bootstrapFlags
     }),
-    [requestSecurityCode, client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
+    [requestSecurityCode, client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, browserKey, cookieSession, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
   );
   return /* @__PURE__ */ jsxs(ScaleMuleContext.Provider, { value, children: [
     children,
@@ -1427,6 +1458,9 @@ function useScaleMuleClient() {
 function useMoneyClient() {
   const { money } = useScaleMule();
   return money;
+}
+function cookieLoginResult(user) {
+  return { authenticated: true, userId: user.id, user };
 }
 function maskEmail(email) {
   const [local, domain] = email.split("@");
@@ -1483,7 +1517,7 @@ async function getProxyAnonymousId() {
 }
 async function proxyFetch(proxyUrl, path, options = {}) {
   const method = options.method || "POST";
-  const headers = {};
+  const headers = { "Content-Type": "application/json" };
   if (options.body) {
     headers["Content-Type"] = "application/json";
   }
@@ -1542,7 +1576,7 @@ function useAuth() {
         if (response.data.sessionToken) {
           await client.setSession(response.data.sessionToken, response.data.userId || response.data.user?.id || "");
         }
-        if (response.data.user) {
+        if (response.data.user && response.data.authenticated !== false) {
           setUser(response.data.user);
         }
         return response.data.user;
@@ -1592,15 +1626,16 @@ function useAuth() {
         }
         const loginData2 = response.data;
         const responseUser = "user" in loginData2 ? loginData2.user : null;
-        if (responseUser) {
-          setUser(responseUser);
+        if (!responseUser) throw new ScaleMuleApiError({ code: "LOGIN_FAILED", message: "Sign-in did not return a user" });
+        setUser(responseUser);
+        if (client.usesCookieSession()) {
+          client.setCookieSession(responseUser.id);
+          return cookieLoginResult(responseUser);
         }
-        const sessionToken = "sessionToken" in loginData2 ? loginData2.sessionToken : void 0;
-        const userId = "userId" in loginData2 ? loginData2.userId : void 0;
-        if (sessionToken) {
-          await client.setSession(sessionToken, userId || responseUser?.id || "");
-        }
-        return response.data;
+        const sessionToken = loginData2.sessionToken || loginData2.session_token;
+        if (!sessionToken) throw new ScaleMuleApiError({ code: "LOGIN_FAILED", message: "Sign-in did not return a session" });
+        await client.setSession(sessionToken, loginData2.userId || responseUser.id);
+        return { ...loginData2, session_token: sessionToken };
       }
       let loginResult;
       try {
@@ -1631,6 +1666,7 @@ function useAuth() {
         await proxyFetch(authProxyUrl, "logout");
       } catch {
       }
+      await client.clearSession();
       setUser(null);
       return;
     }
@@ -1805,6 +1841,9 @@ function useAuth() {
         setError(err);
         throw err;
       }
+      if (!client.usesCookieSession() && response.data?.sessionToken && response.data.userId) {
+        await client.setSession(response.data.sessionToken, response.data.userId);
+      }
       if (response.data?.user) {
         setUser(response.data.user);
       }
@@ -1885,7 +1924,8 @@ function useAuth() {
         }
         throw err;
       }
-      await client.setSession(callbackData.session_token, callbackData.user.id);
+      if (client.usesCookieSession()) client.setCookieSession(callbackData.user.id);
+      else if ("session_token" in callbackData) await client.setSession(callbackData.session_token, callbackData.user.id);
       setUser(callbackData.user);
       return callbackData;
     },
@@ -1988,8 +2028,15 @@ function useAuth() {
           const result = await proxyFetch(authProxyUrl, "mfa/verify", { body: { pending_token: challengeToken, code, method } });
           if (!result.success || !result.data) throw result.error;
           const sessionToken = result.data.sessionToken || result.data.session_token;
+          if (client.usesCookieSession() && result.data.user) {
+            client.setCookieSession(result.data.user.id);
+            setUser(result.data.user);
+            return cookieLoginResult(result.data.user);
+          }
           if (!sessionToken) throw new ScaleMuleApiError({ code: "MFA_FAILED", message: "Sign-in did not return a session" });
-          mfaResult = { ...result.data, session_token: sessionToken };
+          await client.setSession(sessionToken, result.data.user.id);
+          setUser(result.data.user);
+          return { ...result.data, session_token: sessionToken };
         } else {
           mfaResult = await client.post("/v1/auth/mfa/verify", { pending_token: challengeToken, code, method });
         }
@@ -2121,15 +2168,16 @@ function useAuth() {
         }
         const loginData = response.data;
         const responseUser = "user" in loginData ? loginData.user : null;
-        if (responseUser) {
-          setUser(responseUser);
+        if (!responseUser) throw new ScaleMuleApiError({ code: "LOGIN_FAILED", message: "Sign-in did not return a user" });
+        setUser(responseUser);
+        if (client.usesCookieSession()) {
+          client.setCookieSession(responseUser.id);
+          return cookieLoginResult(responseUser);
         }
-        const sessionToken = "sessionToken" in loginData ? loginData.sessionToken : void 0;
-        const userId = "userId" in loginData ? loginData.userId : void 0;
-        if (sessionToken) {
-          await client.setSession(sessionToken, userId || responseUser?.id || "");
-        }
-        return response.data;
+        const sessionToken = loginData.sessionToken || loginData.session_token;
+        if (!sessionToken) throw new ScaleMuleApiError({ code: "LOGIN_FAILED", message: "Sign-in did not return a session" });
+        await client.setSession(sessionToken, loginData.userId || responseUser.id);
+        return { ...loginData, session_token: sessionToken };
       }
       let phoneLoginData;
       try {
@@ -2173,6 +2221,7 @@ function useAuth() {
       if (!target) return null;
       if (authProxyUrl) {
         await proxyFetch(authProxyUrl, "switch-account");
+        await client.clearSession();
       } else {
         const sessionToken = client.getSessionToken();
         if (sessionToken) {

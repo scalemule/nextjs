@@ -4,7 +4,7 @@
  * Usage in your Next.js app:
  * ```ts
  * // app/api/auth/[...scalemule]/route.ts
- * export { GET, POST, DELETE, PATCH } from '@scalemule/nextjs/server/auth'
+ * export { GET, POST, DELETE, PATCH, PUT } from '@scalemule/nextjs/server/auth'
  * ```
  *
  * Configuration via environment variables:
@@ -25,4 +25,4 @@ const handlers = createAuthRoutes({
   cookies: cookieDomain ? { domain: cookieDomain } : undefined,
 })
 
-export const { GET, POST, DELETE, PATCH } = handlers
+export const { GET, POST, DELETE, PATCH, PUT } = handlers

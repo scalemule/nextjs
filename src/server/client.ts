@@ -236,6 +236,15 @@ export class ScaleMuleServer {
   // ==========================================================================
 
   auth = {
+    /** Issue a 60-second, single-use transfer code after a server OAuth callback. */
+    createSessionHandoff: async (sessionToken: string, audience: string): Promise<{ code: string; expires_in: number }> => {
+      return this.request('POST', '/v1/auth/session-handoff', { sessionToken, body: { session_token: sessionToken, audience } })
+    },
+    /** Exchange only on the server; write the returned session into an HTTP-only cookie. */
+    exchangeSessionHandoff: async (code: string, audience: string): Promise<{ session_token: string; user_id: string }> => {
+      return this.request('POST', '/v1/auth/session-handoff/exchange', { body: { code, audience } })
+    },
+
     /**
      * Register a new user
      */

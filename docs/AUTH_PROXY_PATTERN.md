@@ -39,7 +39,7 @@ This utility generates standard handlers for the App Router. It abstracts the tr
 ```ts
 // app/api/auth/[...scalemule]/route.ts
 import { createAuthRoutes } from '@scalemule/nextjs/server'
-export const { GET, POST, DELETE, PATCH } = createAuthRoutes()
+export const { GET, POST, PUT, DELETE, PATCH } = createAuthRoutes()
 ```
 
 ### 2. Cookie Lifecycle

@@ -102,3 +102,15 @@ describe('round-trip — extract then re-emit', () => {
 it('also prefers the hosting ingress IP in Pages Router', () => {
   expect(extractClientContextFromReq(mockNodeReq({ 'x-real-ip': '203.0.113.5', 'cf-connecting-ip': '198.51.100.9' })).ip).toBe('203.0.113.5')
 })
+
+
+describe('explicit ingress IP boundary', () => {
+  it('uses the ALB final hop and ignores spoofed alternate headers', () => {
+    const request = { headers: new Headers({ 'x-forwarded-for': '203.0.113.5, 198.51.100.10', 'x-real-ip': '203.0.113.5', 'cf-connecting-ip': '203.0.113.5' }) }
+    expect(extractClientContext(request, { trustedIpHeader: 'x-forwarded-for' }).ip).toBe('198.51.100.10')
+    request.headers.set('x-forwarded-for', '203.0.113.5, invalid')
+    expect(extractClientContext(request, { trustedIpHeader: 'x-forwarded-for' }).ip).toBeUndefined()
+    request.headers.delete('x-forwarded-for')
+    expect(extractClientContext(request, { trustedIpHeader: 'x-forwarded-for' }).ip).toBeUndefined()
+  })
+})

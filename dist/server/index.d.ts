@@ -1,6 +1,6 @@
-import { S as ServerConfig } from '../webhook-handler-44RRJH-r.js';
-export { a as ScaleMuleServer, V as VideoFailedEvent, b as VideoReadyEvent, c as VideoTranscodedEvent, d as VideoUploadedEvent, W as WebhookEvent, e as WebhookRoutesConfig, f as createServerClient, g as createWebhookHandler, h as createWebhookRoutes, p as parseWebhookEvent, r as registerVideoWebhook, i as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-44RRJH-r.js';
-import { p as ClientContext, A as ApiError } from '../index-BQgmT53x.js';
+import { S as ServerConfig } from '../webhook-handler-1nnrmWT0.js';
+export { a as ScaleMuleServer, V as VideoFailedEvent, b as VideoReadyEvent, c as VideoTranscodedEvent, d as VideoUploadedEvent, W as WebhookEvent, e as WebhookRoutesConfig, f as createServerClient, g as createWebhookHandler, h as createWebhookRoutes, p as parseWebhookEvent, r as registerVideoWebhook, i as resolveGatewayUrl, v as verifyWebhookSignature } from '../webhook-handler-1nnrmWT0.js';
+import { q as ClientContext, A as ApiError } from '../index-2PnO4RAF.js';
 export { L as LedveryRoutesConfig, a as LedverySessionData, S as SM_LEDVERY_ACCESS_TOKEN_COOKIE, b as SM_LEDVERY_ID_TOKEN_COOKIE, c as SM_LEDVERY_NONCE_COOKIE, d as SM_LEDVERY_PKCE_VERIFIER_COOKIE, e as SM_LEDVERY_STATE_COOKIE, f as createLedveryRoutes, g as getLedverySession } from '../ledvery-CxPzZpxP.js';
 import { NextRequest, NextResponse } from 'next/server';
 import '@scalemule/money';
@@ -61,7 +61,11 @@ interface IncomingMessageLike {
  * }
  * ```
  */
-declare function extractClientContext(request: NextRequestLike): ClientContext;
+interface ClientContextOptions {
+    /** Choose the header your ingress overwrites. ALB append mode uses the final XFF hop. */
+    trustedIpHeader?: 'x-forwarded-for' | 'x-real-ip' | 'cf-connecting-ip' | 'x-vercel-forwarded-for';
+}
+declare function extractClientContext(request: NextRequestLike, options?: ClientContextOptions): ClientContext;
 /**
  * Extract client context from a Pages Router API request.
  *
@@ -119,6 +123,8 @@ declare const USER_ID_COOKIE_NAME = "sm_user_id";
  */
 declare const KNOWN_ACCOUNTS_COOKIE_NAME = "sm_known_accounts";
 interface SessionCookieOptions {
+    /** Isolate an embedded session in the top-level site cookie partition (CHIPS). */
+    partitioned?: boolean;
     /** Cookie max age in seconds (default: 7 days) */
     maxAge?: number;
     /** Cookie domain (default: current domain) */
@@ -182,7 +188,9 @@ declare function clearSession<T extends Record<string, unknown>>(responseBody: T
  * const user = await sm.auth.me(session.sessionToken)
  * ```
  */
-declare function getSession(): Promise<SessionData | null>;
+declare function getSession(options?: {
+    allowBearer?: boolean;
+}): Promise<SessionData | null>;
 /**
  * Get session from a Request object (for edge/middleware)
  *
@@ -267,6 +275,16 @@ declare function requireSession(): Promise<SessionData>;
  */
 
 interface AuthRoutesConfig {
+    /** Fixed server-controlled audience used for OAuth-to-iframe session transfer. */
+    handoffAudience?: string;
+    /** Network boundary used to attest the browser IP on server-side auth calls. */
+    clientContext?: ClientContextOptions;
+    /** Publishable key for the cookie-authenticated browser data proxy. */
+    publishableKey?: string;
+    /** Public gateway used by the browser SDK, including WebSocket tickets. */
+    browserGatewayUrl?: string;
+    /** Explicit compatibility escape hatch. Cookie mode never returns session tokens. */
+    sessionMode?: 'cookie' | 'bearer';
     /** Server client config (optional if using env vars) */
     client?: Partial<ServerConfig>;
     /** Cookie options */
@@ -334,6 +352,7 @@ declare function createAuthRoutes(config?: AuthRoutesConfig): {
     POST: RouteHandler$2;
     DELETE: RouteHandler$2;
     PATCH: RouteHandler$2;
+    PUT: RouteHandler$2;
 };
 interface AnalyticsTrackingGateConfig {
     /** Feature flag key used to decide whether to forward analytics */

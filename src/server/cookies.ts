@@ -33,6 +33,8 @@ const DEFAULT_COOKIE_OPTIONS = {
 // ============================================================================
 
 export interface SessionCookieOptions {
+  /** Isolate an embedded session in the top-level site cookie partition (CHIPS). */
+  partitioned?: boolean
   /** Cookie max age in seconds (default: 7 days) */
   maxAge?: number
   /** Cookie domain (default: current domain) */
@@ -70,9 +72,10 @@ function createCookieHeader(
 
   let cookie = `${name}=${encodeURIComponent(value)}; Path=${path}; Max-Age=${maxAge}; HttpOnly; SameSite=${sameSite}`
 
-  if (secure) {
+  if (secure || options.partitioned) {
     cookie += '; Secure'
   }
+  if (options.partitioned) cookie += '; Partitioned'
 
   if (options.domain) {
     cookie += `; Domain=${options.domain}`
@@ -95,9 +98,10 @@ function createClearCookieHeader(name: string, options: SessionCookieOptions = {
   const sameSite = options.sameSite ?? 'lax'
   let cookie = `${name}=; Path=${path}; Max-Age=0; HttpOnly; SameSite=${sameSite}`
 
-  if (secure) {
+  if (secure || options.partitioned) {
     cookie += '; Secure'
   }
+  if (options.partitioned) cookie += '; Partitioned'
 
   if (options.domain) {
     cookie += `; Domain=${options.domain}`
@@ -131,6 +135,12 @@ export function withSession<T extends Record<string, unknown>>(
 ): Response {
   const headers = new Headers()
   headers.set('Content-Type', 'application/json')
+
+  // Remove the old unpartitioned credential before setting its CHIPS replacement.
+  if (options.partitioned) {
+    headers.append('Set-Cookie', createClearCookieHeader(SESSION_COOKIE_NAME, { ...options, partitioned: false }))
+    headers.append('Set-Cookie', createClearCookieHeader(USER_ID_COOKIE_NAME, { ...options, partitioned: false }))
+  }
 
   // Set session token cookie (HTTP-only, never exposed to JS)
   headers.append(
@@ -166,6 +176,12 @@ export function withRefreshedSession<T extends Record<string, unknown>>(
   const headers = new Headers()
   headers.set('Content-Type', 'application/json')
 
+  // Remove the old unpartitioned credential before setting its CHIPS replacement.
+  if (options.partitioned) {
+    headers.append('Set-Cookie', createClearCookieHeader(SESSION_COOKIE_NAME, { ...options, partitioned: false }))
+    headers.append('Set-Cookie', createClearCookieHeader(USER_ID_COOKIE_NAME, { ...options, partitioned: false }))
+  }
+
   headers.append(
     'Set-Cookie',
     createCookieHeader(SESSION_COOKIE_NAME, sessionToken, options)
@@ -200,6 +216,11 @@ export function clearSession<T extends Record<string, unknown>>(
   const headers = new Headers()
   headers.set('Content-Type', 'application/json')
 
+  // Clear legacy unpartitioned credentials as well after a CHIPS migration.
+  if (options.partitioned) {
+    headers.append('Set-Cookie', createClearCookieHeader(SESSION_COOKIE_NAME, { ...options, partitioned: false }))
+    headers.append('Set-Cookie', createClearCookieHeader(USER_ID_COOKIE_NAME, { ...options, partitioned: false }))
+  }
   // Clear both cookies
   headers.append('Set-Cookie', createClearCookieHeader(SESSION_COOKIE_NAME, options))
   headers.append('Set-Cookie', createClearCookieHeader(USER_ID_COOKIE_NAME, options))
@@ -225,7 +246,7 @@ export function clearSession<T extends Record<string, unknown>>(
  * const user = await sm.auth.me(session.sessionToken)
  * ```
  */
-export async function getSession(): Promise<SessionData | null> {
+export async function getSession(options: { allowBearer?: boolean } = {}): Promise<SessionData | null> {
   const cookieStore = await cookies()
 
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)
@@ -238,6 +259,8 @@ export async function getSession(): Promise<SessionData | null> {
       expiresAt: new Date(), // Note: actual expiry is managed by ScaleMule backend
     }
   }
+
+  if (options.allowBearer === false) return null
 
   // Bearer fallback for cookieless contexts (e.g. partitioned iframes in
   // embedded apps): the SDK session token is the same credential the cookie
