@@ -897,9 +897,11 @@ export function useAuth(): UseAuthReturn {
       let mfaResult: LoginResponse
       try {
         if (authProxyUrl) {
-          const result = await proxyFetch<LoginResponse>(authProxyUrl, 'mfa/verify', { body: { pending_token: challengeToken, code, method } })
+          const result = await proxyFetch<LoginResponse & { sessionToken?: string }>(authProxyUrl, 'mfa/verify', { body: { pending_token: challengeToken, code, method } })
           if (!result.success || !result.data) throw result.error
-          mfaResult = result.data
+          const sessionToken = result.data.sessionToken || result.data.session_token
+          if (!sessionToken) throw new ScaleMuleApiError({ code: 'MFA_FAILED', message: 'Sign-in did not return a session' })
+          mfaResult = { ...result.data, session_token: sessionToken }
         } else {
           mfaResult = await client.post<LoginResponse>('/v1/auth/mfa/verify', { pending_token: challengeToken, code, method })
         }

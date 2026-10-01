@@ -62,8 +62,14 @@ export async function withAdaptiveChallenge<T>(attempt: (proof: LoginChallengePr
         const token = details.pending_token
         const method = details.mfa_method
         if (!token || !['totp', 'email', 'sms'].includes(method || '')) throw error
-        if (method !== 'totp') await mfa.send(token, method!)
         let mfaError: string | undefined
+        if (method !== 'totp') {
+          try { await mfa.send(token, method!) } catch (failure) {
+            const failed = failure as { code?: string; message?: string }
+            if (failed.code !== 'CHALLENGE_RATE_LIMITED') throw failure
+            mfaError = failed.message
+          }
+        }
         for (;;) {
           const code = await prompt({ method: method as SecurityChallenge['method'], error: mfaError })
           if (code === null) throw { code: 'LOGIN_CANCELLED', message: 'Sign-in was cancelled.' }

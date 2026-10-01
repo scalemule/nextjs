@@ -1,5 +1,7 @@
 'use client'
 
+import { withoutAuthSecrets } from '../url-privacy'
+
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useScaleMule } from '../provider'
 import { ScaleMuleApiError } from '../types'
@@ -424,7 +426,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
     // Store landing page
     if (!landingPage.current) {
-      landingPage.current = window.location.href
+      landingPage.current = withoutAuthSecrets(window.location.href) || null
     }
 
     // Capture original external referrer (once per session)
@@ -434,7 +436,8 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
     if (storedReferrer) {
       // Use stored referrer from earlier in session
-      originalReferrerRef.current = storedReferrer
+      originalReferrerRef.current = withoutAuthSecrets(storedReferrer) || null
+      setStorageItem(storage, SESSION_REFERRER_KEY, originalReferrerRef.current || '')
     } else if (document.referrer) {
       // Check if referrer is external (different domain)
       try {
@@ -442,8 +445,8 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
         const currentUrl = new URL(window.location.href)
         if (referrerUrl.hostname !== currentUrl.hostname) {
           // External referrer - store it
-          originalReferrerRef.current = document.referrer
-          setStorageItem(storage, SESSION_REFERRER_KEY, document.referrer)
+          originalReferrerRef.current = withoutAuthSecrets(document.referrer) || null
+          setStorageItem(storage, SESSION_REFERRER_KEY, withoutAuthSecrets(document.referrer) || '')
         }
       } catch {
         // Invalid URL, ignore
@@ -497,13 +500,13 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
 
       // Add page info if in browser
       if (typeof window !== 'undefined') {
-        fullEvent.page_url = window.location.href
+        fullEvent.page_url = withoutAuthSecrets(window.location.href)
         fullEvent.page_title = document.title
         // Send both referrer values — let the backend analytics decide what to use.
         // referrer: the confirmed external referrer captured on session start
         // document_referrer: the raw browser document.referrer (may be self-referral after redirects)
         fullEvent.referrer = originalReferrerRef.current || undefined
-        fullEvent.document_referrer = document.referrer || undefined
+        fullEvent.document_referrer = withoutAuthSecrets(document.referrer) || undefined
       }
 
       return fullEvent
@@ -637,9 +640,9 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
         event_category: 'navigation',
         properties: {
           ...(data?.properties || {}),
-          page_url: data?.page_url || (typeof window !== 'undefined' ? window.location.href : undefined),
+          page_url: withoutAuthSecrets(data?.page_url || (typeof window !== 'undefined' ? window.location.href : undefined)),
           page_title: data?.page_title || (typeof document !== 'undefined' ? document.title : undefined),
-          referrer: data?.referrer || originalReferrerRef.current || undefined,
+          referrer: withoutAuthSecrets(data?.referrer || originalReferrerRef.current || undefined),
         },
       }
 

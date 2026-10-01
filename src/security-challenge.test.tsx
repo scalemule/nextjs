@@ -40,3 +40,11 @@ describe('adaptive login', () => {
     expect(mfa.verify).toHaveBeenCalledWith('mfa-proof', '123456', 'totp')
   })
 })
+
+it('keeps code entry available when initial MFA delivery is rate limited', async () => {
+  const attempt = vi.fn().mockRejectedValue({ code: 'MFA_REQUIRED', message: JSON.stringify({ pending_token: 'pending', mfa_method: 'email' }) })
+  const prompt = vi.fn().mockResolvedValue('234567')
+  const mfa = { send: vi.fn().mockRejectedValue({ code: 'CHALLENGE_RATE_LIMITED', message: 'Use your existing code' }), verify: vi.fn().mockResolvedValue('session') }
+  expect(await withAdaptiveChallenge(attempt, prompt, mfa)).toBe('session')
+  expect(prompt).toHaveBeenCalledWith({ method: 'email', error: 'Use your existing code' })
+})

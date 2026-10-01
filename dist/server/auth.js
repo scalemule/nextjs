@@ -18,6 +18,34 @@ var ScaleMuleApiError = class extends Error {
   }
 };
 
+// src/url-privacy.ts
+function withoutAuthSecrets(value) {
+  if (!value) return value;
+  try {
+    const absolute = /^[a-z][a-z0-9+.-]*:/i.test(value);
+    const protocolRelative = value.startsWith("//");
+    const url = new URL(value, "https://relative.invalid");
+    if (!["http:", "https:"].includes(url.protocol)) return void 0;
+    let changed = false;
+    for (const name of [...url.searchParams.keys()]) {
+      if (/^(token|code|state|password|new_password|access_token|refresh_token|id_token|api_key|client_secret|challenge_token|challenge_code)$/i.test(name)) {
+        url.searchParams.delete(name);
+        changed = true;
+      }
+    }
+    if (url.hash) {
+      url.hash = "";
+      changed = true;
+    }
+    if (!changed) return value;
+    if (absolute) return url.toString();
+    if (protocolRelative) return url.toString().replace(/^https:/, "");
+    return value.split(/[?#]/, 1)[0] + url.search;
+  } catch {
+    return void 0;
+  }
+}
+
 // src/server/context.ts
 function validateIP(ip) {
   if (!ip) return void 0;
@@ -76,7 +104,7 @@ function extractClientContext(request) {
   }
   const userAgent = headers2.get("user-agent") || void 0;
   const deviceFingerprint = headers2.get("x-device-fingerprint") || void 0;
-  const referrer = headers2.get("referer") || void 0;
+  const referrer = withoutAuthSecrets(headers2.get("referer") || void 0);
   const anonymousId = headers2.get("x-anonymous-id") || void 0;
   return {
     ip,

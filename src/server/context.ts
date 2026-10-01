@@ -1,3 +1,4 @@
+import { withoutAuthSecrets } from '../url-privacy'
 /**
  * Client Context Extraction Utilities (Next.js)
  *
@@ -164,7 +165,7 @@ export function extractClientContext(request: NextRequestLike): ClientContext {
 
   // Extract referrer from HTTP Referer header
   // This captures the actual referring URL during SSR when document.referrer is unavailable
-  const referrer = headers.get('referer') || undefined
+  const referrer = withoutAuthSecrets(headers.get('referer') || undefined)
 
   // Forward the visitor's anonymous-ID through the proxy → gateway hop.
   // The browser-side proxyFetch sets this header before calling the Next.js
@@ -282,7 +283,7 @@ export function extractClientContextFromReq(req: IncomingMessageLike): ClientCon
   const deviceFingerprint = getHeader('x-device-fingerprint')
 
   // Extract referrer from HTTP Referer header
-  const referrer = getHeader('referer')
+  const referrer = withoutAuthSecrets(getHeader('referer'))
 
   // Forward the visitor's anonymous-ID through the proxy → gateway hop.
   // See note in extractClientContext (App Router) for why this matters.

@@ -113,8 +113,16 @@ async function withAdaptiveChallenge(attempt, prompt, mfa) {
         const token = details.pending_token;
         const method = details.mfa_method;
         if (!token || !["totp", "email", "sms"].includes(method || "")) throw error;
-        if (method !== "totp") await mfa.send(token, method);
         let mfaError;
+        if (method !== "totp") {
+          try {
+            await mfa.send(token, method);
+          } catch (failure) {
+            const failed = failure;
+            if (failed.code !== "CHALLENGE_RATE_LIMITED") throw failure;
+            mfaError = failed.message;
+          }
+        }
         for (; ; ) {
           const code2 = await prompt({ method, error: mfaError });
           if (code2 === null) throw { code: "LOGIN_CANCELLED", message: "Sign-in was cancelled." };
@@ -1999,7 +2007,9 @@ function useAuth() {
         if (authProxyUrl) {
           const result = await proxyFetch(authProxyUrl, "mfa/verify", { body: { pending_token: challengeToken, code, method } });
           if (!result.success || !result.data) throw result.error;
-          mfaResult = result.data;
+          const sessionToken = result.data.sessionToken || result.data.session_token;
+          if (!sessionToken) throw new ScaleMuleApiError({ code: "MFA_FAILED", message: "Sign-in did not return a session" });
+          mfaResult = { ...result.data, session_token: sessionToken };
         } else {
           mfaResult = await client.post("/v1/auth/mfa/verify", { pending_token: challengeToken, code, method });
         }
@@ -3929,6 +3939,34 @@ function useRealtime(options) {
   return { status, lastMessage, disconnect, subscribe, publish };
 }
 
+// src/url-privacy.ts
+function withoutAuthSecrets(value) {
+  if (!value) return value;
+  try {
+    const absolute = /^[a-z][a-z0-9+.-]*:/i.test(value);
+    const protocolRelative = value.startsWith("//");
+    const url = new URL(value, "https://relative.invalid");
+    if (!["http:", "https:"].includes(url.protocol)) return void 0;
+    let changed = false;
+    for (const name of [...url.searchParams.keys()]) {
+      if (/^(token|code|state|password|new_password|access_token|refresh_token|id_token|api_key|client_secret|challenge_token|challenge_code)$/i.test(name)) {
+        url.searchParams.delete(name);
+        changed = true;
+      }
+    }
+    if (url.hash) {
+      url.hash = "";
+      changed = true;
+    }
+    if (!changed) return value;
+    if (absolute) return url.toString();
+    if (protocolRelative) return url.toString().replace(/^https:/, "");
+    return value.split(/[?#]/, 1)[0] + url.search;
+  } catch {
+    return void 0;
+  }
+}
+
 // src/hooks/event-dedup.ts
 var DEFAULT_EVENT_DEDUP_MS = 300;
 var DEDUP_MAP_MAX = 200;
@@ -4198,19 +4236,20 @@ function useAnalytics(options = {}) {
       if (utm) setUtmParams(utm);
     }
     if (!landingPage.current) {
-      landingPage.current = window.location.href;
+      landingPage.current = withoutAuthSecrets(window.location.href) || null;
     }
     const storage = typeof sessionStorage !== "undefined" ? sessionStorage : void 0;
     const storedReferrer = getStorageItem(storage, SESSION_REFERRER_KEY);
     if (storedReferrer) {
-      originalReferrerRef.current = storedReferrer;
+      originalReferrerRef.current = withoutAuthSecrets(storedReferrer) || null;
+      setStorageItem(storage, SESSION_REFERRER_KEY, originalReferrerRef.current || "");
     } else if (document.referrer) {
       try {
         const referrerUrl = new URL(document.referrer);
         const currentUrl = new URL(window.location.href);
         if (referrerUrl.hostname !== currentUrl.hostname) {
-          originalReferrerRef.current = document.referrer;
-          setStorageItem(storage, SESSION_REFERRER_KEY, document.referrer);
+          originalReferrerRef.current = withoutAuthSecrets(document.referrer) || null;
+          setStorageItem(storage, SESSION_REFERRER_KEY, withoutAuthSecrets(document.referrer) || "");
         }
       } catch {
       }
@@ -4250,10 +4289,10 @@ function useAnalytics(options = {}) {
         session_duration_seconds: Math.floor((Date.now() - sessionStartRef.current) / 1e3)
       };
       if (typeof window !== "undefined") {
-        fullEvent.page_url = window.location.href;
+        fullEvent.page_url = withoutAuthSecrets(window.location.href);
         fullEvent.page_title = document.title;
         fullEvent.referrer = originalReferrerRef.current || void 0;
-        fullEvent.document_referrer = document.referrer || void 0;
+        fullEvent.document_referrer = withoutAuthSecrets(document.referrer) || void 0;
       }
       return fullEvent;
     },
@@ -4336,9 +4375,9 @@ function useAnalytics(options = {}) {
         event_category: "navigation",
         properties: {
           ...data?.properties || {},
-          page_url: data?.page_url || (typeof window !== "undefined" ? window.location.href : void 0),
+          page_url: withoutAuthSecrets(data?.page_url || (typeof window !== "undefined" ? window.location.href : void 0)),
           page_title: data?.page_title || (typeof document !== "undefined" ? document.title : void 0),
-          referrer: data?.referrer || originalReferrerRef.current || void 0
+          referrer: withoutAuthSecrets(data?.referrer || originalReferrerRef.current || void 0)
         }
       };
       return trackEvent(pageEvent);
