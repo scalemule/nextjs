@@ -1486,7 +1486,8 @@ function AudioIcon({ name }) {
       /* @__PURE__ */ jsx2("path", { d: "M19 5v14" })
     ] }),
     name === "chevron" && /* @__PURE__ */ jsx2("path", { d: "m7 10 5 5 5-5" }),
-    name === "external" && /* @__PURE__ */ jsx2("path", { d: "M14 4h6v6m0-6L10 14m10 1v5H4V4h5" })
+    name === "external" && /* @__PURE__ */ jsx2("path", { d: "M14 4h6v6m0-6L10 14m10 1v5H4V4h5" }),
+    name === "close" && /* @__PURE__ */ jsx2("path", { d: "m6 6 12 12M18 6 6 18" })
   ] });
 }
 var formatTime = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
@@ -1650,7 +1651,21 @@ function NetworkAudioPlayer({ networkName = "Your listening queue", advertisemen
               ]
             }
           )
-        ] })
+        ] }),
+        /* @__PURE__ */ jsx2(
+          "button",
+          {
+            type: "button",
+            className: "sm-network-player__close",
+            "aria-label": "Close player",
+            title: "Stop playback, clear queue, and close player",
+            onClick: () => {
+              setExpanded(false);
+              command({ action: "clear" });
+            },
+            children: /* @__PURE__ */ jsx2(AudioIcon, { name: "close" })
+          }
+        )
       ] }),
       (notice || snapshot.error) && /* @__PURE__ */ jsx2("p", { role: "status", className: "sm-network-player__notice", children: notice ?? snapshot.error }),
       /* @__PURE__ */ jsxs2("div", { id: detailsId, hidden: !expanded, className: "sm-network-player__details", children: [

@@ -106,7 +106,7 @@ in different publications do not collide. The queue deduplicates entries and
 holds up to 100 articles. Finishing an article advances to the next one.
 Unavailable audio stops with a retry/choose-another message.
 
-The compact bar exposes a playback-speed shortcut (cycles upward through the available rates, then resets to 1×) and a Follow along toggle. The expanded Speed selector retains all rates, including 0.5× and 0.75×. The player highlighting shortcut is enabled only when the active article has mounted narration controls in this document; it shares the article toggle’s preference.
+The compact bar exposes a playback-speed shortcut (cycles upward through the available rates, then resets to 1×), a Follow along toggle, and a Close player button. Closing stops playback, clears the listening queue and active highlights, and dismisses the player. Readers can reopen it with any article’s Listen to this story control. The expanded Speed selector retains all rates, including 0.5× and 0.75×. The player highlighting shortcut is enabled only when the active article has mounted narration controls in this document; it shares the article toggle’s preference.
 
 `useArticleNarration(track, narration)` attaches the same behavior to custom
 controls. Highlighting is opt-in, applies only to the active article, clears

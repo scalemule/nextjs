@@ -77,6 +77,25 @@ it('renders on the server without accessing browser APIs or fetching media', () 
   expect(resolveAudio).not.toHaveBeenCalled()
 })
 
+it.each([false, true])('stops audio and dismisses the player and highlights when closed (expanded: %s)', async expanded => {
+  render(<Reader />)
+  fireEvent.click(screen.getByRole('button', { name: 'Listen to this story' }))
+  await screen.findByRole('button', { name: 'Pause playback' })
+  fireEvent.click(screen.getByRole('button', { name: 'Follow along: highlight article words' }))
+  await waitFor(() => expect(document.querySelector('[data-sm-narration-layer]')).toBeTruthy())
+  if (expanded) fireEvent.click(screen.getByRole('button', { name: 'Queue (1)' }))
+  const pauses = vi.mocked(HTMLMediaElement.prototype.pause).mock.calls.length
+  fireEvent.click(screen.getByRole('button', { name: 'Close player' }))
+  expect(vi.mocked(HTMLMediaElement.prototype.pause).mock.calls.length).toBeGreaterThan(pauses)
+  expect(media.getAttribute('src')).toBeNull()
+  expect(screen.queryByRole('region', { name: 'Network audio player' })).toBeNull()
+  expect(document.querySelector('[data-sm-narration-layer]')).toBeNull()
+  expect(screen.getByRole('button', { name: 'Add to queue' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Listen to this story' }))
+  await screen.findByRole('button', { name: 'Pause playback' })
+  expect(screen.getByRole('button', { name: 'Queue (1)' }).getAttribute('aria-expanded')).toBe('false')
+})
+
 it('changes speed from the collapsed bar and keeps the full speed selector in sync', async () => {
   render(<Reader />)
   expect(screen.getByText('0:41 listening time')).toBeTruthy()
