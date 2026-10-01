@@ -93,8 +93,16 @@ async function withAdaptiveChallenge(attempt, prompt, mfa) {
         const token = details.pending_token;
         const method = details.mfa_method;
         if (!token || !["totp", "email", "sms"].includes(method || "")) throw error;
-        if (method !== "totp") await mfa.send(token, method);
         let mfaError;
+        if (method !== "totp") {
+          try {
+            await mfa.send(token, method);
+          } catch (failure) {
+            const failed = failure;
+            if (failed.code !== "CHALLENGE_RATE_LIMITED") throw failure;
+            mfaError = failed.message;
+          }
+        }
         for (; ; ) {
           const code2 = await prompt({ method, error: mfaError });
           if (code2 === null) throw { code: "LOGIN_CANCELLED", message: "Sign-in was cancelled." };
@@ -1979,7 +1987,9 @@ function useAuth() {
         if (authProxyUrl) {
           const result = await proxyFetch(authProxyUrl, "mfa/verify", { body: { pending_token: challengeToken, code, method } });
           if (!result.success || !result.data) throw result.error;
-          mfaResult = result.data;
+          const sessionToken = result.data.sessionToken || result.data.session_token;
+          if (!sessionToken) throw new ScaleMuleApiError({ code: "MFA_FAILED", message: "Sign-in did not return a session" });
+          mfaResult = { ...result.data, session_token: sessionToken };
         } else {
           mfaResult = await client.post("/v1/auth/mfa/verify", { pending_token: challengeToken, code, method });
         }

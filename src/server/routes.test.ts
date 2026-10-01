@@ -18,6 +18,7 @@ const mockLogin = vi.fn()
 const mockRegister = vi.fn()
 const mockSendMfaCode = vi.fn()
 const mockCompleteMfa = vi.fn()
+const mockResetPassword = vi.fn()
 
 vi.mock('./client', () => ({
   createServerClient: () => ({
@@ -31,7 +32,7 @@ vi.mock('./client', () => ({
       me: vi.fn(),
       refresh: vi.fn(),
       forgotPassword: vi.fn(),
-      resetPassword: vi.fn(),
+      resetPassword: mockResetPassword,
       resendVerification: vi.fn(),
     },
     user: {
@@ -284,4 +285,17 @@ describe('MFA proxy routes', () => {
     }
     expect(mockCompleteMfa).not.toHaveBeenCalled()
   })
+})
+
+it('clears both old cookies only after successful password recovery', async () => {
+  const request = () => { const req = createRequest('reset-password', { token: 'proof', new_password: 'new-password' }); req.headers.set('cookie', 'sm_session=old; sm_user_id=user'); return req }
+  mockResetPassword.mockResolvedValueOnce({})
+  const response = await createAuthRoutes().POST(request(), contextFor('reset-password'))
+  expect(response.status).toBe(200)
+  for (const name of ['sm_session', 'sm_user_id']) expect(response.headers.getSetCookie().find(c => c.startsWith(name + '='))).toContain('Max-Age=0')
+  expect((await response.json()).data.message).toBe('Password reset successful')
+  mockResetPassword.mockRejectedValueOnce(new ScaleMuleApiError({ code: 'INVALID_TOKEN', message: 'Expired' }))
+  const failed = await createAuthRoutes().POST(request(), contextFor('reset-password'))
+  expect(failed.status).toBe(400)
+  expect(failed.headers.get('set-cookie')).toBeNull()
 })

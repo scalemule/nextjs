@@ -2,6 +2,8 @@
 
 ## 0.1.52
 
+- Preserve manual proxy MFA session completion and keep code entry available during resend rate limits.
+
 - Strip authentication secrets from automatic analytics URLs, landing pages, and forwarded referrers while preserving advertising attribution parameters.
 
 ## 0.1.51
