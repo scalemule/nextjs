@@ -3,6 +3,8 @@ import { CSSProperties, ReactNode } from 'react';
 
 interface AudioPlayerSource {
     url: string | null;
+    /** Stable recording identity. Must not contain signed URLs or credentials. */
+    revision?: string | null;
     duration_ms?: number | null;
     expires_at?: string | null;
     waveform_peaks?: number[] | null;
@@ -139,6 +141,20 @@ interface NetworkAudioTrack {
     title: string;
     publicationName?: string;
     articleUrl: string;
+    durationMs?: number;
+}
+interface ListeningProgress {
+    track: NetworkAudioTrack;
+    position: number;
+    duration: number;
+    updatedAt: number;
+    completed: boolean;
+    revision?: string;
+}
+interface ListeningEvent {
+    type: 'started' | 'resumed' | 'completed' | 'error';
+    position: number;
+    track: NetworkAudioTrack;
 }
 interface NetworkAudioSnapshot {
     queue: readonly NetworkAudioTrack[];
@@ -149,6 +165,10 @@ interface NetworkAudioSnapshot {
     volume: number;
     status: 'idle' | 'loading' | 'playing' | 'paused' | 'error';
     error: string | null;
+    history?: readonly ListeningProgress[];
+    dismissed?: boolean;
+    lastPlayedAt?: number;
+    notice?: string | null;
 }
 type ResolveNetworkAudio = (track: NetworkAudioTrack, signal: AbortSignal) => Promise<AudioPlayerSource>;
 /** One audio element per persistent layout. Safe to construct during SSR; attach on mount. */
@@ -164,20 +184,33 @@ declare class NetworkAudioController {
     private source;
     private refreshed;
     private resumePosition;
+    private eventListeners;
+    private pendingEvent;
     constructor(resolve: ResolveNetworkAudio);
     setResolver(resolve: ResolveNetworkAudio): void;
     getSnapshot: () => NetworkAudioSnapshot;
     subscribe: (listener: () => void) => () => void;
+    subscribeEvents: (listener: (event: ListeningEvent) => void) => () => void;
+    private emit;
+    private progress;
+    private remember;
+    /** Capture the live clock before pagehide or a synchronous user navigation. */
+    checkpoint(): NetworkAudioSnapshot;
+    dismiss(): void;
+    show(): void;
+    forgetHistory(): void;
     private patch;
     attach(audio: HTMLAudioElement): void;
     detach(): void;
     enqueue(track: NetworkAudioTrack): number;
     playTrack(track: NetworkAudioTrack): void;
-    select(index: number): void;
+    select(index: number, fromBeginning?: boolean): void;
     remove(index: number): void;
     private cancel;
     pause(): void;
     clear(): void;
+    restart(track?: NetworkAudioTrack): void;
+    playQueue(tracks: readonly NetworkAudioTrack[]): void;
     seek(position: number): void;
     setRate(rate: number): void;
     setVolume(volume: number): void;
@@ -190,13 +223,19 @@ declare class NetworkAudioController {
 }
 
 type NetworkAudioCommand = {
-    action: 'play' | 'pause' | 'clear';
+    action: 'play' | 'pause' | 'clear' | 'restart' | 'dismiss' | 'show';
 } | {
     action: 'select' | 'remove' | 'seek' | 'rate' | 'volume';
     value: number;
 } | {
     action: 'enqueue' | 'playTrack';
     track: NetworkAudioTrack;
+} | {
+    action: 'restartTrack';
+    track: NetworkAudioTrack;
+} | {
+    action: 'playQueue';
+    tracks: NetworkAudioTrack[];
 };
 interface NetworkPlayerConnection {
     /** Fully qualified, dedicated player route; never the article route. */
@@ -220,6 +259,11 @@ interface NetworkAudioProviderProps {
     host?: NetworkPlayerHostOptions;
     /** Optional sessionStorage checkpoint. Scope by application/network and user; honor consent. Restores paused. */
     checkpointStorageKey?: string;
+    /** Use local storage for return visits; never required for current-session playback. */
+    checkpointStorage?: 'session' | 'local';
+    onListeningEvent?: (event: ListeningEvent) => void;
+    /** Disable persistence and delete the checkpoint when functional consent is withdrawn. */
+    checkpointEnabled?: boolean;
 }
 interface NetworkAudioContextValue {
     snapshot: NetworkAudioSnapshot;
@@ -230,9 +274,12 @@ interface NetworkAudioContextValue {
     openNetworkPlayer?: () => void;
     highlightEnabled: boolean;
     setHighlightEnabled: (enabled: boolean) => void;
+    expanded: boolean;
+    setExpanded: (expanded: boolean) => void;
+    openPlayer: () => void;
 }
 /** Mount once in a persistent root layout, outside route keys/templates. */
-declare function NetworkAudioProvider({ children, resolveAudio, connection, host, checkpointStorageKey }: NetworkAudioProviderProps): react_jsx_runtime.JSX.Element;
+declare function NetworkAudioProvider({ children, resolveAudio, connection, host, checkpointStorageKey, checkpointStorage, checkpointEnabled, onListeningEvent }: NetworkAudioProviderProps): react_jsx_runtime.JSX.Element;
 declare function useNetworkAudio(): NetworkAudioContextValue;
 /** Attach in the article component. Unmount/hidden tab clears only highlighting, never playback. */
 declare function useArticleNarration(track: NetworkAudioTrack, narration?: AudioPlayerNarration): {
@@ -247,17 +294,27 @@ interface ArticleAudioControlsProps {
     className?: string;
 }
 declare function ArticleAudioControls({ track, narration, className }: ArticleAudioControlsProps): react_jsx_runtime.JSX.Element;
+/** A quiet invitation on the front page; never starts audio on mount. */
+declare function ListeningInvitation(): react_jsx_runtime.JSX.Element | null;
+/** A finite, explicit playlist. Replacing the queue happens only on Play stories. */
+declare function ListeningPlaylist({ tracks, title, renderArticleLink }: {
+    tracks: NetworkAudioTrack[];
+    title?: string;
+    renderArticleLink?: (track: NetworkAudioTrack) => ReactNode;
+}): react_jsx_runtime.JSX.Element | null;
+/** Available from the permanent Listen navigation entry, including after closing the bar. */
+declare function ListeningLibrary({ renderArticleLink }?: {
+    renderArticleLink?: (track: NetworkAudioTrack) => ReactNode;
+}): react_jsx_runtime.JSX.Element;
 interface NetworkAudioPlayerProps {
     networkName?: string;
     /** Render an actual ad or sponsor creative here. The expanded slot is labeled Advertisement. */
     advertisement?: ReactNode;
     className?: string;
     style?: CSSProperties;
-    /** Use false on the dedicated player page; readers default to a fixed bottom bar with a measured spacer. */
     fixed?: boolean;
-    /** Supply your router's Link for same-site navigation. The host always opens articles separately. */
     renderArticleLink?: (track: NetworkAudioTrack) => ReactNode;
 }
 declare function NetworkAudioPlayer({ networkName, advertisement, className, style, fixed, renderArticleLink }: NetworkAudioPlayerProps): react_jsx_runtime.JSX.Element | null;
 
-export { ArticleAudioControls, type ArticleAudioControlsProps, AudioPlayer, type AudioPlayerNarration, type AudioPlayerProps, type AudioPlayerSource, type AudioPlayerVariant, NarrationHighlighter, type NarrationTimings, type NetworkAudioCommand, type NetworkAudioContextValue, NetworkAudioController, NetworkAudioPlayer, type NetworkAudioPlayerProps, NetworkAudioProvider, type NetworkAudioProviderProps, type NetworkAudioSnapshot, type NetworkAudioTrack, type NetworkPlayerConnection, type NetworkPlayerHostOptions, type ResolveNetworkAudio, SENTENCE_HIGHLIGHT, WORD_HIGHLIGHT, narrationHighlightSupported, parseTimingsPayload, useArticleNarration, useNetworkAudio };
+export { ArticleAudioControls, type ArticleAudioControlsProps, AudioPlayer, type AudioPlayerNarration, type AudioPlayerProps, type AudioPlayerSource, type AudioPlayerVariant, type ListeningEvent, ListeningInvitation, ListeningLibrary, ListeningPlaylist, type ListeningProgress, NarrationHighlighter, type NarrationTimings, type NetworkAudioCommand, type NetworkAudioContextValue, NetworkAudioController, NetworkAudioPlayer, type NetworkAudioPlayerProps, NetworkAudioProvider, type NetworkAudioProviderProps, type NetworkAudioSnapshot, type NetworkAudioTrack, type NetworkPlayerConnection, type NetworkPlayerHostOptions, type ResolveNetworkAudio, SENTENCE_HIGHLIGHT, WORD_HIGHLIGHT, narrationHighlightSupported, parseTimingsPayload, useArticleNarration, useNetworkAudio };

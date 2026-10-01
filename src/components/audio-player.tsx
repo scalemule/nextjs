@@ -20,6 +20,8 @@ const subscribeNever = () => () => {}
 
 export interface AudioPlayerSource {
   url: string | null
+  /** Stable recording identity. Must not contain signed URLs or credentials. */
+  revision?: string | null
   duration_ms?: number | null
   expires_at?: string | null
   waveform_peaks?: number[] | null

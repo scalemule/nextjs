@@ -2,9 +2,11 @@ import { NetworkAudioController, validSnapshot, validTrack, safeHttpUrl,
   type NetworkAudioSnapshot, type NetworkAudioTrack } from './controller'
 
 export type NetworkAudioCommand =
-  | { action: 'play' | 'pause' | 'clear' }
+  | { action: 'play' | 'pause' | 'clear' | 'restart' | 'dismiss' | 'show' }
   | { action: 'select' | 'remove' | 'seek' | 'rate' | 'volume'; value: number }
   | { action: 'enqueue' | 'playTrack'; track: NetworkAudioTrack }
+  | { action: 'restartTrack'; track: NetworkAudioTrack }
+  | { action: 'playQueue'; tracks: NetworkAudioTrack[] }
 
 export interface NetworkPlayerConnection {
   /** Fully qualified, dedicated player route; never the article route. */
@@ -26,6 +28,15 @@ export function runCommand(controller: NetworkAudioController, command: unknown)
     case 'play': void controller.play(); return true
     case 'pause': controller.pause(); return true
     case 'clear': controller.clear(); return true
+    case 'restart': controller.restart(); return true
+    case 'dismiss': controller.dismiss(); return true
+    case 'show': controller.show(); return true
+    case 'restartTrack':
+      if (!validTrack(c.track)) return false
+      controller.restart(c.track); return true
+    case 'playQueue':
+      if (!Array.isArray(c.tracks) || !c.tracks.every(validTrack)) return false
+      controller.playQueue(c.tracks); return true
     case 'enqueue': case 'playTrack':
       if (!validTrack(c.track)) return false
       controller[c.action](c.track); return true
@@ -65,8 +76,10 @@ export function hostNetworkPlayer(controller: NetworkAudioController, options: N
         if (data.play === true) void controller.play()
       } else if (data.kind === 'command') {
         const command = data.command
-        if (command && (command.action === 'enqueue' || command.action === 'playTrack')
+        if (command && (command.action === 'enqueue' || command.action === 'playTrack' || command.action === 'restartTrack')
           && (!validTrack(command.track) || !trackAllowed(command.track))) return
+        if (command?.action === 'playQueue' && (!Array.isArray(command.tracks)
+          || !command.tracks.every((t: unknown) => validTrack(t) && trackAllowed(t)))) return
         runCommand(controller, command)
       }
     } catch {

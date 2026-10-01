@@ -131,3 +131,69 @@ describe('persistent audio ownership', () => {
     expect(controller.getSnapshot().status).toBe('paused')
   })
 })
+
+it('remembers separate article positions when switching and replacing a queue', async () => {
+  controller.playTrack(first); await flush(); metadata();
+  audio.currentTime = 21; audio.dispatchEvent(new Event('timeupdate'));
+  controller.playTrack(second); await flush(); metadata();
+  audio.currentTime = 9; audio.dispatchEvent(new Event('timeupdate'));
+  controller.playTrack(first); await flush(); metadata();
+  expect(audio.currentTime).toBe(21);
+  controller.playQueue([second]); await flush(); metadata();
+  expect(audio.currentTime).toBe(0);
+  expect(controller.getSnapshot().history?.find(p => p.track.publicationId === first.publicationId)?.position).toBe(21);
+});
+it('rewinds three seconds after a long pause, once, and starts over explicitly', async () => {
+  controller.playTrack(first); await flush(); metadata();
+  audio.currentTime = 20; audio.dispatchEvent(new Event('timeupdate')); controller.pause();
+  const saved = controller.getSnapshot();
+  controller.restore({ ...saved, history: saved.history?.map(p => ({ ...p, updatedAt: Date.now() - 31 * 60000 })) });
+  await controller.play(); metadata(); expect(audio.currentTime).toBe(17);
+  controller.pause(); await controller.play(); expect(audio.currentTime).toBe(17);
+  controller.restart(); await flush(); expect(audio.currentTime).toBe(0);
+});
+it('handles the native pause-before-ended sequence and stops after the last queued story', async () => {
+  const events = vi.fn(); controller.subscribeEvents(events);
+  controller.playQueue([first, second]); await flush(); metadata();
+  Object.defineProperty(audio, 'ended', { configurable: true, value: true });
+  audio.dispatchEvent(new Event('pause')); audio.dispatchEvent(new Event('ended')); await flush(); metadata();
+  expect(controller.getSnapshot().index).toBe(1);
+  expect(controller.getSnapshot().history?.find(p => p.track.publicationId === first.publicationId)?.completed).toBe(true);
+  audio.dispatchEvent(new Event('pause')); audio.dispatchEvent(new Event('ended')); await flush();
+  expect(controller.getSnapshot().status).toBe('paused');
+  expect(events.mock.calls.filter(([e]) => e.type === 'completed')).toHaveLength(2);
+  expect(resolve).toHaveBeenCalledTimes(2);
+  await controller.play(); metadata(); expect(audio.currentTime).toBe(0);
+});
+it('resets changed recordings with an explanation and waits for another explicit play', async () => {
+  resolve.mockResolvedValue({ ...source, revision: 'first' });
+  controller.playTrack(first); await flush(); metadata();
+  audio.currentTime = 25; audio.dispatchEvent(new Event('timeupdate'));
+  controller.pause();
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 31 * 60000);
+  resolve.mockResolvedValue({ ...source, revision: 'updated' });
+  vi.mocked(audio.play).mockClear(); await controller.play();
+  expect(audio.play).not.toHaveBeenCalled();
+  expect(controller.getSnapshot().position).toBe(0);
+  expect(controller.getSnapshot().notice).toContain('updated');
+  await controller.play(); metadata(); expect(audio.currentTime).toBe(0);
+});
+it('preserves the live position through a media error and a manual retry', async () => {
+  controller.playTrack(first); await flush(); metadata();
+  audio.currentTime = 27;
+  resolve.mockRejectedValueOnce(new Error('offline'));
+  audio.dispatchEvent(new Event('error')); await flush();
+  expect(controller.getSnapshot().status).toBe('error');
+  expect(controller.getSnapshot().position).toBe(27);
+  await controller.play(); metadata(); expect(audio.currentTime).toBe(27);
+  expect(resolve).toHaveBeenCalledTimes(3);
+});
+it('dismisses without losing progress and restores only bounded, unexpired public history', async () => {
+  controller.playTrack(first); await flush(); metadata();
+  audio.currentTime = 12; controller.dismiss();
+  expect(controller.getSnapshot()).toMatchObject({ dismissed: true, position: 12, status: 'paused' });
+  controller.show(); expect(controller.getSnapshot().dismissed).toBe(false);
+  const saved = controller.getSnapshot();
+  controller.restore({ ...saved, history: saved.history?.map(p => ({ ...p, updatedAt: Date.now() - 31 * 86400000 })) });
+  expect(controller.getSnapshot().history).toEqual([]);
+});
