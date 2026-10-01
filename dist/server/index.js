@@ -39,8 +39,9 @@ function validateIP(ip) {
 function extractClientContext(request) {
   const headers3 = request.headers;
   let ip;
+  ip = validateIP(headers3.get("x-real-ip"));
   const cfConnectingIp = headers3.get("cf-connecting-ip");
-  if (cfConnectingIp) {
+  if (!ip && cfConnectingIp) {
     ip = validateIP(cfConnectingIp);
   }
   if (!ip) {
@@ -227,6 +228,12 @@ var ScaleMuleServer = class {
       /**
        * Login user - returns session token (store in HTTP-only cookie)
        */
+      sendMfaCode: async (pending_token, method, options) => {
+        return this.request("POST", "/v1/auth/mfa/send-code", { body: { pending_token, method }, clientContext: options?.clientContext });
+      },
+      completeMfa: async (pending_token, code, method, options) => {
+        return this.request("POST", "/v1/auth/mfa/verify", { body: { pending_token, code, method }, clientContext: options?.clientContext });
+      },
       login: async (data, options) => {
         return this.request("POST", "/v1/auth/login", { body: data, clientContext: options?.clientContext });
       },
@@ -866,7 +873,7 @@ var ScaleMuleServer = class {
         responseData = text ? JSON.parse(text) : null;
       } catch {
       }
-      if (!response.ok) {
+      if (!response.ok || responseData?.success === false) {
         const baseError = responseData?.error || {
           code: `HTTP_${response.status}`,
           message: responseData?.message || text || response.statusText
@@ -1392,19 +1399,32 @@ function createAuthRoutes(config = {}) {
           }
           return registerResponse;
         }
+        case "mfa/send-code": {
+          const { pending_token, method } = body;
+          if (!pending_token || !["email", "sms"].includes(method)) return errorResponse("VALIDATION_ERROR", "MFA token and method required", 400);
+          return successResponse(await sm.auth.sendMfaCode(pending_token, method, { clientContext }));
+        }
+        case "mfa/verify": {
+          const { pending_token, code, method } = body;
+          if (!pending_token || !code) return errorResponse("VALIDATION_ERROR", "MFA token and code required", 400);
+          const result = await sm.auth.completeMfa(pending_token, code, method, { clientContext });
+          if (!result.session_token || !result.user) return errorResponse("MFA_FAILED", "Unable to complete sign-in", 400);
+          await config.onLogin?.({ id: result.user.id, email: result.user.email });
+          return withSession(result, { ...result, sessionToken: result.session_token, userId: result.user.id }, cookieOptions);
+        }
         // ==================== Login ====================
         case "login": {
-          const { email, password, remember_me } = body;
+          const { email, password, remember_me, device_fingerprint, challenge_token, challenge_code } = body;
           if (!email || !password) {
             return errorResponse("VALIDATION_ERROR", "Email and password required", 400);
           }
           let loginData;
           try {
-            loginData = await sm.auth.login({ email, password, remember_me }, { clientContext });
+            loginData = await sm.auth.login({ email, password, remember_me, device_fingerprint, challenge_token, challenge_code }, { clientContext });
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null;
             const errorCode = apiErr?.code || "LOGIN_FAILED";
-            let status = 400;
+            let status = errorCode === "LOGIN_CHALLENGE_REQUIRED" ? 202 : 400;
             if (errorCode === "INVALID_CREDENTIALS" || errorCode === "UNAUTHORIZED") status = 401;
             if (["EMAIL_NOT_VERIFIED", "PHONE_NOT_VERIFIED", "ACCOUNT_LOCKED", "ACCOUNT_DISABLED", "MFA_REQUIRED"].includes(errorCode)) {
               status = 403;
@@ -1485,7 +1505,7 @@ function createAuthRoutes(config = {}) {
               400
             );
           }
-          return successResponse({ message: "Password reset successful" });
+          return clearSession({ message: "Password reset successful" }, cookieOptions);
         }
         // ==================== Verify Email ====================
         case "verify-email": {

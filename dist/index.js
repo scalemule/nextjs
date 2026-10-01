@@ -1,9 +1,9 @@
 'use strict';
 
 var React = require('react');
+var jsxRuntime = require('react/jsx-runtime');
 var money = require('@scalemule/money');
 var sdk = require('@scalemule/sdk');
-var jsxRuntime = require('react/jsx-runtime');
 
 function _interopNamespace(e) {
   if (e && e.__esModule) return e;
@@ -25,7 +25,129 @@ function _interopNamespace(e) {
 
 var React__namespace = /*#__PURE__*/_interopNamespace(React);
 
-// src/provider.tsx
+// src/security-challenge.tsx
+function useSecurityChallenge(recoveryUrl) {
+  const [challenge, setChallenge] = React.useState(null);
+  const [code, setCode] = React.useState("");
+  const resolve = React.useRef(null);
+  const dialog = React.useRef(null);
+  const answer = React.useCallback((value) => {
+    const pending = resolve.current;
+    resolve.current = null;
+    setChallenge(null);
+    setCode("");
+    pending?.(value);
+  }, []);
+  const prompt = React.useCallback((next) => {
+    resolve.current?.(null);
+    return new Promise((done) => {
+      resolve.current = done;
+      setCode("");
+      setChallenge(next);
+    });
+  }, []);
+  React.useEffect(() => () => {
+    resolve.current?.(null);
+    resolve.current = null;
+  }, []);
+  React.useEffect(() => {
+    if (challenge && dialog.current && !dialog.current.open) dialog.current.showModal();
+  }, [challenge]);
+  const element = challenge ? /* @__PURE__ */ jsxRuntime.jsx(
+    "dialog",
+    {
+      ref: dialog,
+      "aria-labelledby": "sm-security-title",
+      "aria-describedby": "sm-security-description",
+      onCancel: (event) => {
+        event.preventDefault();
+        answer(null);
+      },
+      style: { border: "1px solid #d1d5db", borderRadius: 16, padding: 28, maxWidth: 420, width: "calc(100% - 48px)", color: "#111827", background: "#fff", boxSizing: "border-box" },
+      children: /* @__PURE__ */ jsxRuntime.jsxs("form", { onSubmit: (event) => {
+        event.preventDefault();
+        if (code.trim()) answer(code.trim());
+      }, children: [
+        /* @__PURE__ */ jsxRuntime.jsx("h2", { id: "sm-security-title", style: { marginTop: 0 }, children: "Confirm your sign-in" }),
+        /* @__PURE__ */ jsxRuntime.jsx("p", { id: "sm-security-description", children: challenge.method === "totp" ? "Enter a code from your authenticator app." : "Enter the verification code sent to your " + (challenge.method === "sms" ? "phone." : "email.") }),
+        challenge.error && /* @__PURE__ */ jsxRuntime.jsx("p", { role: "alert", style: { color: "#b91c1c" }, children: challenge.error }),
+        /* @__PURE__ */ jsxRuntime.jsx("label", { htmlFor: "sm-security-code", children: "Verification code" }),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "input",
+          {
+            id: "sm-security-code",
+            autoFocus: true,
+            autoComplete: "one-time-code",
+            inputMode: "numeric",
+            value: code,
+            onChange: (event) => setCode(event.target.value),
+            maxLength: 32,
+            required: true,
+            style: { display: "block", boxSizing: "border-box", width: "100%", margin: "8px 0 20px", padding: 12, fontSize: 22, border: "1px solid #9ca3af", borderRadius: 8 }
+          }
+        ),
+        /* @__PURE__ */ jsxRuntime.jsx("button", { type: "submit", style: { padding: "10px 20px", borderRadius: 8, border: 0, background: "#2563eb", color: "#fff", cursor: "pointer" }, children: "Continue" }),
+        /* @__PURE__ */ jsxRuntime.jsx("button", { type: "button", onClick: () => answer(null), style: { marginLeft: 12 }, children: "Cancel" }),
+        challenge.method === "email" && /* @__PURE__ */ jsxRuntime.jsxs("p", { children: [
+          /* @__PURE__ */ jsxRuntime.jsx("button", { type: "button", onClick: () => answer("resend"), children: "Send a new code" }),
+          " ",
+          /* @__PURE__ */ jsxRuntime.jsx("small", { children: "(wait 60 seconds between requests)" })
+        ] }),
+        /* @__PURE__ */ jsxRuntime.jsx("p", { children: /* @__PURE__ */ jsxRuntime.jsx("a", { href: recoveryUrl, onClick: () => answer(null), children: "Reset your password" }) })
+      ] })
+    }
+  ) : null;
+  return { prompt, element };
+}
+async function withAdaptiveChallenge(attempt, prompt, mfa) {
+  let proof = {};
+  let challengeToken;
+  let message;
+  for (; ; ) {
+    try {
+      return await attempt(proof);
+    } catch (error) {
+      const err = error;
+      if (err.code === "MFA_REQUIRED" && mfa) {
+        const details = JSON.parse(err.message || "{}");
+        const token = details.pending_token;
+        const method = details.mfa_method;
+        if (!token || !["totp", "email", "sms"].includes(method || "")) throw error;
+        if (method !== "totp") await mfa.send(token, method);
+        let mfaError;
+        for (; ; ) {
+          const code2 = await prompt({ method, error: mfaError });
+          if (code2 === null) throw { code: "LOGIN_CANCELLED", message: "Sign-in was cancelled." };
+          try {
+            if (code2 === "resend") {
+              await mfa.send(token, method);
+              mfaError = void 0;
+              continue;
+            }
+            return await mfa.verify(token, code2, method);
+          } catch (failure) {
+            const failed = failure;
+            if (!["INVALID_MFA_CODE", "CHALLENGE_RATE_LIMITED"].includes(failed.code || "")) throw failure;
+            mfaError = failed.message;
+          }
+        }
+      }
+      if (err.code === "LOGIN_CHALLENGE_REQUIRED") {
+        const details = JSON.parse(err.message || "{}");
+        if (!details.challenge_token) throw error;
+        challengeToken = details.challenge_token;
+        message = void 0;
+      } else if (challengeToken && ["LOGIN_CHALLENGE_INVALID", "CHALLENGE_RATE_LIMITED"].includes(err.code || "")) {
+        message = err.message;
+      } else {
+        throw error;
+      }
+      const code = await prompt({ method: "email", error: message });
+      if (code === null) throw { code: "LOGIN_CANCELLED", message: "Sign-in was cancelled." };
+      proof = code === "resend" ? {} : { challenge_token: challengeToken, challenge_code: code };
+    }
+  }
+}
 
 // src/types/index.ts
 var ScaleMuleApiError = class extends Error {
@@ -634,7 +756,7 @@ var ScaleMuleClient = class {
           responseData = text ? JSON.parse(text) : null;
         } catch {
         }
-        if (!response.ok) {
+        if (!response.ok || responseData?.success === false) {
           const rawError = responseData?.error;
           const baseError = rawError && typeof rawError === "object" ? rawError : { code: `HTTP_${response.status}`, message: typeof rawError === "string" ? rawError : responseData?.message || text || response.statusText };
           const error = withErrorContext(baseError, responseData, response.headers);
@@ -673,7 +795,7 @@ var ScaleMuleClient = class {
             continue;
           }
           if (this.debug) {
-            console.error("[ScaleMule] Request failed:", error);
+            console.error("[ScaleMule] Request failed:", ["LOGIN_CHALLENGE_REQUIRED", "MFA_REQUIRED"].includes(error.code) ? error.code : error);
           }
           throw new ScaleMuleApiError(error);
         }
@@ -943,6 +1065,7 @@ function setSdkTelemetryEndpoint(url) {
   endpoint = url;
 }
 function reportSdkError(payload) {
+  if (["LOGIN_CHALLENGE_REQUIRED", "MFA_REQUIRED"].includes(payload.code)) return;
   if (!endpoint) return;
   if (typeof fetch === "undefined") return;
   const body = JSON.stringify({
@@ -1018,8 +1141,12 @@ function ScaleMuleProvider({
   mediaPolicy,
   getToken,
   userResolver,
-  memberTokenPollMs
+  memberTokenPollMs,
+  passwordRecoveryUrl = "/auth/forgot-password",
+  onSecurityChallenge
 }) {
+  const security = useSecurityChallenge(passwordRecoveryUrl);
+  const requestSecurityCode = onSecurityChallenge || security.prompt;
   const memberMode = typeof getToken === "function";
   const [user, setUser] = React.useState(null);
   const [initializing, setInitializing] = React.useState(true);
@@ -1261,6 +1388,7 @@ function ScaleMuleProvider({
   );
   const value = React.useMemo(
     () => ({
+      requestSecurityCode,
       client,
       money: money$1,
       realtime: baseClient.realtime,
@@ -1288,9 +1416,12 @@ function ScaleMuleProvider({
       accountSwitcherPrivacy,
       bootstrapFlags
     }),
-    [client, money$1, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
+    [requestSecurityCode, client, money$1, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
   );
-  return /* @__PURE__ */ jsxRuntime.jsx(ScaleMuleContext.Provider, { value, children });
+  return /* @__PURE__ */ jsxRuntime.jsxs(ScaleMuleContext.Provider, { value, children: [
+    children,
+    security.element
+  ] });
 }
 function useScaleMule() {
   const context = React.useContext(ScaleMuleContext);
@@ -1402,7 +1533,7 @@ async function proxyFetch(proxyUrl, path, options = {}) {
   return data;
 }
 function useAuth() {
-  const { client, user, setUser, initializing, error, setError, authProxyUrl, enableAccountSwitcher, accountSwitcherPrivacy } = useScaleMule();
+  const { client, user, setUser, initializing, error, setError, authProxyUrl, enableAccountSwitcher, accountSwitcherPrivacy, requestSecurityCode } = useScaleMule();
   const register = React.useCallback(
     async (data) => {
       setError(null);
@@ -1443,19 +1574,28 @@ function useAuth() {
     async (data) => {
       setError(null);
       if (authProxyUrl) {
-        const response = await proxyFetch(
-          authProxyUrl,
-          "login",
-          { body: data }
-        );
-        if (!response.success || !response.data) {
-          const err = response.error || {
-            code: "LOGIN_FAILED",
-            message: "Login failed"
-          };
-          setError(err);
-          throw err;
-        }
+        const response = await withAdaptiveChallenge(async (proof) => {
+          const result = await proxyFetch(
+            authProxyUrl,
+            "login",
+            { body: { ...data, ...proof } }
+          );
+          if (!result.success || !result.data) {
+            throw result.error || { code: "LOGIN_FAILED", message: "Login failed" };
+          }
+          return { ...result, data: result.data };
+        }, requestSecurityCode, {
+          send: async (pending_token, method) => {
+            const result = await proxyFetch(authProxyUrl, "mfa/send-code", { body: { pending_token, method } });
+            if (!result.success) throw result.error;
+            return result;
+          },
+          verify: async (pending_token, code, method) => {
+            const result = await proxyFetch(authProxyUrl, "mfa/verify", { body: { pending_token, code, method } });
+            if (!result.success || !result.data) throw result.error;
+            return { ...result, data: result.data };
+          }
+        });
         if ("requires_mfa" in response.data && response.data.requires_mfa) {
           return response.data;
         }
@@ -1473,7 +1613,10 @@ function useAuth() {
       }
       let loginResult;
       try {
-        loginResult = await client.post("/v1/auth/login", data);
+        loginResult = await withAdaptiveChallenge((proof) => client.post("/v1/auth/login", { ...data, ...proof }), requestSecurityCode, {
+          send: (pending_token, method) => client.post("/v1/auth/mfa/send-code", { pending_token, method }),
+          verify: (pending_token, code, method) => client.post("/v1/auth/mfa/verify", { pending_token, code, method })
+        });
       } catch (err) {
         if (err instanceof ScaleMuleApiError) {
           setError(err);
@@ -1488,7 +1631,7 @@ function useAuth() {
       setUser(loginData.user);
       return loginData;
     },
-    [client, setUser, setError, authProxyUrl]
+    [client, setUser, setError, authProxyUrl, requestSecurityCode]
   );
   const logout = React.useCallback(async () => {
     setError(null);
@@ -1559,8 +1702,17 @@ function useAuth() {
           throw err;
         }
       }
+      await client.clearSession();
+      setUser(null);
+      if (typeof window !== "undefined") {
+        const current = new URL(window.location.href);
+        if (current.searchParams.get("token") === token) {
+          current.searchParams.delete("token");
+          window.history.replaceState(window.history.state, "", current.toString());
+        }
+      }
     },
-    [client, setError, authProxyUrl]
+    [client, setUser, setError, authProxyUrl]
   );
   const verifyEmail = React.useCallback(
     async (token) => {
@@ -1841,11 +1993,13 @@ function useAuth() {
       setError(null);
       let mfaResult;
       try {
-        mfaResult = await client.post("/v1/auth/mfa/challenge", {
-          challenge_token: challengeToken,
-          code,
-          method
-        });
+        if (authProxyUrl) {
+          const result = await proxyFetch(authProxyUrl, "mfa/verify", { body: { pending_token: challengeToken, code, method } });
+          if (!result.success || !result.data) throw result.error;
+          mfaResult = result.data;
+        } else {
+          mfaResult = await client.post("/v1/auth/mfa/verify", { pending_token: challengeToken, code, method });
+        }
       } catch (err) {
         if (err instanceof ScaleMuleApiError) {
           setError(err);
@@ -1856,7 +2010,7 @@ function useAuth() {
       setUser(mfaResult.user);
       return mfaResult;
     },
-    [client, setUser, setError]
+    [client, setUser, setError, authProxyUrl]
   );
   const disableMFA = React.useCallback(
     async (password) => {

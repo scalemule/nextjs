@@ -856,7 +856,7 @@ export class ScaleMuleClient {
           // Treat the raw text as the error message
         }
 
-        if (!response.ok) {
+        if (!response.ok || responseData?.success === false) {
           // Handle API error response — normalize string-valued error to ApiError shape
           const rawError = responseData?.error
           const baseError: ApiError = (rawError && typeof rawError === 'object')
@@ -922,7 +922,7 @@ export class ScaleMuleClient {
           }
 
           if (this.debug) {
-            console.error('[ScaleMule] Request failed:', error)
+            console.error('[ScaleMule] Request failed:', ['LOGIN_CHALLENGE_REQUIRED', 'MFA_REQUIRED'].includes(error.code) ? error.code : error)
           }
 
           throw new ScaleMuleApiError(error)

@@ -234,3 +234,15 @@ describe('register route cookie behavior', () => {
     expect(userIdCookie).toContain('u-new')
   })
 })
+
+describe('adaptive login route', () => {
+  it('forwards proof and never sets cookies for a challenge', async () => {
+    mockLogin.mockReset()
+    mockLogin.mockRejectedValue(new ScaleMuleApiError({ code: 'LOGIN_CHALLENGE_REQUIRED', message: JSON.stringify({ challenge_token: 'proof' }) }))
+    const response = await createAuthRoutes().POST(createRequest('login', { email: 'reader@example.com', password: 'correct', challenge_token: 'old', challenge_code: '123456' }), contextFor('login'))
+    expect(response.status).toBe(202)
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect((await response.json()).error.code).toBe('LOGIN_CHALLENGE_REQUIRED')
+    expect(mockLogin.mock.calls[0][0]).toMatchObject({ challenge_token: 'old', challenge_code: '123456' })
+  })
+})

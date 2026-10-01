@@ -212,6 +212,8 @@ export interface RegisterRequest {
 }
 
 export interface LoginRequest {
+  challenge_token?: string
+  challenge_code?: string
   email: string
   password: string
   remember_me?: boolean

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.51
+
+- Complete adaptive email challenges and enrolled MFA in the shared provider, including verification, retry, resend, cancellation, and recovery links. HTTP 202 challenges never create session cookies or enter error telemetry.
+- Clear revoked cookies and client state after password recovery; remove the spent reset token from the URL.
+- Apps still configure their own public auth URL and verified sender domain. Enforced MFA enrollment and third-party identity-provider recovery remain separate flows.
+
 ## 0.1.50
 
 - Preserve the listening queue when a slow network-player window connects after the initial connection notice. The reader keeps playing while waiting and transfers its current queue and position once the host is ready.

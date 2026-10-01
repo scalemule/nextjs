@@ -101,9 +101,11 @@ export function extractClientContext(request: NextRequestLike): ClientContext {
   // 7. request.ip (Next.js built-in)
   let ip: string | undefined
 
-  // Cloudflare (most trusted when using CF)
+  // The hosting ingress overwrites X-Real-IP. Prefer that authenticated
+  // transport value to optional CDN headers a browser could supply itself.
+  ip = validateIP(headers.get('x-real-ip'))
   const cfConnectingIp = headers.get('cf-connecting-ip')
-  if (cfConnectingIp) {
+  if (!ip && cfConnectingIp) {
     ip = validateIP(cfConnectingIp)
   }
 

@@ -1,5 +1,7 @@
 'use client'
 
+import { useSecurityChallenge, type SecurityChallengePrompt } from './security-challenge'
+
 import {
   createContext,
   useContext,
@@ -57,6 +59,7 @@ function setCachedUser(user: User | null): void {
 // ============================================================================
 
 interface ScaleMuleContextValue {
+  requestSecurityCode: SecurityChallengePrompt
   /** The API client instance */
   client: ScaleMuleClient
   /** Money client instance sharing the same session token */
@@ -132,6 +135,10 @@ const ScaleMuleContext = createContext<ScaleMuleContextValue | null>(null)
 // ============================================================================
 
 export interface ScaleMuleProviderProps extends ScaleMuleConfig {
+  /** Recovery link in the built-in security challenge. */
+  passwordRecoveryUrl?: string
+  /** Optional custom adaptive verification UI. */
+  onSecurityChallenge?: SecurityChallengePrompt
   children: ReactNode
   /** Called when user logs in */
   onLogin?: (user: User, response: LoginResponse) => void
@@ -219,7 +226,11 @@ export function ScaleMuleProvider({
   getToken,
   userResolver,
   memberTokenPollMs,
+  passwordRecoveryUrl = '/auth/forgot-password',
+  onSecurityChallenge,
 }: ScaleMuleProviderProps) {
+  const security = useSecurityChallenge(passwordRecoveryUrl)
+  const requestSecurityCode = onSecurityChallenge || security.prompt
   const memberMode = typeof getToken === 'function'
   const [user, setUser] = useState<User | null>(null)
   const [initializing, setInitializing] = useState(true)
@@ -559,6 +570,7 @@ export function ScaleMuleProvider({
   // Context value
   const value = useMemo(
     () => ({
+      requestSecurityCode,
       client,
       money,
       realtime: baseClient.realtime,
@@ -586,12 +598,13 @@ export function ScaleMuleProvider({
       accountSwitcherPrivacy,
       bootstrapFlags,
     }),
-    [client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
+    [requestSecurityCode, client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
   )
 
   return (
     <ScaleMuleContext.Provider value={value}>
       {children}
+      {security.element}
     </ScaleMuleContext.Provider>
   )
 }
