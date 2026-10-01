@@ -350,6 +350,8 @@ class OfflineQueue {
 }
 
 export interface ClientConfig {
+  /** Keep sessions exclusively in HTTP-only cookies. */
+  cookieSession?: boolean
   /** Your ScaleMule API key */
   apiKey: string
   /** Your ScaleMule Application ID (required for realtime features) */
@@ -442,6 +444,7 @@ export class ScaleMuleClient {
   private gatewayUrl: string
   private debug: boolean
   private storage: StorageAdapter
+  private cookieSession: boolean
   private sessionToken: string | null = null
   private userId: string | null = null
   private rateLimitQueue: RateLimitQueue | null = null
@@ -466,6 +469,7 @@ export class ScaleMuleClient {
   private onAutoRefreshFailed?: (error: ApiError) => void
 
   constructor(config: ClientConfig) {
+    this.cookieSession = config.cookieSession === true
     this.apiKey = config.apiKey
     this.applicationId = config.applicationId || null
     this.gatewayUrl = resolveGatewayUrl(config)
@@ -615,8 +619,14 @@ export class ScaleMuleClient {
    * Initialize client by loading persisted session
    */
   async initialize(): Promise<void> {
-    const token = await this.storage.getItem(SESSION_STORAGE_KEY)
-    const userId = await this.storage.getItem(USER_ID_STORAGE_KEY)
+    if (this.cookieSession) {
+      // Remove credentials left by previous SDK versions before any requests.
+      await this.storage.removeItem(SESSION_STORAGE_KEY)
+      await this.storage.removeItem(STORAGE_KEYS.SESSION_POOL)
+      await this.storage.removeItem(STORAGE_KEYS.ACTIVE_ACCOUNT)
+    }
+    const token = this.cookieSession ? null : await this.storage.getItem(SESSION_STORAGE_KEY)
+    const userId = this.cookieSession ? null : await this.storage.getItem(USER_ID_STORAGE_KEY)
 
     if (token) this.sessionToken = token
     if (userId) this.userId = userId
@@ -682,6 +692,11 @@ export class ScaleMuleClient {
    * Set session after login
    */
   async setSession(token: string, userId: string): Promise<void> {
+    if (this.cookieSession) {
+      this.setCookieSession(userId)
+      await this.storage.removeItem(SESSION_STORAGE_KEY)
+      return
+    }
     this.sessionToken = token
     this.userId = userId
     await this.storage.setItem(SESSION_STORAGE_KEY, token)
@@ -704,8 +719,17 @@ export class ScaleMuleClient {
    *
    * Pass `null` to clear without touching userId/storage.
    */
+  setCookieSession(userId: string | null): void {
+    if (!this.cookieSession) return
+    this.sessionToken = null
+    this.userId = userId
+    this.resolveSessionPending()
+  }
+
+  usesCookieSession(): boolean { return this.cookieSession }
+
   setSessionToken(token: string | null): void {
-    this.sessionToken = token
+    this.sessionToken = this.cookieSession ? null : token
     if (this.debug) {
       console.log('[ScaleMule] Session token', token ? 'set (token-only)' : 'cleared (token-only)')
     }
@@ -745,7 +769,7 @@ export class ScaleMuleClient {
    * Check if client has an active session
    */
   isAuthenticated(): boolean {
-    return this.sessionToken !== null && this.userId !== null
+    return (this.cookieSession || this.sessionToken !== null) && this.userId !== null
   }
 
   /**

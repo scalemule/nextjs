@@ -314,6 +314,7 @@ var ScaleMuleClient = class {
     // The shared helper also single-flights at the storage-adapter level.
     this.anonymousIdPromise = null;
     this.refreshPromise = null;
+    this.cookieSession = config.cookieSession === true;
     this.apiKey = config.apiKey;
     this.applicationId = config.applicationId || null;
     this.gatewayUrl = resolveGatewayUrl(config);
@@ -443,8 +444,13 @@ var ScaleMuleClient = class {
    * Initialize client by loading persisted session
    */
   async initialize() {
-    const token = await this.storage.getItem(SESSION_STORAGE_KEY);
-    const userId = await this.storage.getItem(USER_ID_STORAGE_KEY);
+    if (this.cookieSession) {
+      await this.storage.removeItem(SESSION_STORAGE_KEY);
+      await this.storage.removeItem(sdk.STORAGE_KEYS.SESSION_POOL);
+      await this.storage.removeItem(sdk.STORAGE_KEYS.ACTIVE_ACCOUNT);
+    }
+    const token = this.cookieSession ? null : await this.storage.getItem(SESSION_STORAGE_KEY);
+    const userId = this.cookieSession ? null : await this.storage.getItem(USER_ID_STORAGE_KEY);
     if (token) this.sessionToken = token;
     if (userId) this.userId = userId;
     const wsId = await this.storage.getItem(WORKSPACE_STORAGE_KEY);
@@ -490,6 +496,11 @@ var ScaleMuleClient = class {
    * Set session after login
    */
   async setSession(token, userId) {
+    if (this.cookieSession) {
+      this.setCookieSession(userId);
+      await this.storage.removeItem(SESSION_STORAGE_KEY);
+      return;
+    }
     this.sessionToken = token;
     this.userId = userId;
     await this.storage.setItem(SESSION_STORAGE_KEY, token);
@@ -510,8 +521,17 @@ var ScaleMuleClient = class {
    *
    * Pass `null` to clear without touching userId/storage.
    */
+  setCookieSession(userId) {
+    if (!this.cookieSession) return;
+    this.sessionToken = null;
+    this.userId = userId;
+    this.resolveSessionPending();
+  }
+  usesCookieSession() {
+    return this.cookieSession;
+  }
   setSessionToken(token) {
-    this.sessionToken = token;
+    this.sessionToken = this.cookieSession ? null : token;
     if (this.debug) {
       console.log("[ScaleMule] Session token", token ? "set (token-only)" : "cleared (token-only)");
     }
@@ -546,7 +566,7 @@ var ScaleMuleClient = class {
    * Check if client has an active session
    */
   isAuthenticated() {
-    return this.sessionToken !== null && this.userId !== null;
+    return (this.cookieSession || this.sessionToken !== null) && this.userId !== null;
   }
   /**
    * Build headers for a request

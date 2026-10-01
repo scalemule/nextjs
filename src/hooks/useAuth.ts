@@ -175,7 +175,7 @@ async function proxyFetch<T>(
   options: { method?: string; body?: unknown } = {}
 ): Promise<{ success: boolean; data?: T; error?: ScaleMuleApiError }> {
   const method = options.method || 'POST'
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
 
   if (options.body) {
     headers['Content-Type'] = 'application/json'
@@ -250,7 +250,7 @@ export function useAuth(): UseAuthReturn {
       setError(null)
 
       if (authProxyUrl) {
-        const response = await proxyFetch<{ user: User; message: string; sessionToken?: string; userId?: string }>(
+        const response = await proxyFetch<{ user: User; message: string; authenticated?: boolean; sessionToken?: string; userId?: string }>(
           authProxyUrl, 'register', { body: data }
         )
 
@@ -269,7 +269,7 @@ export function useAuth(): UseAuthReturn {
         }
 
         // Hydrate user in context so route guards see isAuthenticated immediately
-        if (response.data.user) {
+        if (response.data.user && response.data.authenticated !== false) {
           setUser(response.data.user)
         }
 
@@ -900,6 +900,11 @@ export function useAuth(): UseAuthReturn {
           const result = await proxyFetch<LoginResponse & { sessionToken?: string }>(authProxyUrl, 'mfa/verify', { body: { pending_token: challengeToken, code, method } })
           if (!result.success || !result.data) throw result.error
           const sessionToken = result.data.sessionToken || result.data.session_token
+          if (client.usesCookieSession() && result.data.user) {
+            client.setCookieSession(result.data.user.id)
+            setUser(result.data.user)
+            return result.data
+          }
           if (!sessionToken) throw new ScaleMuleApiError({ code: 'MFA_FAILED', message: 'Sign-in did not return a session' })
           mfaResult = { ...result.data, session_token: sessionToken }
         } else {

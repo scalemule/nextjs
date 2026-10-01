@@ -5,6 +5,8 @@
  */
 type ScaleMuleEnvironment = 'dev' | 'prod';
 interface ScaleMuleConfig {
+    /** Explicit legacy bearer transport; auth proxies default to HTTP-only cookie transport. */
+    sessionMode?: 'cookie' | 'bearer';
     /** Your ScaleMule API key */
     apiKey: string;
     /** Your ScaleMule Application ID (required for realtime features) */

@@ -458,3 +458,49 @@ For signed URLs, supply `onRefresh(signal)` returning a fresh `AudioPlayerSource
 Customize `--sm-audio-accent`, `--sm-audio-ink`, `--sm-audio-muted`, `--sm-audio-track`, and `--sm-audio-wave` on `className` or `style`, retaining accessible contrast. Default accent/track contrast is over 4:1. Keep the player outside a navigation link; links and playback controls need separate interaction targets.
 
 This patch adds reusable presentation and bounded playback recovery. It does not change media storage, transcoding, TTS generation or entitlement enforcement.
+
+
+### Cookie-only browser sessions
+
+`ScaleMuleProvider` with `authProxyUrl` and `createAuthRoutes()` now keep the
+session token exclusively in HTTP-only cookies. Auth JSON returns identity and
+`authenticated`, never `sessionToken`. The provider clears credentials persisted
+by older SDKs and sends data calls through `<authProxyUrl>/client`. Realtime uses
+30-second, single-use WebSocket tickets; it never receives the session token.
+
+Export **GET, POST, PUT, PATCH, DELETE** from your auth catch-all route. Set
+`NEXT_PUBLIC_SCALEMULE_PUBLISHABLE_KEY` (or the factory's `publishableKey`) and use
+the same `NEXT_PUBLIC_SCALEMULE_GATEWAY_URL` as the browser provider. This preserves
+WebSocket ticket routing when server auth uses a dedicated cell gateway. The data
+proxy uses only the publishable key plus the cookie session, rejects cross-origin
+requests, and never forwards a browser-supplied credential or internal header.
+
+For an app directly behind an AWS ALB in append mode, set
+`createAuthRoutes({ clientContext: { trustedIpHeader: 'x-forwarded-for' } })`.
+This attests only the final ALB-added hop and ignores `X-Real-IP` and CDN headers.
+Choose a different header only when your actual ingress overwrites it and direct
+access to the origin is restricted. The legacy automatic context helper is kept
+for existing Hosting ingress integrations; it is not a trust-boundary detector.
+
+Custom authentication callbacks must set cookies with `withSession`, return user
+identity, and refresh `/api/auth/me` in the browser. Do not return a session token
+in JSON, HTML, postMessage, or browser storage. Direct/native SDK authentication
+and member-auth providers continue to use their existing token transport.
+An explicit temporary compatibility mode, `sessionMode: 'bearer'`, exists on both
+provider and route factory for applications migrating custom transports; it
+exposes the session to JavaScript and should not be used for new browser apps.
+
+The built-in sign-in dialog inherits the host's theme through `--sm-security-text`,
+`--sm-security-background`, `--sm-security-border`, and `--sm-security-accent`.
+
+
+For OAuth popups authenticating embedded frames, call
+`createServerClient().auth.createSessionHandoff(sessionToken, audience)` only in
+the server callback after successful OAuth. Send its `code` to the exact opener
+origin. The iframe posts `{ code }` to `<authProxyUrl>/handoff/exchange` and then
+refreshes `/me`. Configure the factory's fixed `handoffAudience` and
+`handoffCookies: { partitioned: true, sameSite: 'none', secure: true }`. Codes last
+60 seconds, are tenant/audience-bound, consume atomically once, and cannot recover
+a revoked session. The platform requires the customer's secret API key to issue
+or consume them. Never expose a generic browser endpoint for issuing codes from
+an existing cookie, and never place the session itself in a popup payload.

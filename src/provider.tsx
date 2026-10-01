@@ -213,6 +213,7 @@ export function ScaleMuleProvider({
   storage,
   analyticsProxyUrl,
   authProxyUrl,
+  sessionMode,
   telemetryEndpoint,
   publishableKey,
   enableAccountSwitcher,
@@ -232,6 +233,8 @@ export function ScaleMuleProvider({
   const security = useSecurityChallenge(passwordRecoveryUrl)
   const requestSecurityCode = onSecurityChallenge || security.prompt
   const memberMode = typeof getToken === 'function'
+  const cookieSession = !!authProxyUrl && !memberMode && sessionMode !== 'bearer'
+  const browserGateway = cookieSession ? `${authProxyUrl.replace(/\/$/, '')}/client` : undefined
   const [user, setUser] = useState<User | null>(null)
   const [initializing, setInitializing] = useState(true)
   const [error, setError] = useState<ApiError | null>(null)
@@ -257,7 +260,8 @@ export function ScaleMuleProvider({
         apiKey,
         applicationId,
         environment,
-        gatewayUrl: resolvedGatewayUrl,
+        gatewayUrl: browserGateway || resolvedGatewayUrl,
+        cookieSession,
         debug,
         storage,
         // Make outbound API calls wait for the first token to land in any
@@ -266,19 +270,19 @@ export function ScaleMuleProvider({
         // getToken() callback. Resolved in the init effect below.
         pendingSessionInit: !!authProxyUrl || memberMode,
       }),
-    [apiKey, applicationId, environment, resolvedGatewayUrl, debug, storage, authProxyUrl, memberMode]
+    [apiKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug, storage, authProxyUrl, memberMode]
   )
 
   const money = useMemo(
     () =>
       createMoneyClient({
         apiKey,
-        gatewayUrl: resolvedGatewayUrl,
+        gatewayUrl: browserGateway || resolvedGatewayUrl,
         environment,
         accessToken: client.getSessionToken() || undefined,
         fetch: globalThis.fetch.bind(globalThis),
       }),
-    [apiKey, resolvedGatewayUrl, environment, client]
+    [apiKey, resolvedGatewayUrl, browserGateway, environment, client]
   )
 
   // Create a base SDK ScaleMule instance for realtime WebSocket support.
@@ -289,11 +293,12 @@ export function ScaleMuleProvider({
     return new ScaleMule({
       apiKey,
       applicationId,
-      baseUrl: resolvedGatewayUrl,
+      baseUrl: browserGateway || resolvedGatewayUrl,
+      realtimeUrl: cookieSession ? resolvedGatewayUrl : undefined,
       environment,
       debug,
     })
-  }, [apiKey, applicationId, environment, resolvedGatewayUrl, debug])
+  }, [apiKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug])
 
   // Auto-fetch the application's `media_policy` so customer apps don't
   // need to mirror it as a prop. Falls back to the prop if the fetch
@@ -434,6 +439,7 @@ export function ScaleMuleProvider({
 
             if (mounted) {
               if (data.success && data.data?.user) {
+                client.setCookieSession(data.data.user.id)
                 setUser(data.data.user)
                 setCachedUser(data.data.user)
                 // Set the session token on the client so API calls include Authorization header
@@ -442,6 +448,7 @@ export function ScaleMuleProvider({
                 }
               } else {
                 // Session invalid — clear cached user
+                client.setCookieSession(null)
                 setUser(null)
                 setCachedUser(null)
               }
@@ -558,13 +565,15 @@ export function ScaleMuleProvider({
   // Wrap setUser to trigger callbacks and sync user cache
   const handleSetUser = useCallback(
     (newUser: User | null) => {
+      client.setCookieSession(newUser?.id || null)
+      if (!newUser) baseClient.realtime.disconnect()
       setUser(newUser)
       setCachedUser(newUser)
       if (newUser === null && onLogout) {
         onLogout()
       }
     },
-    [onLogout]
+    [onLogout, client, baseClient]
   )
 
   // Context value

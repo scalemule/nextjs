@@ -28,7 +28,7 @@ export function useSecurityChallenge(recoveryUrl: string) {
   const element = challenge ? (
     <dialog ref={dialog} aria-labelledby="sm-security-title" aria-describedby="sm-security-description"
       onCancel={(event) => { event.preventDefault(); answer(null) }}
-      style={{ border: '1px solid #d1d5db', borderRadius: 16, padding: 28, maxWidth: 420, width: 'calc(100% - 48px)', color: '#111827', background: '#fff', boxSizing: 'border-box' }}>
+      style={{ border: '1px solid var(--sm-security-border, var(--site-hairline, #d1d5db))', borderRadius: 16, padding: 28, maxWidth: 420, width: 'calc(100% - 48px)', color: 'var(--sm-security-text, var(--site-ink, CanvasText))', background: 'var(--sm-security-background, var(--site-bg-elevated, Canvas))', colorScheme: 'light dark', boxSizing: 'border-box' }}>
       <form onSubmit={(event) => { event.preventDefault(); if (code.trim()) answer(code.trim()) }}>
         <h2 id="sm-security-title" style={{ marginTop: 0 }}>Confirm your sign-in</h2>
         <p id="sm-security-description">{challenge.method === 'totp' ? 'Enter a code from your authenticator app.' : 'Enter the verification code sent to your ' + (challenge.method === 'sms' ? 'phone.' : 'email.')}</p>
@@ -36,8 +36,8 @@ export function useSecurityChallenge(recoveryUrl: string) {
         <label htmlFor="sm-security-code">Verification code</label>
         <input id="sm-security-code" autoFocus autoComplete="one-time-code" inputMode="numeric"
           value={code} onChange={(event) => setCode(event.target.value)} maxLength={32} required
-          style={{ display: 'block', boxSizing: 'border-box', width: '100%', margin: '8px 0 20px', padding: 12, fontSize: 22, border: '1px solid #9ca3af', borderRadius: 8 }} />
-        <button type="submit" style={{ padding: '10px 20px', borderRadius: 8, border: 0, background: '#2563eb', color: '#fff', cursor: 'pointer' }}>Continue</button>
+          style={{ display: 'block', boxSizing: 'border-box', width: '100%', margin: '8px 0 20px', padding: 12, fontSize: 22, border: '1px solid var(--sm-security-border, var(--site-hairline-strong, #9ca3af))', background: 'inherit', color: 'inherit', borderRadius: 8 }} />
+        <button type="submit" style={{ padding: '10px 20px', borderRadius: 8, border: 0, background: 'var(--sm-security-accent, var(--site-accent, #2563eb))', color: '#fff', cursor: 'pointer' }}>Continue</button>
         <button type="button" onClick={() => answer(null)} style={{ marginLeft: 12 }}>Cancel</button>
         {challenge.method !== 'totp' && <p><button type="button" onClick={() => answer('resend')}>Send a new code</button> <small>(wait 60 seconds between requests)</small></p>}
         <p><a href={recoveryUrl} onClick={() => answer(null)}>Reset your password</a></p>

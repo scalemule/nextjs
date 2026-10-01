@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { clearSession, getSessionFromRequest, SESSION_COOKIE_NAME, USER_ID_COOKIE_NAME } from './cookies'
+import { withSession, withRefreshedSession, clearSession, getSessionFromRequest, SESSION_COOKIE_NAME, USER_ID_COOKIE_NAME } from './cookies'
 
 function setCookieHeaders(res: Response): string[] {
   // Headers.getSetCookie() is available in the runtimes we target
@@ -85,4 +85,25 @@ describe('bearer session fallback', () => {
       )
     ).toBeNull()
   })
+})
+
+
+it('clears legacy cookies before issuing partitioned sessions and clears both on logout', () => {
+  const options = { partitioned: true, sameSite: 'none' as const, secure: true, domain: '.example.com' }
+  for (const response of [withSession({ session_token: 'secret', user: { id: 'user' } }, {}, options), withRefreshedSession('rotated', 'user', {}, options)]) {
+    const cookies = setCookieHeaders(response)
+    expect(cookies).toHaveLength(4)
+    for (const cookie of cookies.slice(0, 2)) {
+      expect(cookie).toContain('Max-Age=0')
+      expect(cookie).not.toContain('Partitioned')
+    }
+    for (const cookie of cookies.slice(2)) {
+      expect(cookie).toContain('Partitioned')
+      expect(cookie).toContain('HttpOnly')
+      expect(cookie).toContain('Secure')
+    }
+  }
+  const cleared = setCookieHeaders(clearSession({}, options))
+  expect(cleared).toHaveLength(4)
+  expect(cleared.every(c => c.includes('Max-Age=0'))).toBe(true)
 })

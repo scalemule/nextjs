@@ -1,4 +1,4 @@
-import { a8 as StorageAdapter, A as ApiError } from './index-BQgmT53x.mjs';
+import { a8 as StorageAdapter, A as ApiError } from './index-C2WA97vu.mjs';
 
 /**
  * ScaleMule API Client
@@ -12,6 +12,8 @@ import { a8 as StorageAdapter, A as ApiError } from './index-BQgmT53x.mjs';
 
 type ScaleMuleEnvironment = 'dev' | 'prod';
 interface ClientConfig {
+    /** Keep sessions exclusively in HTTP-only cookies. */
+    cookieSession?: boolean;
     /** Your ScaleMule API key */
     apiKey: string;
     /** Your ScaleMule Application ID (required for realtime features) */
@@ -68,6 +70,7 @@ declare class ScaleMuleClient {
     private gatewayUrl;
     private debug;
     private storage;
+    private cookieSession;
     private sessionToken;
     private userId;
     private rateLimitQueue;
@@ -164,6 +167,8 @@ declare class ScaleMuleClient {
      *
      * Pass `null` to clear without touching userId/storage.
      */
+    setCookieSession(userId: string | null): void;
+    usesCookieSession(): boolean;
     setSessionToken(token: string | null): void;
     /**
      * Clear session on logout

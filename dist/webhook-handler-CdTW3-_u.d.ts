@@ -1,5 +1,5 @@
 import { MoneyClient } from '@scalemule/money';
-import { A as ApiError, $ as RegisterRequest, p as ClientContext, U as User, L as LoginResponse, v as LoginRequest, c as ListFilesParams, t as ListFilesResponse, a9 as StorageFile, af as UploadResponse } from './index-BQgmT53x.js';
+import { A as ApiError, $ as RegisterRequest, p as ClientContext, U as User, L as LoginResponse, v as LoginRequest, c as ListFilesParams, t as ListFilesResponse, a9 as StorageFile, af as UploadResponse } from './index-C2WA97vu.js';
 
 /**
  * Server-Side ScaleMule Client
@@ -49,6 +49,16 @@ declare class ScaleMuleServer {
      */
     private request;
     auth: {
+        /** Issue a 60-second, single-use transfer code after a server OAuth callback. */
+        createSessionHandoff: (sessionToken: string, audience: string) => Promise<{
+            code: string;
+            expires_in: number;
+        }>;
+        /** Exchange only on the server; write the returned session into an HTTP-only cookie. */
+        exchangeSessionHandoff: (code: string, audience: string) => Promise<{
+            session_token: string;
+            user_id: string;
+        }>;
         /**
          * Register a new user
          */

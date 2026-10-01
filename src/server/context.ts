@@ -89,7 +89,12 @@ function validateIP(ip: string | undefined | null): string | undefined {
  * }
  * ```
  */
-export function extractClientContext(request: NextRequestLike): ClientContext {
+export interface ClientContextOptions {
+  /** Choose the header your ingress overwrites. ALB append mode uses the final XFF hop. */
+  trustedIpHeader?: 'x-forwarded-for' | 'x-real-ip' | 'cf-connecting-ip' | 'x-vercel-forwarded-for'
+}
+
+export function extractClientContext(request: NextRequestLike, options: ClientContextOptions = {}): ClientContext {
   const headers = request.headers
 
   // Extract IP address with priority order:
@@ -155,6 +160,13 @@ export function extractClientContext(request: NextRequestLike): ClientContext {
   // Next.js built-in (fallback)
   if (!ip && request.ip) {
     ip = validateIP(request.ip)
+  }
+
+  if (options.trustedIpHeader) {
+    const value = headers.get(options.trustedIpHeader)
+    // A configured trust boundary has no fallback to caller-controlled headers.
+    const hop = options.trustedIpHeader === 'x-forwarded-for' ? value?.split(',').at(-1)?.trim() : value
+    ip = validateIP(hop)
   }
 
   // Extract user agent
