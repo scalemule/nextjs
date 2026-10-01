@@ -437,6 +437,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
     if (storedReferrer) {
       // Use stored referrer from earlier in session
       originalReferrerRef.current = withoutAuthSecrets(storedReferrer) || null
+      setStorageItem(storage, SESSION_REFERRER_KEY, originalReferrerRef.current || '')
     } else if (document.referrer) {
       // Check if referrer is external (different domain)
       try {
