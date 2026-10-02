@@ -103,10 +103,10 @@ Keep the existing article body with `id="article-narration-body"`. Mounting an
 article never selects or starts its audio. Listen selects it; Add to queue
 appends without interrupting playback. Identity is `(publicationId, id)` so IDs
 in different publications do not collide. The queue deduplicates entries and
-holds up to 100 articles. Finishing an article advances to the next one.
+holds up to 100 articles. Finishing removes the article from the queue and advances when autoplay-next is enabled. Actual played ranges must cover at least 90% of the recording before it is marked listened; seeking to the end alone does not count.
 Unavailable audio stops with a retry/choose-another message.
 
-The compact bar exposes a playback-speed shortcut (cycles upward through the available rates, then resets to 1×), a Follow along toggle, and a Close player button. Closing stops playback, clears the listening queue and active highlights, and dismisses the player. Readers can reopen it with any article’s Listen to this story control. The expanded Speed selector retains all rates, including 0.5× and 0.75×. The player highlighting shortcut is enabled only when the active article has mounted narration controls in this document; it shares the article toggle’s preference.
+The compact bar exposes a playback-speed shortcut (cycles upward through the available rates, then resets to 1×), a Follow along toggle, and a Close player button. Closing pauses playback, preserves the listening queue and position, clears active highlights, and dismisses the player. Clearing the queue is a separate explicit action. Readers can reopen it with any article’s Listen to this story control. The expanded Speed selector retains all rates, including 0.5× and 0.75×. The player highlighting shortcut is enabled only when the active article has mounted narration controls in this document; it shares the article toggle’s preference.
 
 `useArticleNarration(track, narration)` attaches the same behavior to custom
 controls. Highlighting is opt-in, applies only to the active article, clears
@@ -224,3 +224,37 @@ Browser references: [window.open](https://developer.mozilla.org/en-US/docs/Web/A
 [postMessage](https://developer.mozilla.org/en-US/docs/Web/API/Window/postMessage),
 [BroadcastChannel/storage partitioning](https://developer.mozilla.org/en-US/docs/Web/API/Broadcast_Channel_API),
 [autoplay policy](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Autoplay).
+
+## Listening memory and catch-up queues
+
+Pass `persistence={{storageKey, networkId, hubUrl, allowedOrigins}}` to opt into
+first-party localStorage for speed, queue, resume positions, autoplay and repeat
+preferences, and up to 500 history records. Restore is always paused. Use a
+network/reader-scoped key; clear or change it when changing account scope. Storage
+failure never prevents playback. This is browser memory, not account/cloud sync.
+
+The existing consent iframe can load the package's `@scalemule/nextjs/listening-hub.js`
+asset using a script with `data-network` and an exact space-separated `data-origins`
+allowlist. The independent `SM_LISTENING_SYNC` protocol never changes cookie consent.
+It merges newer preferences and per-story history (including clear-history tombstones),
+not active queue ownership. Both sides check origin, window source, namespace and
+payload shape. Signed media URLs and account credentials are never sent or persisted.
+Modern browser partitioning can isolate this hub per top-level site. Local memory
+remains available, and clicks to allowlisted network sites carry only `sm_audio_rate`,
+which is consumed and removed from the destination URL. No extra player is required.
+An iframe cannot guarantee anonymous cross-site history in every browser or sync devices.
+
+Supply `loadRecommendations(signal)` returning authorized public track metadata to
+enable the 5/10/20-minute catch-up builder in `ListeningLibrary` (also included beneath
+article controls). `storyId` identifies syndicated editions; `revision` is an explicit
+editorial update, never a generic database modification timestamp. `durationSeconds`
+is the actual recording length. Manual choices stay ahead of future automatic choices;
+recommendations favor unheard stories, alternate available sections, honor saved speed,
+and avoid skipped stories for 24 hours. Repeats are opt-in and only considered once no
+unheard candidates remain. Sessions are finite and can be previewed before playing.
+Finished recordings appear under Recently listened with Replay and Clear listening history.
+
+The publication adapter must load recommendations from its own authorized application;
+the client never selects a tenant or supplies arbitrary fetch destinations. Missing
+recordings are excluded. A failed inventory load is an error, not a claim that the reader
+is caught up. Account synchronization requires a separately authorized network identity.

@@ -2,7 +2,9 @@ import { NetworkAudioController, validSnapshot, validTrack, safeHttpUrl,
   type NetworkAudioSnapshot, type NetworkAudioTrack } from './controller'
 
 export type NetworkAudioCommand =
-  | { action: 'play' | 'pause' | 'clear' }
+  | { action: 'play' | 'pause' | 'clear' | 'close' | 'skip' | 'restart' | 'forgetHistory' }
+  | { action: 'autoplay' | 'repeats'; value: boolean }
+  | { action: 'catchUp'; value: number }
   | { action: 'select' | 'remove' | 'seek' | 'rate' | 'volume'; value: number }
   | { action: 'enqueue' | 'playTrack'; track: NetworkAudioTrack }
 
@@ -25,7 +27,12 @@ export function runCommand(controller: NetworkAudioController, command: unknown)
   switch (c.action) {
     case 'play': void controller.play(); return true
     case 'pause': controller.pause(); return true
-    case 'clear': controller.clear(); return true
+    case 'clear': case 'close': case 'skip': case 'restart': case 'forgetHistory': controller[c.action](); return true
+    case 'autoplay': case 'repeats':
+      if (typeof c.value !== 'boolean') return false
+      if (c.action === 'autoplay') controller.setAutoplay(c.value); else controller.setRepeats(c.value)
+      return true
+    case 'catchUp': controller.catchUp(c.value); return true
     case 'enqueue': case 'playTrack':
       if (!validTrack(c.track)) return false
       controller[c.action](c.track); return true
