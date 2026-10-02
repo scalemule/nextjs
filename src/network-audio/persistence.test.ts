@@ -53,3 +53,14 @@ it('continues without storage and never lets an older hub preference overwrite a
   const local = toMemory(controller.getSnapshot())
   expect(mergeMemory(local, { ...local, rate: 1, settingsUpdatedAt: 1 }).rate).toBe(1.5)
 })
+
+it('a newly opened network host preserves preferences while adopting the opener queue', () => {
+  const reader = create(); const stop = persistListening(reader, options)
+  reader.setRate(2); reader.enqueue({ id: 'old', publicationId: 'p', title: 'Old host queue', articleUrl: origin + '/news/old' }); stop()
+  const host = create(); cleanups.push(persistListening(host, { ...options, restoreQueue: false }))
+  expect(host.getSnapshot().rate).toBe(2)
+  expect(host.getSnapshot().queue).toEqual([])
+  host.enqueue({ id: 'new', publicationId: 'p', title: 'New reader selection', articleUrl: origin + '/news/new' })
+  host.clear()
+  expect(JSON.parse(localStorage.getItem(options.storageKey)!).queue).toEqual([])
+})

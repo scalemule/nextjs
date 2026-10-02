@@ -5,6 +5,8 @@ export interface ListeningPersistence {
   /** Network and reader scope. Change this on account changes. */
   storageKey: string
   networkId: string
+  /** New player windows adopt the opener queue instead of restoring an older host queue. */
+  restoreQueue?: boolean
   hubUrl?: string
   allowedOrigins: readonly string[]
 }
@@ -18,7 +20,7 @@ export function persistListening(controller: NetworkAudioController, options: Li
   const hubOrigin = options.hubUrl ? new URL(options.hubUrl).origin : null
   try {
     const saved = JSON.parse(localStorage.getItem(options.storageKey) ?? 'null')
-    if (validSnapshot(saved) && saved.queue.every(item => allowed.has(new URL(item.articleUrl).origin))) controller.restore(saved)
+    if (validSnapshot(saved) && saved.queue.every(item => allowed.has(new URL(item.articleUrl).origin))) controller.restore(options.restoreQueue === false ? { ...saved, queue: [], index: -1, position: 0, duration: 0, hidden: false } : saved)
   } catch { /* Memory-only playback still works with denied/full storage. */ }
   // Link handoff carries only a non-identifying playback preference. Never history or tokens.
   const url = new URL(window.location.href)

@@ -264,6 +264,8 @@ interface ListeningPersistence {
     /** Network and reader scope. Change this on account changes. */
     storageKey: string;
     networkId: string;
+    /** New player windows adopt the opener queue instead of restoring an older host queue. */
+    restoreQueue?: boolean;
     hubUrl?: string;
     allowedOrigins: readonly string[];
 }

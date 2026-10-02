@@ -1472,7 +1472,7 @@ function persistListening(controller, options) {
   const hubOrigin = options.hubUrl ? new URL(options.hubUrl).origin : null;
   try {
     const saved = JSON.parse(localStorage.getItem(options.storageKey) ?? "null");
-    if (validSnapshot(saved) && saved.queue.every((item) => allowed.has(new URL(item.articleUrl).origin))) controller.restore(saved);
+    if (validSnapshot(saved) && saved.queue.every((item) => allowed.has(new URL(item.articleUrl).origin))) controller.restore(options.restoreQueue === false ? { ...saved, queue: [], index: -1, position: 0, duration: 0, hidden: false } : saved);
   } catch {
   }
   const url = new URL(window.location.href);
@@ -1630,8 +1630,8 @@ function NetworkAudioProvider({ children, resolveAudio, connection, host, checkp
   }, [controller, checkpointStorageKey]);
   const persistenceOrigins = JSON.stringify(persistence?.allowedOrigins ?? []);
   useEffect2(() => {
-    if (persistence) return persistListening(controller, { ...persistence, allowedOrigins: JSON.parse(persistenceOrigins) });
-  }, [controller, persistence?.storageKey, persistence?.networkId, persistence?.hubUrl, persistenceOrigins]);
+    if (persistence) return persistListening(controller, { ...persistence, restoreQueue: host && window.opener ? false : persistence.restoreQueue, allowedOrigins: JSON.parse(persistenceOrigins) });
+  }, [controller, persistence?.storageKey, persistence?.networkId, persistence?.hubUrl, persistence?.restoreQueue, host?.networkId, persistenceOrigins]);
   useEffect2(() => () => recommendationRequest.current?.abort(), []);
   const catchUp = useCallback(async (minutes) => {
     if (!loadRecommendations) return;
