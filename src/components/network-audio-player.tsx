@@ -83,8 +83,8 @@ export function NetworkAudioProvider({ children, resolveAudio, connection, host,
   }, [controller, checkpointStorageKey])
   const persistenceOrigins = JSON.stringify(persistence?.allowedOrigins ?? [])
   useEffect(() => {
-    if (persistence) return persistListening(controller, { ...persistence, allowedOrigins: JSON.parse(persistenceOrigins) })
-  }, [controller, persistence?.storageKey, persistence?.networkId, persistence?.hubUrl, persistenceOrigins])
+    if (persistence) return persistListening(controller, { ...persistence, restoreQueue: host && window.opener ? false : persistence.restoreQueue, allowedOrigins: JSON.parse(persistenceOrigins) })
+  }, [controller, persistence?.storageKey, persistence?.networkId, persistence?.hubUrl, persistence?.restoreQueue, host?.networkId, persistenceOrigins])
   useEffect(() => () => recommendationRequest.current?.abort(), [])
   const catchUp = useCallback(async (minutes: number) => {
     if (!loadRecommendations) return
