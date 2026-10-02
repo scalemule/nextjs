@@ -794,9 +794,16 @@ var EMPTY_SNAPSHOT = {
   rate: 1,
   volume: 1,
   status: "idle",
-  error: null
+  error: null,
+  history: [],
+  autoplayNext: true,
+  allowRepeats: false,
+  hidden: false,
+  sessionMinutes: 0
 };
 var trackKey = (track) => JSON.stringify([track.publicationId, track.id]);
+var storyKey = (track) => JSON.stringify([track.storyId ?? trackKey(track), track.revision ?? ""]);
+var listeningRecord = (snapshot, track) => snapshot.history?.find((item) => storyKey(item.track) === storyKey(track));
 var finite = (n) => typeof n === "number" && Number.isFinite(n);
 function safeHttpUrl(value) {
   if (typeof value !== "string" || value.length > 4096) return false;
@@ -810,19 +817,39 @@ function safeHttpUrl(value) {
 function validTrack(value) {
   if (!value || typeof value !== "object") return false;
   const t = value;
-  return [t.id, t.publicationId, t.title].every((v) => typeof v === "string" && v.length > 0 && v.length <= 1e3) && (t.publicationName === void 0 || typeof t.publicationName === "string" && t.publicationName.length <= 1e3) && safeHttpUrl(t.articleUrl);
+  return [t.id, t.publicationId, t.title].every((v) => typeof v === "string" && v.length > 0 && v.length <= 1e3) && (t.publicationName === void 0 || typeof t.publicationName === "string" && t.publicationName.length <= 1e3) && safeHttpUrl(t.articleUrl) && [t.storyId, t.revision, t.section, t.publishedAt].every((v) => v === void 0 || typeof v === "string" && v.length <= 4096) && (t.durationSeconds === void 0 || finite(t.durationSeconds) && t.durationSeconds > 0 && t.durationSeconds <= 86400) && (t.automatic === void 0 || typeof t.automatic === "boolean");
 }
 var copyTrack = (t) => ({
   id: t.id,
   publicationId: t.publicationId,
   title: t.title,
   ...t.publicationName ? { publicationName: t.publicationName } : {},
-  articleUrl: t.articleUrl
+  articleUrl: t.articleUrl,
+  ...t.storyId ? { storyId: t.storyId } : {},
+  ...t.revision ? { revision: t.revision } : {},
+  ...t.durationSeconds ? { durationSeconds: t.durationSeconds } : {},
+  ...t.section ? { section: t.section } : {},
+  ...t.publishedAt ? { publishedAt: t.publishedAt } : {},
+  ...t.automatic ? { automatic: true } : {}
 });
 function validSnapshot(value) {
   if (!value || typeof value !== "object") return false;
   const s = value;
-  return Array.isArray(s.queue) && s.queue.length <= 100 && s.queue.every(validTrack) && new Set(s.queue.map(trackKey)).size === s.queue.length && Number.isInteger(s.index) && (s.queue.length ? s.index >= 0 && s.index < s.queue.length : s.index === -1) && finite(s.position) && s.position >= 0 && finite(s.duration) && s.duration >= 0 && finite(s.rate) && s.rate >= 0.5 && s.rate <= 3 && finite(s.volume) && s.volume >= 0 && s.volume <= 1 && ["idle", "loading", "playing", "paused", "error"].includes(s.status) && (s.error === null || typeof s.error === "string" && s.error.length <= 1e3);
+  return Array.isArray(s.queue) && s.queue.length <= 100 && s.queue.every(validTrack) && new Set(s.queue.map(trackKey)).size === s.queue.length && Number.isInteger(s.index) && (s.queue.length ? s.index >= 0 && s.index < s.queue.length : s.index === -1) && finite(s.position) && s.position >= 0 && finite(s.duration) && s.duration >= 0 && finite(s.rate) && s.rate >= 0.5 && s.rate <= 3 && finite(s.volume) && s.volume >= 0 && s.volume <= 1 && ["idle", "loading", "playing", "paused", "error"].includes(s.status) && (s.history === void 0 || Array.isArray(s.history) && s.history.length <= 500 && s.history.every(validRecord)) && [s.autoplayNext, s.allowRepeats, s.hidden].every((v) => v === void 0 || typeof v === "boolean") && (s.historyClearedAt === void 0 || finite(s.historyClearedAt) && s.historyClearedAt >= 0 && s.historyClearedAt <= Date.now() + 6e4) && (s.settingsUpdatedAt === void 0 || finite(s.settingsUpdatedAt) && s.settingsUpdatedAt >= 0 && s.settingsUpdatedAt <= Date.now() + 6e4) && (s.sessionMinutes === void 0 || [0, 5, 10, 20].includes(s.sessionMinutes)) && (s.error === null || typeof s.error === "string" && s.error.length <= 1e3);
+}
+function validRecord(value) {
+  if (!value || typeof value !== "object") return false;
+  const r = value;
+  return validTrack(r.track) && finite(r.position) && r.position >= 0 && finite(r.duration) && r.duration >= 0 && finite(r.updatedAt) && r.updatedAt >= 0 && r.updatedAt <= Date.now() + 6e4 && [r.completedAt, r.skippedAt].every((v) => v === void 0 || finite(v) && v > 0) && Array.isArray(r.ranges) && r.ranges.length <= 100 && r.ranges.every((v) => Array.isArray(v) && v.length === 2 && finite(v[0]) && finite(v[1]) && v[0] >= 0 && v[1] >= v[0] && v[1] <= r.duration + 1);
+}
+function mergeRanges(ranges) {
+  const merged = [];
+  for (const [start, end] of ranges.sort((a, b) => a[0] - b[0])) {
+    const last = merged.at(-1);
+    if (last && start <= last[1] + 0.1) last[1] = Math.max(last[1], end);
+    else merged.push([start, end]);
+  }
+  return merged.slice(-100);
 }
 var NetworkAudioController = class {
   constructor(resolve) {
@@ -837,6 +864,7 @@ var NetworkAudioController = class {
     this.source = null;
     this.refreshed = false;
     this.resumePosition = null;
+    this.candidates = [];
     this.getSnapshot = () => this.snapshot;
     this.subscribe = (listener) => {
       this.listeners.add(listener);
@@ -844,6 +872,10 @@ var NetworkAudioController = class {
         this.listeners.delete(listener);
       };
     };
+  }
+  mergeListeningMemory(memory) {
+    this.patch({ rate: memory.rate, autoplayNext: memory.autoplayNext, allowRepeats: memory.allowRepeats, settingsUpdatedAt: memory.settingsUpdatedAt, historyClearedAt: memory.historyClearedAt, history: memory.history });
+    if (this.audio) this.audio.playbackRate = memory.rate;
   }
   setResolver(resolve) {
     this.resolve = resolve;
@@ -876,7 +908,10 @@ var NetworkAudioController = class {
         if (finite(audio.duration) && audio.duration > 0) this.patch({ duration: audio.duration });
       }),
       on("timeupdate", () => {
-        if (this.resumePosition === null) this.patch({ position: audio.currentTime });
+        if (this.resumePosition === null) {
+          this.patch({ position: audio.currentTime });
+          this.remember();
+        }
       }),
       on("playing", () => {
         if (!this.intent) {
@@ -891,11 +926,7 @@ var NetworkAudioController = class {
       }),
       on("ended", () => {
         if (!this.intent) return;
-        if (this.snapshot.index + 1 < this.snapshot.queue.length) this.select(this.snapshot.index + 1);
-        else {
-          this.intent = false;
-          this.patch({ status: "paused", position: this.snapshot.duration });
-        }
+        this.finish();
       }),
       on("error", () => {
         if (this.intent && !this.request) void this.recover();
@@ -924,12 +955,22 @@ var NetworkAudioController = class {
   }
   enqueue(track) {
     if (!validTrack(track)) throw new Error("A valid publication, article identity, title and HTTP(S) article URL are required.");
-    const found = this.snapshot.queue.findIndex((t) => trackKey(t) === trackKey(track));
+    this.patch({ hidden: false });
+    const found = this.snapshot.queue.findIndex((t) => storyKey(t) === storyKey(track));
     if (found !== -1) return found;
     if (this.snapshot.queue.length >= 100) throw new Error("The listening queue holds up to 100 articles.");
-    const queue = [...this.snapshot.queue, copyTrack(track)];
-    this.patch({ queue, index: this.snapshot.index === -1 ? 0 : this.snapshot.index });
-    return queue.length - 1;
+    const queue = [...this.snapshot.queue];
+    const automatic = queue.findIndex((item, i) => item.automatic && i > this.snapshot.index);
+    const at = !track.automatic && automatic >= 0 ? automatic : queue.length;
+    queue.splice(at, 0, copyTrack(track));
+    const initial = this.snapshot.index === -1;
+    const record = listeningRecord(this.snapshot, track);
+    this.patch({
+      queue,
+      index: initial ? 0 : this.snapshot.index,
+      ...initial ? { position: record?.completedAt ? 0 : record?.position ?? 0, duration: record?.duration ?? track.durationSeconds ?? 0 } : {}
+    });
+    return at;
   }
   playTrack(track) {
     const index = this.enqueue(track);
@@ -942,13 +983,16 @@ var NetworkAudioController = class {
       void this.play();
       return;
     }
+    this.remember();
     this.cancel();
     this.source = null;
-    this.patch({ index, position: 0, duration: 0, error: null, status: "paused" });
+    const record = listeningRecord(this.snapshot, this.snapshot.queue[index]);
+    this.patch({ index, position: record?.completedAt ? 0 : record?.position ?? 0, duration: record?.duration ?? 0, error: null, status: "paused", hidden: false });
     void this.play();
   }
   remove(index) {
     if (!Number.isInteger(index) || index < 0 || index >= this.snapshot.queue.length) return;
+    this.remember();
     const wasPlaying = this.intent;
     const current = this.snapshot.index;
     const queue = this.snapshot.queue.filter((_, i) => i !== index);
@@ -958,7 +1002,9 @@ var NetworkAudioController = class {
     }
     this.cancel();
     this.source = null;
-    this.patch({ queue, index: queue.length ? Math.min(index, queue.length - 1) : -1, position: 0, duration: 0, status: "paused", error: null });
+    const nextIndex = queue.length ? Math.min(index, queue.length - 1) : -1;
+    const nextRecord = nextIndex >= 0 ? listeningRecord(this.snapshot, queue[nextIndex]) : void 0;
+    this.patch({ queue, index: nextIndex, position: nextRecord?.completedAt ? 0 : nextRecord?.position ?? 0, duration: nextRecord?.duration ?? 0, status: "paused", error: null });
     if (wasPlaying && queue.length) void this.play();
   }
   cancel() {
@@ -970,16 +1016,105 @@ var NetworkAudioController = class {
     this.audio?.pause();
   }
   pause() {
+    this.remember();
     const pendingPosition = this.resumePosition;
     this.cancel();
     this.resumePosition = pendingPosition;
     this.patch({ status: this.snapshot.queue.length ? "paused" : "idle" });
   }
   clear() {
+    this.remember();
     this.cancel();
     this.source = null;
     this.audio?.removeAttribute("src");
-    this.patch({ ...EMPTY_SNAPSHOT, rate: this.snapshot.rate, volume: this.snapshot.volume });
+    this.patch({ ...this.snapshot, queue: [], index: -1, position: 0, duration: 0, status: "idle", error: null, hidden: false });
+  }
+  close() {
+    this.pause();
+    this.patch({ hidden: true });
+  }
+  setAutoplay(value) {
+    this.patch({ autoplayNext: value, settingsUpdatedAt: Date.now() });
+  }
+  setRepeats(value) {
+    this.patch({ allowRepeats: value, settingsUpdatedAt: Date.now() });
+  }
+  forgetHistory() {
+    this.patch({ history: [], historyClearedAt: Date.now() });
+  }
+  restart() {
+    this.seek(0);
+    void this.play();
+  }
+  skip() {
+    this.remember({ skippedAt: Date.now() });
+    this.remove(this.snapshot.index);
+  }
+  remember(extra = {}) {
+    const track = this.snapshot.queue[this.snapshot.index];
+    if (!track || !this.snapshot.duration) return;
+    const previous = listeningRecord(this.snapshot, track);
+    const ranges = [...previous?.ranges ?? []];
+    if (this.source && this.audio) for (let i = 0; i < this.audio.played.length; i++) ranges.push([this.audio.played.start(i), Math.min(this.snapshot.duration, this.audio.played.end(i))]);
+    const record = {
+      ...previous,
+      track: copyTrack(track),
+      position: this.snapshot.position,
+      duration: this.snapshot.duration,
+      ranges: mergeRanges(ranges),
+      updatedAt: Date.now(),
+      ...extra
+    };
+    this.patch({ history: [record, ...(this.snapshot.history ?? []).filter((item) => storyKey(item.track) !== storyKey(track))].slice(0, 500) });
+  }
+  finish() {
+    this.remember();
+    const track = this.snapshot.queue[this.snapshot.index];
+    const record = track && listeningRecord(this.snapshot, track);
+    const coverage = record?.ranges.reduce((sum, [start, end]) => sum + end - start, 0) ?? 0;
+    if (this.snapshot.duration > 0 && coverage >= this.snapshot.duration * 0.9) this.remember({ completedAt: Date.now(), position: this.snapshot.duration });
+    else {
+      this.patch({ position: 0 });
+      this.remember({ skippedAt: Date.now(), position: 0 });
+    }
+    const autoplay = this.snapshot.autoplayNext !== false;
+    this.intent = false;
+    this.remove(this.snapshot.index);
+    if (autoplay && this.snapshot.queue.length) void this.play();
+  }
+  setRecommendations(tracks) {
+    this.candidates = tracks.filter(validTrack).slice(0, 100);
+  }
+  /** Manual selections retain their order; recommendations are bounded and never replace them. */
+  catchUp(minutes = 10) {
+    if (![5, 10, 20].includes(minutes)) return;
+    const active = this.snapshot.queue[this.snapshot.index];
+    const manual = this.snapshot.queue.filter((item) => !item.automatic || item === active);
+    const queueKeys = new Set(manual.map(storyKey));
+    const eligible = this.candidates.filter((item) => !queueKeys.has(storyKey(item)));
+    const unheard = eligible.filter((item) => {
+      const record = listeningRecord(this.snapshot, item);
+      return !record?.completedAt && (!record?.skippedAt || Date.now() - record.skippedAt > 864e5);
+    });
+    const pool = unheard.length || !this.snapshot.allowRepeats ? unheard : eligible.filter((item) => !listeningRecord(this.snapshot, item)?.skippedAt || Date.now() - listeningRecord(this.snapshot, item).skippedAt > 864e5);
+    let budget = minutes * 60 - manual.reduce((sum, item) => sum + Math.max(0, (item.durationSeconds ?? 0) - (item === active ? this.snapshot.position : 0)) / this.snapshot.rate, 0);
+    const added = [];
+    let lastSection = active?.section;
+    const remaining = [...pool];
+    while (remaining.length && added.length + manual.length < 100) {
+      let at = remaining.findIndex((item2) => item2.section !== lastSection && (item2.durationSeconds ?? Infinity) / this.snapshot.rate <= budget);
+      if (at < 0) at = remaining.findIndex((item2) => (item2.durationSeconds ?? Infinity) / this.snapshot.rate <= budget);
+      if (at < 0) break;
+      const [item] = remaining.splice(at, 1);
+      if (queueKeys.has(storyKey(item))) continue;
+      queueKeys.add(storyKey(item));
+      added.push({ ...copyTrack(item), automatic: true });
+      budget -= item.durationSeconds / this.snapshot.rate;
+      lastSection = item.section;
+    }
+    const queue = [...manual, ...added];
+    const firstRecord = !active && queue[0] ? listeningRecord(this.snapshot, queue[0]) : void 0;
+    this.patch({ queue, index: active ? queue.findIndex((item) => trackKey(item) === trackKey(active)) : queue.length ? 0 : -1, hidden: false, sessionMinutes: minutes, ...!active ? { position: firstRecord?.completedAt ? 0 : firstRecord?.position ?? 0, duration: firstRecord?.duration ?? queue[0]?.durationSeconds ?? 0 } : {} });
   }
   seek(position) {
     if (!finite(position)) return;
@@ -991,7 +1126,7 @@ var NetworkAudioController = class {
   setRate(rate) {
     if (!finite(rate) || rate < 0.5 || rate > 3) return;
     if (this.audio) this.audio.playbackRate = rate;
-    this.patch({ rate });
+    this.patch({ rate, settingsUpdatedAt: Date.now() });
   }
   setVolume(volume) {
     if (!finite(volume) || volume < 0 || volume > 1) return;
@@ -1010,7 +1145,22 @@ var NetworkAudioController = class {
       rate: snapshot.rate,
       volume: snapshot.volume,
       status: snapshot.queue.length ? "paused" : "idle",
-      error: null
+      error: null,
+      history: (snapshot.history ?? []).map((item) => ({
+        track: copyTrack(item.track),
+        position: item.position,
+        duration: item.duration,
+        ranges: item.ranges.map((range) => [...range]),
+        updatedAt: item.updatedAt,
+        ...item.completedAt ? { completedAt: item.completedAt } : {},
+        ...item.skippedAt ? { skippedAt: item.skippedAt } : {}
+      })),
+      autoplayNext: snapshot.autoplayNext !== false,
+      allowRepeats: snapshot.allowRepeats === true,
+      hidden: snapshot.hidden === true,
+      historyClearedAt: snapshot.historyClearedAt ?? 0,
+      settingsUpdatedAt: snapshot.settingsUpdatedAt ?? 0,
+      sessionMinutes: snapshot.sessionMinutes ?? 0
     });
     if (this.audio) {
       this.audio.playbackRate = snapshot.rate;
@@ -1021,7 +1171,7 @@ var NetworkAudioController = class {
     if (!this.audio || !this.snapshot.queue[this.snapshot.index] || this.request) return;
     this.intent = true;
     this.refreshed = false;
-    this.patch({ error: null });
+    this.patch({ error: null, hidden: false });
     const expires = this.source?.expires_at ? Date.parse(this.source.expires_at) : Infinity;
     if (!this.source || expires <= Date.now() + 3e4) await this.load();
     else {
@@ -1103,7 +1253,20 @@ function runCommand(controller, command) {
       controller.pause();
       return true;
     case "clear":
-      controller.clear();
+    case "close":
+    case "skip":
+    case "restart":
+    case "forgetHistory":
+      controller[c.action]();
+      return true;
+    case "autoplay":
+    case "repeats":
+      if (typeof c.value !== "boolean") return false;
+      if (c.action === "autoplay") controller.setAutoplay(c.value);
+      else controller.setRepeats(c.value);
+      return true;
+    case "catchUp":
+      controller.catchUp(c.value);
       return true;
     case "enqueue":
     case "playTrack":
@@ -1256,16 +1419,158 @@ var NetworkPlayerClient = class {
   }
 };
 
+// src/network-audio/memory.ts
+function validMemory(value) {
+  if (!value || typeof value !== "object") return false;
+  const v = value;
+  return v.version === 1 && Number.isFinite(v.rate) && v.rate >= 0.5 && v.rate <= 3 && typeof v.autoplayNext === "boolean" && typeof v.allowRepeats === "boolean" && Number.isFinite(v.historyClearedAt) && v.historyClearedAt >= 0 && v.historyClearedAt <= Date.now() + 6e4 && Number.isFinite(v.settingsUpdatedAt) && v.settingsUpdatedAt >= 0 && v.settingsUpdatedAt <= Date.now() + 6e4 && Array.isArray(v.history) && v.history.length <= 500 && v.history.every(validRecord);
+}
+function toMemory(snapshot) {
+  return {
+    version: 1,
+    rate: snapshot.rate,
+    autoplayNext: snapshot.autoplayNext !== false,
+    allowRepeats: snapshot.allowRepeats === true,
+    settingsUpdatedAt: snapshot.settingsUpdatedAt ?? 0,
+    historyClearedAt: snapshot.historyClearedAt ?? 0,
+    history: (snapshot.history ?? []).map((item) => ({ ...item, track: copyTrack(item.track) }))
+  };
+}
+function mergeMemory(local, remote) {
+  const historyClearedAt = Math.max(local.historyClearedAt, remote.historyClearedAt);
+  const records = /* @__PURE__ */ new Map();
+  for (const item of [...remote.history, ...local.history]) {
+    if (item.updatedAt <= historyClearedAt) continue;
+    const key = storyKey(item.track);
+    const previous = records.get(key);
+    if (!previous || item.updatedAt >= previous.updatedAt) records.set(key, item);
+  }
+  return {
+    ...remote.settingsUpdatedAt > local.settingsUpdatedAt ? remote : local,
+    historyClearedAt,
+    history: [...records.values()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 500)
+  };
+}
+
+// src/network-audio/persistence.ts
+function persistListening(controller, options) {
+  const allowed = new Set(options.allowedOrigins);
+  let ready = false;
+  let iframe = null;
+  let lastWrite = 0;
+  let lastHubWrite = 0;
+  let request = 0;
+  const hubOrigin = options.hubUrl ? new URL(options.hubUrl).origin : null;
+  try {
+    const saved = JSON.parse(localStorage.getItem(options.storageKey) ?? "null");
+    if (validSnapshot(saved) && saved.queue.every((item) => allowed.has(new URL(item.articleUrl).origin))) controller.restore(saved);
+  } catch {
+  }
+  const url = new URL(window.location.href);
+  const rate = Number(url.searchParams.get("sm_audio_rate"));
+  if (url.searchParams.has("sm_audio_rate")) {
+    if (rate >= 0.5 && rate <= 3) controller.setRate(rate);
+    url.searchParams.delete("sm_audio_rate");
+    window.history.replaceState(window.history.state, "", url);
+  }
+  const sync = () => {
+    if (!ready || !iframe?.contentWindow || !hubOrigin) return;
+    iframe.contentWindow.postMessage({
+      type: "SM_LISTENING_SYNC",
+      networkId: options.networkId,
+      requestId: String(++request),
+      memory: toMemory(controller.getSnapshot())
+    }, hubOrigin);
+  };
+  const save = () => {
+    try {
+      localStorage.setItem(options.storageKey, JSON.stringify(controller.getSnapshot()));
+    } catch {
+    }
+  };
+  let previousQueue = controller.getSnapshot().queue;
+  let previousCompleted = controller.getSnapshot().history?.[0]?.completedAt;
+  let previousHidden = controller.getSnapshot().hidden;
+  let previousClear = controller.getSnapshot().historyClearedAt;
+  let previousSettings = controller.getSnapshot().settingsUpdatedAt;
+  const unsubscribe = controller.subscribe(() => {
+    const changed = previousSettings !== controller.getSnapshot().settingsUpdatedAt || previousClear !== controller.getSnapshot().historyClearedAt;
+    const urgent = changed || previousQueue !== controller.getSnapshot().queue || previousCompleted !== controller.getSnapshot().history?.[0]?.completedAt || previousHidden !== controller.getSnapshot().hidden;
+    previousQueue = controller.getSnapshot().queue;
+    previousCompleted = controller.getSnapshot().history?.[0]?.completedAt;
+    previousHidden = controller.getSnapshot().hidden;
+    previousClear = controller.getSnapshot().historyClearedAt;
+    previousSettings = controller.getSnapshot().settingsUpdatedAt;
+    if (urgent || Date.now() - lastWrite > 1e3) {
+      lastWrite = Date.now();
+      save();
+    }
+    if (urgent || Date.now() - lastHubWrite > 5e3) {
+      lastHubWrite = Date.now();
+      sync();
+    }
+  });
+  const receive = (event) => {
+    if (!iframe || event.source !== iframe.contentWindow || event.origin !== hubOrigin) return;
+    const data = event.data;
+    if (data?.type !== "SM_LISTENING_STATE" || data.networkId !== options.networkId || data.requestId !== String(request) || !validMemory(data.memory)) return;
+    if (!data.memory.history.every((item) => allowed.has(new URL(item.track.articleUrl).origin))) return;
+    controller.mergeListeningMemory(mergeMemory(toMemory(controller.getSnapshot()), data.memory));
+  };
+  window.addEventListener("message", receive);
+  if (options.hubUrl && hubOrigin && allowed.has(hubOrigin)) {
+    iframe = document.createElement("iframe");
+    iframe.src = options.hubUrl;
+    iframe.hidden = true;
+    iframe.title = "Shared listening preferences";
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.onload = () => {
+      ready = true;
+      sync();
+    };
+    document.body.appendChild(iframe);
+  }
+  const decorate = (event) => {
+    const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!(anchor instanceof HTMLAnchorElement)) return;
+    try {
+      const target = new URL(anchor.href);
+      if (!allowed.has(target.origin) || target.origin === window.location.origin) return;
+      target.searchParams.set("sm_audio_rate", String(controller.getSnapshot().rate));
+      anchor.href = target.toString();
+    } catch {
+    }
+  };
+  const flush = () => {
+    save();
+    sync();
+  };
+  document.addEventListener("click", decorate, true);
+  document.addEventListener("auxclick", decorate, true);
+  window.addEventListener("pagehide", flush);
+  return () => {
+    save();
+    unsubscribe();
+    iframe?.remove();
+    document.removeEventListener("click", decorate, true);
+    document.removeEventListener("auxclick", decorate, true);
+    window.removeEventListener("pagehide", flush);
+    window.removeEventListener("message", receive);
+  };
+}
+
 // src/components/network-audio-player.tsx
 import { Fragment, jsx as jsx2, jsxs as jsxs2 } from "react/jsx-runtime";
 var Context = createContext(null);
 var NarrationRegistration = createContext(null);
 var serverSnapshot = () => EMPTY_SNAPSHOT;
-function NetworkAudioProvider({ children, resolveAudio, connection, host, checkpointStorageKey }) {
+function NetworkAudioProvider({ children, resolveAudio, connection, host, checkpointStorageKey, persistence, loadRecommendations }) {
   if (connection && host) throw new Error("Use connection on reader pages and host on the dedicated player route, not both.");
   const [controller] = useState2(() => new NetworkAudioController(resolveAudio));
   const snapshot = useSyncExternalStore2(controller.subscribe, controller.getSnapshot, serverSnapshot);
   const [remoteSnapshot, setRemoteSnapshot] = useState2(null);
+  const [recommendationsLoading, setRecommendationsLoading] = useState2(false);
+  const recommendationRequest = useRef2(null);
   const [notice, setNotice] = useState2(null);
   const [highlightEnabled, setHighlightEnabled] = useState2(false);
   const [narrationTracks, setNarrationTracks] = useState2(() => /* @__PURE__ */ new Map());
@@ -1314,6 +1619,32 @@ function NetworkAudioProvider({ children, resolveAudio, connection, host, checkp
       window.removeEventListener("pagehide", save);
     };
   }, [controller, checkpointStorageKey]);
+  const persistenceOrigins = JSON.stringify(persistence?.allowedOrigins ?? []);
+  useEffect2(() => {
+    if (persistence) return persistListening(controller, { ...persistence, allowedOrigins: JSON.parse(persistenceOrigins) });
+  }, [controller, persistence?.storageKey, persistence?.networkId, persistence?.hubUrl, persistenceOrigins]);
+  useEffect2(() => () => recommendationRequest.current?.abort(), []);
+  const catchUp = useCallback(async (minutes) => {
+    if (!loadRecommendations) return;
+    recommendationRequest.current?.abort();
+    const request = new AbortController();
+    recommendationRequest.current = request;
+    setRecommendationsLoading(true);
+    setNotice(null);
+    const timeout = setTimeout(() => request.abort(), 2e4);
+    try {
+      const tracks = await loadRecommendations(request.signal);
+      if (request.signal.aborted) return;
+      controller.setRecommendations(tracks.filter(validTrack));
+      controller.catchUp(minutes);
+      if (!controller.getSnapshot().queue.length) setNotice("No stories available for this queue. Try a longer session or replay a story from Recently listened.");
+    } catch {
+      if (recommendationRequest.current === request) setNotice("Could not load your catch-up queue. Your saved queue is still here. Please try again.");
+    } finally {
+      clearTimeout(timeout);
+      if (recommendationRequest.current === request) setRecommendationsLoading(false);
+    }
+  }, [controller, loadRecommendations]);
   const allowedOrigins = JSON.stringify(host?.allowedOrigins ?? []);
   useEffect2(() => {
     if (!host) return;
@@ -1334,6 +1665,7 @@ function NetworkAudioProvider({ children, resolveAudio, connection, host, checkp
   const command = useCallback((value) => {
     setNotice(null);
     try {
+      if (value.action === "close") setHighlightEnabled(false);
       if (!client.current?.command(value)) runCommand(controller, value);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "The article could not be added.");
@@ -1352,7 +1684,9 @@ function NetworkAudioProvider({ children, resolveAudio, connection, host, checkp
     openNetworkPlayer: connection ? openNetworkPlayer : void 0,
     highlightAvailable,
     highlightEnabled,
-    setHighlightEnabled
+    setHighlightEnabled,
+    catchUp: loadRecommendations ? catchUp : void 0,
+    recommendationsLoading
   }, children: /* @__PURE__ */ jsxs2(NarrationRegistration.Provider, { value: registerNarration, children: [
     /* @__PURE__ */ jsx2(NetworkMediaSession, {}),
     children
@@ -1428,7 +1762,7 @@ function useArticleNarration(track, narration) {
     clock.current = { snapshot, received: performance.now() };
   }, [snapshot]);
   useEffect2(() => {
-    if (!narration || !matching || !highlightEnabled || !supported) return;
+    if (!narration || !matching || !highlightEnabled || !supported || snapshot.hidden) return;
     const controller = new AbortController();
     let highlighter = null;
     let frame = 0;
@@ -1471,7 +1805,7 @@ function useArticleNarration(track, narration) {
       highlighter?.destroy();
       document.removeEventListener("visibilitychange", visibility);
     };
-  }, [matching, highlightEnabled, supported, narration?.targetId, narration?.timingsUrl, track.id, track.publicationId]);
+  }, [snapshot.hidden, matching, highlightEnabled, supported, narration?.targetId, narration?.timingsUrl, track.id, track.publicationId]);
   return { highlightAvailable: !!narration && supported, highlightEnabled, setHighlightEnabled, matching };
 }
 function AudioIcon({ name }) {
@@ -1496,56 +1830,72 @@ function ArticleAudioControls({ track, narration, durationMs, className = "" }) 
   const { snapshot, command } = useNetworkAudio();
   const { highlightAvailable, highlightEnabled, setHighlightEnabled, matching } = useArticleNarration(track, narration);
   const playing = matching && (snapshot.status === "playing" || snapshot.status === "loading");
-  const queued = snapshot.queue.some((item) => trackKey(item) === trackKey(track));
+  const record = listeningRecord(snapshot, track);
+  const resume = !record?.completedAt && (matching ? snapshot.position : record?.position ?? 0) > 2;
+  const updated = !record && snapshot.history?.some((item) => item.completedAt && item.track.storyId && item.track.storyId === track.storyId);
+  const caption = playing ? "Pause this story" : record?.completedAt ? "Listen again" : resume ? "Resume this story" : "Listen to this story";
+  const queued = snapshot.queue.some((item) => storyKey(item) === storyKey(track));
   const duration = matching && snapshot.duration > 0 ? snapshot.duration : (durationMs ?? 0) / 1e3;
-  return /* @__PURE__ */ jsxs2("div", { className: `sm-network-article ${className}`, role: "group", "aria-label": "Article audio", children: [
-    /* @__PURE__ */ jsxs2(
-      "button",
-      {
-        type: "button",
-        className: "sm-network-article__listen",
-        "aria-label": playing ? "Pause this story" : "Listen to this story",
-        onClick: () => command(playing ? { action: "pause" } : { action: "playTrack", track }),
-        children: [
-          /* @__PURE__ */ jsx2("span", { className: "sm-network-article__disc", children: /* @__PURE__ */ jsx2(AudioIcon, { name: playing ? "pause" : "play" }) }),
-          /* @__PURE__ */ jsxs2("span", { className: "sm-network-article__caption", children: [
-            /* @__PURE__ */ jsx2("span", { children: playing ? "Pause this story" : "Listen to this story" }),
-            /* @__PURE__ */ jsx2("span", { className: "sm-network-article__duration", children: matching && snapshot.status === "loading" ? "Loading audio\u2026" : duration > 0 ? `${formatTime(duration)} listening time` : "Article audio" })
-          ] })
-        ]
-      }
-    ),
-    /* @__PURE__ */ jsxs2("div", { className: "sm-network-article__actions", children: [
+  return /* @__PURE__ */ jsxs2(Fragment, { children: [
+    /* @__PURE__ */ jsxs2("div", { className: `sm-network-article ${className}`, role: "group", "aria-label": "Article audio", children: [
       /* @__PURE__ */ jsxs2(
         "button",
         {
           type: "button",
-          className: "sm-network-article__queue",
-          "aria-label": queued ? "Queued" : "Add to queue",
-          disabled: queued,
-          onClick: () => command({ action: "enqueue", track }),
+          className: "sm-network-article__listen",
+          "aria-label": caption,
+          onClick: () => command(playing ? { action: "pause" } : { action: "playTrack", track }),
           children: [
-            /* @__PURE__ */ jsx2(AudioIcon, { name: queued ? "check" : "queue" }),
-            /* @__PURE__ */ jsx2("span", { children: queued ? "Queued" : "Queue" })
+            /* @__PURE__ */ jsx2("span", { className: "sm-network-article__disc", children: /* @__PURE__ */ jsx2(AudioIcon, { name: playing ? "pause" : "play" }) }),
+            /* @__PURE__ */ jsxs2("span", { className: "sm-network-article__caption", children: [
+              /* @__PURE__ */ jsx2("span", { children: caption }),
+              updated && /* @__PURE__ */ jsx2("small", { children: "Updated since you listened" }),
+              /* @__PURE__ */ jsx2("span", { className: "sm-network-article__duration", children: matching && snapshot.status === "loading" ? "Loading audio\u2026" : duration > 0 ? `${formatTime(Math.max(0, duration - (resume ? matching ? snapshot.position : record?.position ?? 0 : 0)) / snapshot.rate)} ${resume ? "remaining" : "listening time"}` : "Article audio" })
+            ] })
           ]
         }
       ),
-      highlightAvailable && /* @__PURE__ */ jsxs2(
-        "button",
-        {
-          type: "button",
-          "aria-label": "Follow along: highlight words",
-          "aria-pressed": highlightEnabled,
-          title: "Highlight words as you listen",
-          onClick: () => setHighlightEnabled(!highlightEnabled),
-          children: [
-            /* @__PURE__ */ jsx2(AudioIcon, { name: "highlight" }),
-            /* @__PURE__ */ jsx2("span", { children: "Follow along" }),
-            /* @__PURE__ */ jsx2("span", { className: "sm-network-toggle", "aria-hidden": "true" })
-          ]
-        }
-      )
-    ] })
+      /* @__PURE__ */ jsxs2("div", { className: "sm-network-article__actions", children: [
+        /* @__PURE__ */ jsxs2("button", { type: "button", "aria-label": `Article playback speed ${snapshot.rate}\xD7`, onClick: () => command({ action: "rate", value: PLAYBACK_RATES.find((rate) => rate > snapshot.rate) ?? 1 }), children: [
+          snapshot.rate,
+          "\xD7"
+        ] }),
+        resume && /* @__PURE__ */ jsx2("button", { type: "button", onClick: () => {
+          command({ action: "playTrack", track });
+          command({ action: "restart" });
+        }, children: "Start over" }),
+        /* @__PURE__ */ jsxs2(
+          "button",
+          {
+            type: "button",
+            className: "sm-network-article__queue",
+            "aria-label": queued ? "Queued" : "Add to queue",
+            disabled: queued,
+            onClick: () => command({ action: "enqueue", track }),
+            children: [
+              /* @__PURE__ */ jsx2(AudioIcon, { name: queued ? "check" : "queue" }),
+              /* @__PURE__ */ jsx2("span", { children: queued ? "Queued" : "Queue" })
+            ]
+          }
+        ),
+        highlightAvailable && /* @__PURE__ */ jsxs2(
+          "button",
+          {
+            type: "button",
+            "aria-label": "Follow along: highlight words",
+            "aria-pressed": highlightEnabled,
+            title: "Highlight words as you listen",
+            onClick: () => setHighlightEnabled(!highlightEnabled),
+            children: [
+              /* @__PURE__ */ jsx2(AudioIcon, { name: "highlight" }),
+              /* @__PURE__ */ jsx2("span", { children: "Follow along" }),
+              /* @__PURE__ */ jsx2("span", { className: "sm-network-toggle", "aria-hidden": "true" })
+            ]
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ jsx2(ListeningLibrary, {})
   ] });
 }
 function NetworkAudioPlayer({ networkName = "Your listening queue", advertisement, className = "", style, fixed = true, renderArticleLink }) {
@@ -1570,7 +1920,7 @@ function NetworkAudioPlayer({ networkName = "Your listening queue", advertisemen
     observer.observe(element);
     return () => observer.disconnect();
   }, [fixed, !!track, expanded, notice, snapshot.error]);
-  if (!track) return notice ? /* @__PURE__ */ jsx2("p", { role: "status", children: notice }) : null;
+  if (!track || snapshot.hidden) return notice ? /* @__PURE__ */ jsx2("p", { role: "status", children: notice }) : null;
   return /* @__PURE__ */ jsxs2(Fragment, { children: [
     fixed && /* @__PURE__ */ jsx2("div", { "aria-hidden": "true", style: { height } }),
     /* @__PURE__ */ jsxs2("section", { ref: bar, className: `sm-network-player ${fixed ? "sm-network-player--fixed" : ""} ${className}`, style, "aria-label": "Network audio player", children: [
@@ -1629,8 +1979,7 @@ function NetworkAudioPlayer({ networkName = "Your listening queue", advertisemen
               className: "sm-network-player__next",
               "aria-label": "Next article",
               title: "Next article",
-              disabled: snapshot.index + 1 >= snapshot.queue.length,
-              onClick: () => command({ action: "select", value: snapshot.index + 1 }),
+              onClick: () => command({ action: "skip" }),
               children: /* @__PURE__ */ jsx2(AudioIcon, { name: "next" })
             }
           ),
@@ -1658,10 +2007,10 @@ function NetworkAudioPlayer({ networkName = "Your listening queue", advertisemen
             type: "button",
             className: "sm-network-player__close",
             "aria-label": "Close player",
-            title: "Stop playback, clear queue, and close player",
+            title: "Pause and close player. Your queue is saved.",
             onClick: () => {
               setExpanded(false);
-              command({ action: "clear" });
+              command({ action: "close" });
             },
             children: /* @__PURE__ */ jsx2(AudioIcon, { name: "close" })
           }
@@ -1681,6 +2030,10 @@ function NetworkAudioPlayer({ networkName = "Your listening queue", advertisemen
               ] }, rate)) }),
               /* @__PURE__ */ jsx2(AudioIcon, { name: "chevron" })
             ] })
+          ] }),
+          /* @__PURE__ */ jsxs2("label", { children: [
+            /* @__PURE__ */ jsx2("input", { type: "checkbox", checked: snapshot.autoplayNext !== false, onChange: (e) => command({ action: "autoplay", value: e.target.checked }) }),
+            "Play next automatically"
           ] }),
           /* @__PURE__ */ jsxs2("label", { children: [
             "Volume ",
@@ -1715,9 +2068,72 @@ function NetworkAudioPlayer({ networkName = "Your listening queue", advertisemen
     ] })
   ] });
 }
+function ListeningLibrary({ open = false }) {
+  const { snapshot, command, catchUp, recommendationsLoading, remote, notice } = useNetworkAudio();
+  const [minutes, setMinutes] = useState2(10);
+  const recent = (snapshot.history ?? []).filter((item) => item.completedAt).slice(0, 20);
+  return /* @__PURE__ */ jsxs2("details", { className: "sm-listening-library", open: open || void 0, children: [
+    /* @__PURE__ */ jsxs2("summary", { children: [
+      "Your listening ",
+      /* @__PURE__ */ jsx2("span", { children: snapshot.queue.length ? `${snapshot.queue.length} queued` : recent.length ? "Recently listened" : "Queue & catch up" })
+    ] }),
+    /* @__PURE__ */ jsxs2("div", { className: "sm-listening-library__body", children: [
+      catchUp && !remote && /* @__PURE__ */ jsxs2("div", { className: "sm-listening-library__catchup", children: [
+        /* @__PURE__ */ jsxs2("label", { children: [
+          "Catch me up in ",
+          /* @__PURE__ */ jsx2("select", { "aria-label": "Catch-up length", value: minutes, onChange: (e) => setMinutes(Number(e.target.value)), children: [5, 10, 20].map((value) => /* @__PURE__ */ jsxs2("option", { value, children: [
+            value,
+            " minutes"
+          ] }, value)) })
+        ] }),
+        /* @__PURE__ */ jsx2("button", { type: "button", disabled: recommendationsLoading, onClick: () => void catchUp(minutes), children: recommendationsLoading ? "Finding stories\u2026" : "Build my queue" }),
+        /* @__PURE__ */ jsxs2("small", { children: [
+          "Unheard stories first, timed at ",
+          snapshot.rate,
+          "\xD7. Your selections stay first."
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxs2("label", { className: "sm-listening-library__option", children: [
+        /* @__PURE__ */ jsx2("input", { type: "checkbox", checked: snapshot.allowRepeats === true, onChange: (e) => command({ action: "repeats", value: e.target.checked }) }),
+        "Include repeats when I\u2019m caught up"
+      ] }),
+      /* @__PURE__ */ jsxs2("label", { className: "sm-listening-library__option", children: [
+        /* @__PURE__ */ jsx2("input", { type: "checkbox", checked: snapshot.autoplayNext !== false, onChange: (e) => command({ action: "autoplay", value: e.target.checked }) }),
+        "Play next automatically"
+      ] }),
+      notice && /* @__PURE__ */ jsx2("p", { role: "status", children: notice }),
+      snapshot.queue.length > 0 && /* @__PURE__ */ jsxs2(Fragment, { children: [
+        /* @__PURE__ */ jsx2("h3", { children: "Up next" }),
+        /* @__PURE__ */ jsxs2("p", { children: [
+          snapshot.queue.length,
+          " stories \xB7 ",
+          formatTime(snapshot.queue.reduce((sum, item, index) => sum + Math.max(0, (item.durationSeconds ?? 0) - (index === snapshot.index ? snapshot.position : 0)) / snapshot.rate, 0)),
+          " at ",
+          snapshot.rate,
+          "\xD7"
+        ] }),
+        /* @__PURE__ */ jsx2("ol", { children: snapshot.queue.map((item, index) => /* @__PURE__ */ jsxs2("li", { children: [
+          /* @__PURE__ */ jsx2("button", { type: "button", onClick: () => command({ action: "select", value: index }), children: item.title }),
+          /* @__PURE__ */ jsx2("button", { type: "button", "aria-label": `Remove ${item.title}`, onClick: () => command({ action: "remove", value: index }), children: "Remove" })
+        ] }, trackKey(item))) }),
+        /* @__PURE__ */ jsx2("button", { type: "button", onClick: () => command({ action: "clear" }), children: "Clear queue" })
+      ] }),
+      recent.length > 0 && /* @__PURE__ */ jsxs2(Fragment, { children: [
+        /* @__PURE__ */ jsx2("h3", { children: "Recently listened" }),
+        /* @__PURE__ */ jsx2("ol", { children: recent.map((item) => /* @__PURE__ */ jsxs2("li", { children: [
+          /* @__PURE__ */ jsx2("span", { children: item.track.title }),
+          /* @__PURE__ */ jsx2("button", { type: "button", "aria-label": `Replay ${item.track.title}`, onClick: () => command({ action: "playTrack", track: { ...item.track, automatic: false } }), children: "Replay" })
+        ] }, storyKey(item.track))) })
+      ] }),
+      recent.length > 0 && /* @__PURE__ */ jsx2("button", { type: "button", onClick: () => command({ action: "forgetHistory" }), children: "Clear listening history" }),
+      !snapshot.queue.length && !notice && /* @__PURE__ */ jsx2("p", { children: recent.length ? "You\u2019re caught up with your queue." : "Add a story or build a catch-up queue to start listening." })
+    ] })
+  ] });
+}
 export {
   ArticleAudioControls,
   AudioPlayer,
+  ListeningLibrary,
   NarrationHighlighter,
   NetworkAudioController,
   NetworkAudioPlayer,

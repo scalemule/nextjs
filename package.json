@@ -1,6 +1,6 @@
 {
   "name": "@scalemule/nextjs",
-  "version": "0.1.56",
+  "version": "0.1.57",
   "description": "ScaleMule SDK for Next.js applications - authentication, storage, and user management",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -46,7 +46,8 @@
       "import": "./dist/audio.mjs",
       "require": "./dist/audio.js"
     },
-    "./audio.css": "./dist/audio.css"
+    "./audio.css": "./dist/audio.css",
+    "./listening-hub.js": "./dist/listening-hub.global.js"
   },
   "files": [
     "dist",

@@ -1,6 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig([
+  { entry: { 'listening-hub': 'src/network-audio/listening-hub.ts' }, format: ['iife'], clean: false, minify: true },
   {
     entry: [
       'src/index.ts', // Main client-side entry

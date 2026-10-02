@@ -759,3 +759,99 @@
     background: ButtonText;
   }
 }
+.sm-listening-library {
+  margin: 12px 0 20px;
+  color: var(--sm-player-ink, #17201b);
+  font: 14px/1.5 var(--sm-player-sans, var(--font-inter, sans-serif));
+}
+.sm-listening-library summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-weight: 600;
+}
+.sm-listening-library summary span {
+  margin-left: 12px;
+  color: var(--sm-player-muted, #59635d);
+  font-weight: 400;
+}
+.sm-listening-library__body {
+  padding: 16px;
+  border: 1px solid var(--sm-player-line, #d8ded9);
+  border-radius: 14px;
+  background: var(--sm-player-paper, #fff);
+}
+.sm-listening-library__catchup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.sm-listening-library__catchup small {
+  flex-basis: 100%;
+  color: var(--sm-player-muted, #59635d);
+}
+.sm-listening-library button,
+.sm-listening-library select {
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--sm-player-line, #d8ded9);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font: inherit;
+  cursor: pointer;
+  min-height: 44px;
+}
+.sm-listening-library button:focus-visible,
+.sm-listening-library summary:focus-visible,
+.sm-listening-library select:focus-visible {
+  outline: 2px solid var(--sm-player-accent, #c91421);
+  outline-offset: 3px;
+}
+.sm-listening-library__catchup > button {
+  background: var(--sm-player-accent, #c91421);
+  color: white;
+  border-color: transparent;
+}
+.sm-listening-library__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+}
+.sm-listening-library__option input {
+  accent-color: var(--sm-player-accent, #c91421);
+  width: 18px;
+  height: 18px;
+}
+.sm-listening-library h3 {
+  font: 600 20px/1.3 var(--sm-player-serif, var(--font-editorial, Georgia));
+  margin: 24px 0 10px;
+}
+.sm-listening-library ol {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.sm-listening-library li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--sm-player-line, #d8ded9);
+}
+.sm-listening-library li > :first-child {
+  flex: 1;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.sm-listening-library li > button:first-child {
+  border: 0;
+}
+.sm-listening-library li > button:last-child {
+  flex-shrink: 0;
+}
+.sm-network-player__tools input[type=checkbox] {
+  width: 18px;
+}

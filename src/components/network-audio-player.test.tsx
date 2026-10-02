@@ -87,10 +87,10 @@ it.each([false, true])('stops audio and dismisses the player and highlights when
   const pauses = vi.mocked(HTMLMediaElement.prototype.pause).mock.calls.length
   fireEvent.click(screen.getByRole('button', { name: 'Close player' }))
   expect(vi.mocked(HTMLMediaElement.prototype.pause).mock.calls.length).toBeGreaterThan(pauses)
-  expect(media.getAttribute('src')).toBeNull()
+  expect(media.getAttribute('src')).toBeTruthy()
   expect(screen.queryByRole('region', { name: 'Network audio player' })).toBeNull()
   expect(document.querySelector('[data-sm-narration-layer]')).toBeNull()
-  expect(screen.getByRole('button', { name: 'Add to queue' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Queued' })).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Listen to this story' }))
   await screen.findByRole('button', { name: 'Pause playback' })
   expect(screen.getByRole('button', { name: 'Queue (1)' }).getAttribute('aria-expanded')).toBe('false')

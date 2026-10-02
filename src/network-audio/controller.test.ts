@@ -39,7 +39,8 @@ describe('persistent audio ownership', () => {
     expect(resolve).toHaveBeenCalledTimes(1)
     audio.dispatchEvent(new Event('ended'))
     await flush()
-    expect(controller.getSnapshot().index).toBe(1)
+    expect(controller.getSnapshot().index).toBe(0)
+    expect(controller.getSnapshot().queue).toHaveLength(2)
     expect(resolve.mock.calls[1][0].publicationId).toBe('lamorinda')
   })
   it('ignores stale resolution after selecting another publication', async () => {
@@ -130,4 +131,59 @@ describe('persistent audio ownership', () => {
     document.dispatchEvent(new CustomEvent('scalemule:audio:play', { detail: document.createElement('audio') }))
     expect(controller.getSnapshot().status).toBe('paused')
   })
+})
+
+function played(ranges: [number, number][]) {
+  Object.defineProperty(audio, 'played', { configurable: true, value: { length: ranges.length, start: (i: number) => ranges[i][0], end: (i: number) => ranges[i][1] } })
+}
+it('removes finished stories, records actual coverage and respects autoplay off', async () => {
+  controller.enqueue(first); controller.enqueue(second); controller.setAutoplay(false)
+  await controller.play(); metadata(); played([[0, 60]])
+  audio.currentTime = 60; audio.dispatchEvent(new Event('timeupdate')); audio.dispatchEvent(new Event('ended'))
+  await flush()
+  expect(controller.getSnapshot().queue).toEqual([second])
+  expect(controller.getSnapshot().history?.[0].completedAt).toBeGreaterThan(0)
+  expect(controller.getSnapshot().status).toBe('paused')
+  expect(resolve).toHaveBeenCalledTimes(1)
+})
+it('seeking to the end does not mark an unheard story listened', async () => {
+  controller.enqueue(first); await controller.play(); metadata(); played([[0, 2], [59, 60]])
+  controller.seek(60); audio.dispatchEvent(new Event('ended')); await flush()
+  expect(controller.getSnapshot().history?.[0].completedAt).toBeUndefined()
+  expect(controller.getSnapshot().history?.[0].skippedAt).toBeGreaterThan(0)
+  expect(controller.getSnapshot().queue).toHaveLength(0)
+})
+it('resumes an interrupted story after selecting another article and closing preserves it', async () => {
+  controller.enqueue(first); await controller.play(); metadata(); played([[0, 20]])
+  audio.currentTime = 20; audio.dispatchEvent(new Event('timeupdate'))
+  controller.playTrack(second); await flush(); metadata(); played([])
+  controller.playTrack(first); await flush(); metadata()
+  expect(audio.currentTime).toBe(20)
+  controller.setRate(1.75); controller.close()
+  expect(controller.getSnapshot().hidden).toBe(true)
+  expect(controller.getSnapshot().queue).toHaveLength(2)
+  expect(controller.getSnapshot().rate).toBe(1.75)
+})
+it('builds a bounded unheard-first queue and deduplicates syndicated editions', async () => {
+  const original = { ...first, storyId: 'canonical-story', durationSeconds: 60 }
+  const syndicated = { ...second, storyId: 'canonical-story', durationSeconds: 60 }
+  controller.enqueue(original); await controller.play(); metadata(); played([[0, 60]])
+  audio.currentTime = 60; audio.dispatchEvent(new Event('timeupdate')); audio.dispatchEvent(new Event('ended')); await flush()
+  const fresh = { ...first, id: 'fresh', storyId: 'fresh', durationSeconds: 90 }
+  const long = { ...first, id: 'long', storyId: 'long', durationSeconds: 400 }
+  controller.setRecommendations([syndicated, fresh, long]); controller.catchUp(5)
+  expect(controller.getSnapshot().queue.map(item => item.id)).toEqual(['fresh'])
+  controller.enqueue({ ...first, id: 'manual', storyId: 'manual' })
+  expect(controller.getSnapshot().queue.at(-1)?.id).toBe('manual')
+  controller.clear(); controller.setRecommendations([syndicated]); controller.catchUp(5)
+  expect(controller.getSnapshot().queue).toHaveLength(0)
+  controller.setRepeats(true); controller.catchUp(5)
+  expect(controller.getSnapshot().queue[0].publicationId).toBe(second.publicationId)
+})
+it('counts catch-up duration at the selected speed and permits an editorial update', () => {
+  controller.setRate(2)
+  controller.setRecommendations([{ ...first, durationSeconds: 540 }, { ...second, durationSeconds: 61 }])
+  controller.catchUp(5)
+  expect(controller.getSnapshot().queue).toHaveLength(1)
+  expect(controller.getSnapshot().queue[0].durationSeconds).toBe(540)
 })

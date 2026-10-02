@@ -139,6 +139,23 @@ interface NetworkAudioTrack {
     title: string;
     publicationName?: string;
     articleUrl: string;
+    /** Stable canonical story URL/ID shared by syndicated editions. */
+    storyId?: string;
+    /** An editorial revision, never a routine database updated_at value. */
+    revision?: string;
+    durationSeconds?: number;
+    section?: string;
+    publishedAt?: string;
+    automatic?: boolean;
+}
+interface ListeningRecord {
+    track: NetworkAudioTrack;
+    position: number;
+    duration: number;
+    ranges: [number, number][];
+    updatedAt: number;
+    completedAt?: number;
+    skippedAt?: number;
 }
 interface NetworkAudioSnapshot {
     queue: readonly NetworkAudioTrack[];
@@ -149,6 +166,13 @@ interface NetworkAudioSnapshot {
     volume: number;
     status: 'idle' | 'loading' | 'playing' | 'paused' | 'error';
     error: string | null;
+    history?: readonly ListeningRecord[];
+    autoplayNext?: boolean;
+    allowRepeats?: boolean;
+    hidden?: boolean;
+    historyClearedAt?: number;
+    settingsUpdatedAt?: number;
+    sessionMinutes?: number;
 }
 type ResolveNetworkAudio = (track: NetworkAudioTrack, signal: AbortSignal) => Promise<AudioPlayerSource>;
 /** One audio element per persistent layout. Safe to construct during SSR; attach on mount. */
@@ -164,6 +188,15 @@ declare class NetworkAudioController {
     private source;
     private refreshed;
     private resumePosition;
+    mergeListeningMemory(memory: {
+        rate: number;
+        autoplayNext: boolean;
+        allowRepeats: boolean;
+        settingsUpdatedAt: number;
+        historyClearedAt: number;
+        history: ListeningRecord[];
+    }): void;
+    private candidates;
     constructor(resolve: ResolveNetworkAudio);
     setResolver(resolve: ResolveNetworkAudio): void;
     getSnapshot: () => NetworkAudioSnapshot;
@@ -178,6 +211,17 @@ declare class NetworkAudioController {
     private cancel;
     pause(): void;
     clear(): void;
+    close(): void;
+    setAutoplay(value: boolean): void;
+    setRepeats(value: boolean): void;
+    forgetHistory(): void;
+    restart(): void;
+    skip(): void;
+    private remember;
+    private finish;
+    setRecommendations(tracks: NetworkAudioTrack[]): void;
+    /** Manual selections retain their order; recommendations are bounded and never replace them. */
+    catchUp(minutes?: number): void;
     seek(position: number): void;
     setRate(rate: number): void;
     setVolume(volume: number): void;
@@ -190,7 +234,13 @@ declare class NetworkAudioController {
 }
 
 type NetworkAudioCommand = {
-    action: 'play' | 'pause' | 'clear';
+    action: 'play' | 'pause' | 'clear' | 'close' | 'skip' | 'restart' | 'forgetHistory';
+} | {
+    action: 'autoplay' | 'repeats';
+    value: boolean;
+} | {
+    action: 'catchUp';
+    value: number;
 } | {
     action: 'select' | 'remove' | 'seek' | 'rate' | 'volume';
     value: number;
@@ -210,6 +260,14 @@ interface NetworkPlayerHostOptions {
     allowedOrigins: readonly string[];
 }
 
+interface ListeningPersistence {
+    /** Network and reader scope. Change this on account changes. */
+    storageKey: string;
+    networkId: string;
+    hubUrl?: string;
+    allowedOrigins: readonly string[];
+}
+
 interface NetworkAudioProviderProps {
     children: ReactNode;
     /** Resolve through your reader-authorized server route, including publication identity. */
@@ -220,6 +278,8 @@ interface NetworkAudioProviderProps {
     host?: NetworkPlayerHostOptions;
     /** Optional sessionStorage checkpoint. Scope by application/network and user; honor consent. Restores paused. */
     checkpointStorageKey?: string;
+    persistence?: ListeningPersistence;
+    loadRecommendations?: (signal: AbortSignal) => Promise<NetworkAudioTrack[]>;
 }
 interface NetworkAudioContextValue {
     snapshot: NetworkAudioSnapshot;
@@ -231,9 +291,11 @@ interface NetworkAudioContextValue {
     highlightAvailable: boolean;
     highlightEnabled: boolean;
     setHighlightEnabled: (enabled: boolean) => void;
+    catchUp?: (minutes: number) => Promise<void>;
+    recommendationsLoading: boolean;
 }
 /** Mount once in a persistent root layout, outside route keys/templates. */
-declare function NetworkAudioProvider({ children, resolveAudio, connection, host, checkpointStorageKey }: NetworkAudioProviderProps): react_jsx_runtime.JSX.Element;
+declare function NetworkAudioProvider({ children, resolveAudio, connection, host, checkpointStorageKey, persistence, loadRecommendations }: NetworkAudioProviderProps): react_jsx_runtime.JSX.Element;
 declare function useNetworkAudio(): NetworkAudioContextValue;
 /** Attach in the article component. Unmount/hidden tab clears only highlighting, never playback. */
 declare function useArticleNarration(track: NetworkAudioTrack, narration?: AudioPlayerNarration): {
@@ -262,5 +324,9 @@ interface NetworkAudioPlayerProps {
     renderArticleLink?: (track: NetworkAudioTrack) => ReactNode;
 }
 declare function NetworkAudioPlayer({ networkName, advertisement, className, style, fixed, renderArticleLink }: NetworkAudioPlayerProps): react_jsx_runtime.JSX.Element | null;
+/** Shared, compact library: available even when the player is hidden or the queue is empty. */
+declare function ListeningLibrary({ open }: {
+    open?: boolean;
+}): react_jsx_runtime.JSX.Element;
 
-export { ArticleAudioControls, type ArticleAudioControlsProps, AudioPlayer, type AudioPlayerNarration, type AudioPlayerProps, type AudioPlayerSource, type AudioPlayerVariant, NarrationHighlighter, type NarrationTimings, type NetworkAudioCommand, type NetworkAudioContextValue, NetworkAudioController, NetworkAudioPlayer, type NetworkAudioPlayerProps, NetworkAudioProvider, type NetworkAudioProviderProps, type NetworkAudioSnapshot, type NetworkAudioTrack, type NetworkPlayerConnection, type NetworkPlayerHostOptions, type ResolveNetworkAudio, SENTENCE_HIGHLIGHT, WORD_HIGHLIGHT, narrationHighlightSupported, parseTimingsPayload, useArticleNarration, useNetworkAudio };
+export { ArticleAudioControls, type ArticleAudioControlsProps, AudioPlayer, type AudioPlayerNarration, type AudioPlayerProps, type AudioPlayerSource, type AudioPlayerVariant, ListeningLibrary, type ListeningPersistence, NarrationHighlighter, type NarrationTimings, type NetworkAudioCommand, type NetworkAudioContextValue, NetworkAudioController, NetworkAudioPlayer, type NetworkAudioPlayerProps, NetworkAudioProvider, type NetworkAudioProviderProps, type NetworkAudioSnapshot, type NetworkAudioTrack, type NetworkPlayerConnection, type NetworkPlayerHostOptions, type ResolveNetworkAudio, SENTENCE_HIGHLIGHT, WORD_HIGHLIGHT, narrationHighlightSupported, parseTimingsPayload, useArticleNarration, useNetworkAudio };
