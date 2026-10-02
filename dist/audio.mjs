@@ -960,14 +960,15 @@ var NetworkAudioController = class {
     if (found !== -1) return found;
     if (this.snapshot.queue.length >= 100) throw new Error("The listening queue holds up to 100 articles.");
     const queue = [...this.snapshot.queue];
-    const automatic = queue.findIndex((item, i) => item.automatic && i > this.snapshot.index);
+    const protectCurrent = this.source !== null || this.snapshot.status === "loading" || this.snapshot.status === "playing";
+    const automatic = queue.findIndex((item, i) => item.automatic && (protectCurrent ? i > this.snapshot.index : i >= this.snapshot.index));
     const at = !track.automatic && automatic >= 0 ? automatic : queue.length;
     queue.splice(at, 0, copyTrack(track));
-    const initial = this.snapshot.index === -1;
+    const initial = this.snapshot.index === -1 || !protectCurrent && at <= this.snapshot.index;
     const record = listeningRecord(this.snapshot, track);
     this.patch({
       queue,
-      index: initial ? 0 : this.snapshot.index,
+      index: initial ? at : this.snapshot.index,
       ...initial ? { position: record?.completedAt ? 0 : record?.position ?? 0, duration: record?.duration ?? track.durationSeconds ?? 0 } : {}
     });
     return at;
@@ -1443,7 +1444,15 @@ function mergeMemory(local, remote) {
     if (item.updatedAt <= historyClearedAt) continue;
     const key = storyKey(item.track);
     const previous = records.get(key);
-    if (!previous || item.updatedAt >= previous.updatedAt) records.set(key, item);
+    if (!previous) records.set(key, item);
+    else {
+      const newest = item.updatedAt >= previous.updatedAt ? item : previous;
+      records.set(key, {
+        ...newest,
+        ranges: mergeRanges([...previous.ranges, ...item.ranges]).filter((range) => range[1] <= newest.duration + 1),
+        ...previous.completedAt || item.completedAt ? { completedAt: Math.max(previous.completedAt ?? 0, item.completedAt ?? 0) } : {}
+      });
+    }
   }
   return {
     ...remote.settingsUpdatedAt > local.settingsUpdatedAt ? remote : local,

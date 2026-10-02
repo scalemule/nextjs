@@ -174,7 +174,7 @@ it('builds a bounded unheard-first queue and deduplicates syndicated editions', 
   controller.setRecommendations([syndicated, fresh, long]); controller.catchUp(5)
   expect(controller.getSnapshot().queue.map(item => item.id)).toEqual(['fresh'])
   controller.enqueue({ ...first, id: 'manual', storyId: 'manual' })
-  expect(controller.getSnapshot().queue.at(-1)?.id).toBe('manual')
+  expect(controller.getSnapshot().queue[0]?.id).toBe('manual')
   controller.clear(); controller.setRecommendations([syndicated]); controller.catchUp(5)
   expect(controller.getSnapshot().queue).toHaveLength(0)
   controller.setRepeats(true); controller.catchUp(5)
@@ -186,4 +186,12 @@ it('counts catch-up duration at the selected speed and permits an editorial upda
   controller.catchUp(5)
   expect(controller.getSnapshot().queue).toHaveLength(1)
   expect(controller.getSnapshot().queue[0].durationSeconds).toBe(540)
+})
+
+it('allows an explicitly revised story to return after the older version was completed', () => {
+  const old = { ...first, storyId: 'same-report', revision: '2026-10-01', durationSeconds: 60 }
+  controller.restore({ ...controller.getSnapshot(), history: [{ track: old, position: 60, duration: 60, ranges: [[0, 60]], completedAt: 1, updatedAt: 1 }] })
+  controller.setRecommendations([old, { ...old, revision: '2026-10-02' }]); controller.catchUp(5)
+  expect(controller.getSnapshot().queue).toHaveLength(1)
+  expect(controller.getSnapshot().queue[0].revision).toBe('2026-10-02')
 })

@@ -15,3 +15,12 @@ it('merges history per story without losing newer preferences or unrelated stori
   expect(validMemory({ ...merged, rate: 100 })).toBe(false)
   expect(validMemory({ ...merged, settingsUpdatedAt: Date.now() + 120000 })).toBe(false)
 })
+
+it('propagates a clear-history tombstone instead of restoring records from another publication', () => {
+  const base = toMemory(EMPTY_SNAPSHOT)
+  const track = { id: 'a', publicationId: 'p', title: 'Story', articleUrl: 'https://news.example/news/a' }
+  const old = { ...base, history: [{ track, position: 60, duration: 60, ranges: [[0, 60]] as [number, number][], updatedAt: 10, completedAt: 10 }] }
+  const cleared = { ...base, historyClearedAt: 20 }
+  expect(mergeMemory(cleared, old).history).toEqual([])
+  expect(mergeMemory(old, cleared).history).toEqual([])
+})

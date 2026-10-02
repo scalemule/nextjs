@@ -1,4 +1,4 @@
-import { validRecord, copyTrack, storyKey, type ListeningRecord, type NetworkAudioSnapshot } from './controller'
+import { validRecord, copyTrack, storyKey, mergeRanges, type ListeningRecord, type NetworkAudioSnapshot } from './controller'
 
 /** Deliberately contains no account IDs, credentials, media URLs or queue ownership. */
 export interface ListeningMemory {
@@ -31,7 +31,12 @@ export function mergeMemory(local: ListeningMemory, remote: ListeningMemory): Li
     if (item.updatedAt <= historyClearedAt) continue
     const key = storyKey(item.track)
     const previous = records.get(key)
-    if (!previous || item.updatedAt >= previous.updatedAt) records.set(key, item)
+    if (!previous) records.set(key, item)
+    else {
+      const newest = item.updatedAt >= previous.updatedAt ? item : previous
+      records.set(key, { ...newest, ranges: mergeRanges([...previous.ranges, ...item.ranges]).filter(range => range[1] <= newest.duration + 1),
+        ...(previous.completedAt || item.completedAt ? { completedAt: Math.max(previous.completedAt ?? 0, item.completedAt ?? 0) } : {}) })
+    }
   }
   return { ...(remote.settingsUpdatedAt > local.settingsUpdatedAt ? remote : local),
     historyClearedAt, history: [...records.values()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 500) }

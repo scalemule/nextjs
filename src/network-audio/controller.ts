@@ -107,7 +107,7 @@ export function validRecord(value: unknown): value is ListeningRecord {
     && finite(r.updatedAt) && r.updatedAt >= 0 && r.updatedAt <= Date.now() + 60000 && [r.completedAt, r.skippedAt].every(v => v === undefined || (finite(v) && v > 0))
     && Array.isArray(r.ranges) && r.ranges.length <= 100 && r.ranges.every(v => Array.isArray(v) && v.length === 2 && finite(v[0]) && finite(v[1]) && v[0] >= 0 && v[1] >= v[0] && v[1] <= r.duration + 1)
 }
-function mergeRanges(ranges: [number, number][]): [number, number][] {
+export function mergeRanges(ranges: [number, number][]): [number, number][] {
   const merged: [number, number][] = []
   for (const [start, end] of ranges.sort((a, b) => a[0] - b[0])) {
     const last = merged.at(-1)
@@ -215,12 +215,13 @@ export class NetworkAudioController {
     if (found !== -1) return found
     if (this.snapshot.queue.length >= 100) throw new Error('The listening queue holds up to 100 articles.')
     const queue = [...this.snapshot.queue]
-    const automatic = queue.findIndex((item, i) => item.automatic && i > this.snapshot.index)
+    const protectCurrent = this.source !== null || this.snapshot.status === 'loading' || this.snapshot.status === 'playing'
+    const automatic = queue.findIndex((item, i) => item.automatic && (protectCurrent ? i > this.snapshot.index : i >= this.snapshot.index))
     const at = !track.automatic && automatic >= 0 ? automatic : queue.length
     queue.splice(at, 0, copyTrack(track))
-    const initial = this.snapshot.index === -1
+    const initial = this.snapshot.index === -1 || (!protectCurrent && at <= this.snapshot.index)
     const record = listeningRecord(this.snapshot, track)
-    this.patch({ queue, index: initial ? 0 : this.snapshot.index,
+    this.patch({ queue, index: initial ? at : this.snapshot.index,
       ...(initial ? { position: record?.completedAt ? 0 : record?.position ?? 0, duration: record?.duration ?? track.durationSeconds ?? 0 } : {}) })
     return at
   }
