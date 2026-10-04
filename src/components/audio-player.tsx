@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
 } from 'react'
 import {
@@ -14,6 +15,8 @@ import {
   parseTimingsPayload,
 } from './narration-highlight'
 import './audio-player.css'
+
+const subscribeNever = () => () => {}
 
 export interface AudioPlayerSource {
   url: string | null
@@ -56,6 +59,11 @@ export interface AudioPlayerProps {
   preload?: 'none' | 'metadata'
   /** Called at most once automatically per play attempt. Honor signal to cancel network work. */
   onRefresh?: (signal: AbortSignal) => Promise<AudioPlayerSource>
+  /**
+   * @deprecated No-op. Players never show a manual Refresh control: expired
+   * URLs are refreshed silently through `onRefresh`. Kept so existing callers
+   * still compile.
+   */
   showRefreshButton?: boolean
   onPlaybackError?: () => void
   /** Shared with the existing ScaleMule blog player. Set null to disable persistence. */
@@ -89,7 +97,6 @@ function PlayerSession({
   style,
   preload = 'none',
   onRefresh,
-  showRefreshButton = false,
   onPlaybackError,
   playbackRateStorageKey = 'scalemule:audio:playback-rate',
   exclusivePlayback = true,
@@ -116,8 +123,15 @@ function PlayerSession({
   /* Follow-along highlighting. Off until the reader turns it on; their
    * choice persists per browser. The timings fetch and the DOM walk
    * only ever run after the first enable. */
+  const highlightSupported = useSyncExternalStore(
+    subscribeNever,
+    narrationHighlightSupported,
+    // The server can't detect support; render the toggle only after
+    // hydration so server and client markup always match.
+    () => false
+  )
   const narrationOffered =
-    !!narration && audio.has_word_timings !== false && narrationHighlightSupported()
+    !!narration && audio.has_word_timings !== false && highlightSupported
   const [highlightOn, setHighlightOn] = useState(false)
   const [highlightBusy, setHighlightBusy] = useState(false)
   const highlighter = useRef<NarrationHighlighter | null>(null)
@@ -577,20 +591,10 @@ function PlayerSession({
         >
           {speed}×
         </button>
-        {onRefresh && showRefreshButton && (
-          <button
-            type="button"
-            className="sm-audio__refresh"
-            disabled={busy}
-            onClick={() => void recover(true)}
-          >
-            Refresh
-          </button>
-        )}
       </div>
       {(busy || error) && (
         <p className="sm-audio__status" role="status">
-          {busy ? 'Refreshing audio…' : error}
+          {busy ? 'Loading audio…' : error}
         </p>
       )}
     </div>

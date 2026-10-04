@@ -174,9 +174,11 @@
 .sm-audio__waveform {
   display: flex;
   align-items: center;
-  gap: 3px;
+  /* Scales down on phones so the bars never spill past the track. */
+  gap: min(3px, 1%);
   height: 48px;
   margin-top: 12px;
+  overflow: hidden;
 }
 .sm-audio__waveform span {
   flex: 1;
@@ -225,13 +227,8 @@
   }
 }
 
-/* Follow-along narration highlighting (CSS Custom Highlight API).
- * The names are registered by NarrationHighlighter; sites can retheme
- * with the two custom properties on the article body element. */
-::highlight(sm-narration-sentence) {
-  background-color: var(--sm-narration-sentence, rgba(36, 99, 70, 0.12));
-}
-::highlight(sm-narration-word) {
-  background-color: var(--sm-narration-word, rgba(36, 99, 70, 0.32));
-  color: inherit;
-}
+/* Follow-along narration highlighting paints boxes in an overlay layer
+ * (NarrationHighlighter), not ::highlight(). Sites retheme it with two
+ * custom properties on the article body or any ancestor:
+ *   --sm-narration-sentence (default rgba(36, 99, 70, 0.12))
+ *   --sm-narration-word     (default rgba(36, 99, 70, 0.32)) */

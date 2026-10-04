@@ -9,17 +9,45 @@ import { FlagClient } from '@scalemule/sdk/flags/server';
 
 // src/types/index.ts
 var ScaleMuleApiError = class extends Error {
-  constructor(error, status) {
-    super(error.message);
+  constructor(error2, status) {
+    super(error2.message);
     this.name = "ScaleMuleApiError";
-    this.code = error.code;
-    this.field = error.field;
+    this.code = error2.code;
+    this.field = error2.field;
     this.status = status;
-    this.requestId = error.requestId;
-    this.traceId = error.traceId;
-    this.problem = error.problem;
+    this.requestId = error2.requestId;
+    this.traceId = error2.traceId;
+    this.problem = error2.problem;
   }
 };
+
+// src/url-privacy.ts
+function withoutAuthSecrets(value) {
+  if (!value) return value;
+  try {
+    const absolute = /^[a-z][a-z0-9+.-]*:/i.test(value);
+    const protocolRelative = value.startsWith("//");
+    const url = new URL(value, "https://relative.invalid");
+    if (!["http:", "https:"].includes(url.protocol)) return void 0;
+    let changed = false;
+    for (const name of [...url.searchParams.keys()]) {
+      if (/^(token|code|state|password|new_password|access_token|refresh_token|id_token|api_key|client_secret|challenge_token|challenge_code)$/i.test(name)) {
+        url.searchParams.delete(name);
+        changed = true;
+      }
+    }
+    if (url.hash) {
+      url.hash = "";
+      changed = true;
+    }
+    if (!changed) return value;
+    if (absolute) return url.toString();
+    if (protocolRelative) return url.toString().replace(/^https:/, "");
+    return value.split(/[?#]/, 1)[0] + url.search;
+  } catch {
+    return void 0;
+  }
+}
 
 // src/server/context.ts
 function validateIP(ip) {
@@ -34,11 +62,12 @@ function validateIP(ip) {
   }
   return void 0;
 }
-function extractClientContext(request) {
+function extractClientContext(request, options = {}) {
   const headers3 = request.headers;
   let ip;
+  ip = validateIP(headers3.get("x-real-ip"));
   const cfConnectingIp = headers3.get("cf-connecting-ip");
-  if (cfConnectingIp) {
+  if (!ip && cfConnectingIp) {
     ip = validateIP(cfConnectingIp);
   }
   if (!ip) {
@@ -76,9 +105,14 @@ function extractClientContext(request) {
   if (!ip && request.ip) {
     ip = validateIP(request.ip);
   }
+  if (options.trustedIpHeader) {
+    const value = headers3.get(options.trustedIpHeader);
+    const hop = options.trustedIpHeader === "x-forwarded-for" ? value?.split(",").at(-1)?.trim() : value;
+    ip = validateIP(hop);
+  }
   const userAgent = headers3.get("user-agent") || void 0;
   const deviceFingerprint = headers3.get("x-device-fingerprint") || void 0;
-  const referrer = headers3.get("referer") || void 0;
+  const referrer = withoutAuthSecrets(headers3.get("referer") || void 0);
   const anonymousId = headers3.get("x-anonymous-id") || void 0;
   return {
     ip,
@@ -98,8 +132,9 @@ function extractClientContextFromReq(req) {
     return value;
   };
   let ip;
+  ip = validateIP(getHeader("x-real-ip"));
   const cfConnectingIp = getHeader("cf-connecting-ip");
-  if (cfConnectingIp) {
+  if (!ip && cfConnectingIp) {
     ip = validateIP(cfConnectingIp);
   }
   if (!ip) {
@@ -139,7 +174,7 @@ function extractClientContextFromReq(req) {
   }
   const userAgent = getHeader("user-agent");
   const deviceFingerprint = getHeader("x-device-fingerprint");
-  const referrer = getHeader("referer");
+  const referrer = withoutAuthSecrets(getHeader("referer"));
   const anonymousId = getHeader("x-anonymous-id");
   return {
     ip,
@@ -181,8 +216,8 @@ function buildFlagContext(clientContext, extraContext = {}) {
 }
 
 // src/error-context.ts
-function withErrorContext(error, responseData, headers3) {
-  const enriched = { ...error };
+function withErrorContext(error2, responseData, headers3) {
+  const enriched = { ...error2 };
   const meta = responseData?.meta;
   const requestId = meta?.request_id ?? headers3?.get("x-request-id") ?? void 0;
   if (requestId !== void 0 && enriched.requestId === void 0) {
@@ -216,6 +251,14 @@ var ScaleMuleServer = class {
     // Auth Methods
     // ==========================================================================
     this.auth = {
+      /** Issue a 60-second, single-use transfer code after a server OAuth callback. */
+      createSessionHandoff: async (sessionToken, audience) => {
+        return this.request("POST", "/v1/auth/session-handoff", { sessionToken, body: { session_token: sessionToken, audience } });
+      },
+      /** Exchange only on the server; write the returned session into an HTTP-only cookie. */
+      exchangeSessionHandoff: async (code, audience) => {
+        return this.request("POST", "/v1/auth/session-handoff/exchange", { body: { code, audience } });
+      },
       /**
        * Register a new user
        */
@@ -225,6 +268,12 @@ var ScaleMuleServer = class {
       /**
        * Login user - returns session token (store in HTTP-only cookie)
        */
+      sendMfaCode: async (pending_token, method, options) => {
+        return this.request("POST", "/v1/auth/mfa/send-code", { body: { pending_token, method }, clientContext: options?.clientContext });
+      },
+      completeMfa: async (pending_token, code, method, options) => {
+        return this.request("POST", "/v1/auth/mfa/verify", { body: { pending_token, code, method }, clientContext: options?.clientContext });
+      },
       login: async (data, options) => {
         return this.request("POST", "/v1/auth/login", { body: data, clientContext: options?.clientContext });
       },
@@ -867,12 +916,12 @@ var ScaleMuleServer = class {
         responseData = text ? JSON.parse(text) : null;
       } catch {
       }
-      if (!response.ok) {
+      if (!response.ok || responseData?.success === false) {
         const baseError = responseData?.error || {
           code: `HTTP_${response.status}`,
           message: responseData?.message || text || response.statusText
         };
-        const error = withErrorContext(baseError, responseData, response.headers);
+        const error2 = withErrorContext(baseError, responseData, response.headers);
         if (response.status === 401 && options.sessionToken && !options.isAutoRefresh) {
           if (this.debug) console.log("[ScaleMule Server] 401 received, attempting auto-refresh...");
           try {
@@ -895,12 +944,12 @@ var ScaleMuleServer = class {
             if (this.debug) console.error("[ScaleMule Server] Auto-refresh failed:", refreshErr);
             const refreshApiError = refreshErr instanceof ScaleMuleApiError ? { code: refreshErr.code, message: refreshErr.message } : { code: "REFRESH_FAILED", message: "Auto-refresh failed" };
             this.onAutoRefreshFailed?.(refreshApiError);
-            throw new ScaleMuleApiError(error, response.status);
+            throw new ScaleMuleApiError(error2, response.status);
           } finally {
             this.onRefreshEnd?.();
           }
         }
-        throw new ScaleMuleApiError(error, response.status);
+        throw new ScaleMuleApiError(error2, response.status);
       }
       const data = responseData?.data !== void 0 ? responseData.data : responseData;
       return data;
@@ -941,9 +990,10 @@ function createCookieHeader(name, value, options = {}) {
   const sameSite = options.sameSite ?? "lax";
   const path = options.path ?? "/";
   let cookie = `${name}=${encodeURIComponent(value)}; Path=${path}; Max-Age=${maxAge}; HttpOnly; SameSite=${sameSite}`;
-  if (secure) {
+  if (secure || options.partitioned) {
     cookie += "; Secure";
   }
+  if (options.partitioned) cookie += "; Partitioned";
   if (options.domain) {
     cookie += `; Domain=${options.domain}`;
   }
@@ -954,9 +1004,10 @@ function createClearCookieHeader(name, options = {}) {
   const secure = options.secure ?? process.env.NODE_ENV === "production";
   const sameSite = options.sameSite ?? "lax";
   let cookie = `${name}=; Path=${path}; Max-Age=0; HttpOnly; SameSite=${sameSite}`;
-  if (secure) {
+  if (secure || options.partitioned) {
     cookie += "; Secure";
   }
+  if (options.partitioned) cookie += "; Partitioned";
   if (options.domain) {
     cookie += `; Domain=${options.domain}`;
   }
@@ -965,6 +1016,10 @@ function createClearCookieHeader(name, options = {}) {
 function withSession(loginResponse, responseBody, options = {}) {
   const headers3 = new Headers();
   headers3.set("Content-Type", "application/json");
+  if (options.partitioned) {
+    headers3.append("Set-Cookie", createClearCookieHeader(SESSION_COOKIE_NAME, { ...options, partitioned: false }));
+    headers3.append("Set-Cookie", createClearCookieHeader(USER_ID_COOKIE_NAME, { ...options, partitioned: false }));
+  }
   headers3.append(
     "Set-Cookie",
     createCookieHeader(SESSION_COOKIE_NAME, loginResponse.session_token, options)
@@ -981,6 +1036,10 @@ function withSession(loginResponse, responseBody, options = {}) {
 function withRefreshedSession(sessionToken, userId, responseBody, options = {}) {
   const headers3 = new Headers();
   headers3.set("Content-Type", "application/json");
+  if (options.partitioned) {
+    headers3.append("Set-Cookie", createClearCookieHeader(SESSION_COOKIE_NAME, { ...options, partitioned: false }));
+    headers3.append("Set-Cookie", createClearCookieHeader(USER_ID_COOKIE_NAME, { ...options, partitioned: false }));
+  }
   headers3.append(
     "Set-Cookie",
     createCookieHeader(SESSION_COOKIE_NAME, sessionToken, options)
@@ -997,24 +1056,30 @@ function withRefreshedSession(sessionToken, userId, responseBody, options = {}) 
 function clearSession(responseBody, options = {}, status = 200) {
   const headers3 = new Headers();
   headers3.set("Content-Type", "application/json");
-  headers3.append("Set-Cookie", createClearCookieHeader(SESSION_COOKIE_NAME, options));
-  headers3.append("Set-Cookie", createClearCookieHeader(USER_ID_COOKIE_NAME, options));
+  appendClearSessionCookies(headers3, options);
   return new Response(JSON.stringify({ success: status < 300, data: responseBody }), {
     status,
     headers: headers3
   });
 }
-function clearSessionWithError(error, options = {}, status = 401) {
-  const headers3 = new Headers();
-  headers3.set("Content-Type", "application/json");
+function appendClearSessionCookies(headers3, options) {
+  if (options.partitioned) {
+    headers3.append("Set-Cookie", createClearCookieHeader(SESSION_COOKIE_NAME, { ...options, partitioned: false }));
+    headers3.append("Set-Cookie", createClearCookieHeader(USER_ID_COOKIE_NAME, { ...options, partitioned: false }));
+  }
   headers3.append("Set-Cookie", createClearCookieHeader(SESSION_COOKIE_NAME, options));
   headers3.append("Set-Cookie", createClearCookieHeader(USER_ID_COOKIE_NAME, options));
-  return new Response(JSON.stringify({ success: false, error }), {
+}
+function clearSessionWithError(error2, options = {}, status = 401) {
+  const headers3 = new Headers();
+  headers3.set("Content-Type", "application/json");
+  appendClearSessionCookies(headers3, options);
+  return new Response(JSON.stringify({ success: false, error: error2 }), {
     status,
     headers: headers3
   });
 }
-async function getSession() {
+async function getSession(options = {}) {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
   const userIdCookie = cookieStore.get(USER_ID_COOKIE_NAME);
@@ -1026,6 +1091,7 @@ async function getSession() {
       // Note: actual expiry is managed by ScaleMule backend
     };
   }
+  if (options.allowBearer === false) return null;
   const headerStore = await headers();
   return sessionFromAuthHeaders(
     headerStore.get("authorization"),
@@ -1308,10 +1374,10 @@ async function validateCSRFTokenAsync(request, body) {
 function withCSRFProtection(handler) {
   return async (request) => {
     if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method)) {
-      const error = validateCSRFToken(request);
-      if (error) {
+      const error2 = validateCSRFToken(request);
+      if (error2) {
         return NextResponse.json(
-          { error: "CSRF validation failed", message: error },
+          { error: "CSRF validation failed", message: error2 },
           { status: 403 }
         );
       }
@@ -1328,6 +1394,139 @@ async function getCSRFToken() {
   return token;
 }
 
+// src/server/browser-proxy.ts
+function error(code, status) {
+  return Response.json({ success: false, error: { code, message: code === "UNAUTHORIZED" ? "Authentication required" : "Request not permitted" } }, { status, headers: { "Cache-Control": "no-store" } });
+}
+function isSameOriginRequest(request) {
+  const origin = request.headers.get("origin");
+  const site = request.headers.get("sec-fetch-site");
+  if (site) return site === "same-origin" || site === "none";
+  const url = new URL(request.url);
+  const host = request.headers.get("host") || url.host;
+  if (origin) {
+    try {
+      const source = new URL(origin);
+      if (!["http:", "https:"].includes(source.protocol) || source.host !== host) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+var SERVICES = /* @__PURE__ */ new Set(["storage", "photo", "video", "audio", "media", "tts", "social", "chat", "realtime", "money", "billing", "flags", "notifications", "search", "presence", "conference", "gallop", "data", "forms", "preferences", "feedback", "referrals"]);
+var AUTH_ROUTES = /* @__PURE__ */ new Set([
+  "GET me",
+  "GET mfa/status",
+  "GET oauth/providers",
+  "PATCH profile",
+  "POST change-password",
+  "POST change-email",
+  "POST delete-account",
+  "POST export-data",
+  "POST mfa/setup",
+  "POST mfa/verify",
+  "POST mfa/disable",
+  "POST mfa/backup-codes",
+  "POST oauth/start",
+  "POST oauth/callback"
+]);
+var PUBLIC_AUTH_ROUTES = /* @__PURE__ */ new Set(["POST oauth/start", "POST oauth/callback"]);
+var PUBLIC_DATA_ROUTES = /* @__PURE__ */ new Set(["POST flags/evaluate", "POST flags/evaluate/all", "POST flags/evaluate/batch", "GET feedback/widget-config", "POST feedback/submit"]);
+var MAX_BODY_BYTES = 25 * 1024 * 1024;
+async function boundedBody(request) {
+  if (request.method === "GET" || request.method === "HEAD" || !request.body) return void 0;
+  const reader = request.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > MAX_BODY_BYTES) {
+        await reader.cancel();
+        throw new Error("BODY_TOO_LARGE");
+      }
+      chunks.push(part.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+async function browserProxy(request, path, config) {
+  if (!isSameOriginRequest(request)) return error("CSRF_ERROR", 403);
+  const key = config.publishableKey || process.env.NEXT_PUBLIC_SCALEMULE_PUBLISHABLE_KEY;
+  if (!key?.startsWith("sm_pb_")) return error("BROWSER_KEY_NOT_CONFIGURED", 503);
+  if (request.headers.get("x-api-key") !== key) return error("CSRF_ERROR", 403);
+  const authOperation = `${request.method} ${path.slice(2).join("/")}`;
+  const authRoute = path[1] === "auth" && (AUTH_ROUTES.has(authOperation) || request.method === "DELETE" && path[2] === "oauth" && path[3] === "providers" && path.length === 5);
+  if (path[0] !== "v1" || !(SERVICES.has(path[1]) || authRoute) || path.some((part) => !part || part === "." || part === ".." || /[\\/%\u0000-\u001f]/.test(part))) return error("NOT_FOUND", 404);
+  const session = await getSession({ allowBearer: false });
+  if (!session && !(authRoute && PUBLIC_AUTH_ROUTES.has(authOperation)) && !PUBLIC_DATA_ROUTES.has(`${request.method} ${path.slice(1).join("/")}`)) return error("UNAUTHORIZED", 401);
+  const gateway = resolveGatewayUrl({ ...config.client, gatewayUrl: config.browserGatewayUrl || process.env.NEXT_PUBLIC_SCALEMULE_GATEWAY_URL || config.client?.gatewayUrl });
+  const target = new URL(`${gateway.replace(/\/$/, "")}/${path.map(encodeURIComponent).join("/")}`);
+  target.search = new URL(request.url).search;
+  const headers3 = new Headers({ "x-api-key": key });
+  if (session) headers3.set("Authorization", `Bearer ${session.sessionToken}`);
+  for (const name of ["x-anonymous-id", "origin", "content-type", "accept", "user-agent", "range", "if-none-match", "x-idempotency-key", "x-sm-workspace-id"]) {
+    const value = request.headers.get(name);
+    if (value) headers3.set(name, value);
+  }
+  try {
+    const body = await boundedBody(request);
+    const upstream = await fetch(target, { method: request.method, headers: headers3, body, redirect: "error", cache: "no-store", signal: AbortSignal.timeout(6e4) });
+    const outputHeaders = new Headers({ "Cache-Control": "no-store", "Vary": "Cookie" });
+    for (const name of ["content-type", "content-disposition", "content-range", "accept-ranges", "etag", "retry-after", "x-request-id"]) {
+      const value = upstream.headers.get(name);
+      if (value) outputHeaders.set(name, value);
+    }
+    const rotated = upstream.headers.get("x-rotated-session-token");
+    if (rotated && session) {
+      const refreshed = withRefreshedSession(rotated, session.userId, {}, config.cookies);
+      for (const cookie of refreshed.headers.getSetCookie()) outputHeaders.append("Set-Cookie", cookie);
+    }
+    if ([204, 205, 304].includes(upstream.status)) {
+      if (authOperation === "POST delete-account" && upstream.ok) {
+        for (const cookie of clearSession({}, config.cookies).headers.getSetCookie()) outputHeaders.append("Set-Cookie", cookie);
+      }
+      return new Response(null, { status: upstream.status, headers: outputHeaders });
+    }
+    if (authRoute) {
+      const payload = await upstream.json();
+      const data = payload?.data || payload;
+      if (authOperation === "POST delete-account" && upstream.ok && payload.success !== false) {
+        for (const cookie of clearSession({}, config.cookies).headers.getSetCookie()) outputHeaders.append("Set-Cookie", cookie);
+      }
+      const token = data?.session_token;
+      if (typeof token === "string" && data?.user?.id && upstream.ok && payload.success !== false) {
+        const established = withSession({ session_token: token, user: data.user }, {}, config.cookies);
+        for (const cookie of established.headers.getSetCookie()) outputHeaders.append("Set-Cookie", cookie);
+        data.authenticated = true;
+      }
+      if (data && typeof data === "object") {
+        delete data.session_token;
+        delete data.sessionToken;
+        delete data.refresh_token;
+        delete data.access_token;
+      }
+      return Response.json(payload, { status: upstream.status, headers: outputHeaders });
+    }
+    return new Response(upstream.body, { status: upstream.status, headers: outputHeaders });
+  } catch (err) {
+    if (err instanceof Error && err.message === "BODY_TOO_LARGE") return error("BODY_TOO_LARGE", 413);
+    console.error("[ScaleMule] Browser proxy upstream request failed");
+    return error("UPSTREAM_UNAVAILABLE", 502);
+  }
+}
+
 // src/session-errors.ts
 var SESSION_ENDED_CODES = /* @__PURE__ */ new Set([
   "UNAUTHORIZED",
@@ -1339,9 +1538,9 @@ var SESSION_ENDED_CODES = /* @__PURE__ */ new Set([
   "TOKEN_EXPIRED",
   "TOKEN_INVALID"
 ]);
-function isSessionEndedError(error) {
-  if (!error || typeof error !== "object") return false;
-  const { status, code } = error;
+function isSessionEndedError(error2) {
+  if (!error2 || typeof error2 !== "object") return false;
+  const { status, code } = error2;
   if (status === 401) return true;
   return typeof code === "string" && SESSION_ENDED_CODES.has(code);
 }
@@ -1362,6 +1561,12 @@ function successResponse(data, status = 200) {
 function createAuthRoutes(config = {}) {
   const sm = createServerClient(config.client);
   const cookieOptions = config.cookies || {};
+  const sessionData = (user, token) => ({
+    user,
+    userId: user.id,
+    authenticated: true,
+    ...config.sessionMode === "bearer" ? { sessionToken: token } : {}
+  });
   const POST = async (request, context) => {
     if (config.csrf) {
       const csrfError = validateCSRFToken(request);
@@ -1373,7 +1578,7 @@ function createAuthRoutes(config = {}) {
     const path = params?.scalemule?.join("/") || "";
     try {
       const body = await request.json().catch(() => ({}));
-      const clientContext = extractClientContext(request);
+      const clientContext = extractClientContext(request, config.clientContext);
       switch (path) {
         // ==================== Register ====================
         case "register": {
@@ -1399,9 +1604,9 @@ function createAuthRoutes(config = {}) {
           try {
             loginData = await sm.auth.login({ email, password }, { clientContext });
           } catch {
-            return successResponse({ user: registeredUser, message: "Registration successful" }, 201);
+            return successResponse({ user: registeredUser, authenticated: false, message: "Registration successful" }, 201);
           }
-          const registerResponse = withSession(loginData, { user: registeredUser, sessionToken: loginData.session_token, userId: registeredUser.id }, cookieOptions);
+          const registerResponse = withSession(loginData, sessionData(registeredUser, loginData.session_token), cookieOptions);
           if (config.enableAccountSwitcher) {
             const existingKnown = getKnownAccountsCookieRaw(request);
             appendKnownAccountCookie(
@@ -1421,21 +1626,52 @@ function createAuthRoutes(config = {}) {
           }
           return registerResponse;
         }
+        case "handoff/exchange": {
+          if (!config.handoffAudience) return errorResponse("HANDOFF_DISABLED", "Session transfer is not configured", 404);
+          if (typeof body.code !== "string" || !body.code || body.code.length > 256) return errorResponse("INVALID_HANDOFF", "Invalid sign-in transfer", 400);
+          const result = await sm.auth.exchangeSessionHandoff(body.code, config.handoffAudience);
+          return withRefreshedSession(result.session_token, result.user_id, { authenticated: true, userId: result.user_id }, cookieOptions);
+        }
+        case "mfa/send-code": {
+          const { pending_token, method } = body;
+          if (!pending_token || !["email", "sms"].includes(method)) return errorResponse("VALIDATION_ERROR", "MFA token and method required", 400);
+          return successResponse(await sm.auth.sendMfaCode(pending_token, method, { clientContext }));
+        }
+        case "mfa/verify": {
+          const { pending_token, code, method } = body;
+          if (!pending_token || !code || !["totp", "email", "sms", "backup_code"].includes(method)) return errorResponse("VALIDATION_ERROR", "MFA token, code, and valid method required", 400);
+          const result = await sm.auth.completeMfa(pending_token, code, method, { clientContext });
+          if (!result.session_token || !result.user) return errorResponse("MFA_FAILED", "Unable to complete sign-in", 400);
+          await config.onLogin?.({ id: result.user.id, email: result.user.email });
+          const response = withSession(result, sessionData(result.user, result.session_token), cookieOptions);
+          if (config.enableAccountSwitcher) {
+            appendKnownAccountCookie(response.headers, {
+              userId: result.user.id,
+              email: result.user.email,
+              fullName: result.user.full_name ?? void 0,
+              avatarUrl: result.user.avatar_url ?? void 0,
+              provider: "email",
+              lastActiveAt: (/* @__PURE__ */ new Date()).toISOString()
+            }, getKnownAccountsCookieRaw(request), cookieOptions, config.accountSwitcherPrivacy);
+          }
+          return response;
+        }
         // ==================== Login ====================
         case "login": {
-          const { email, password, remember_me } = body;
+          const { email, password, remember_me, device_fingerprint, challenge_token, challenge_code } = body;
           if (!email || !password) {
             return errorResponse("VALIDATION_ERROR", "Email and password required", 400);
           }
           let loginData;
           try {
-            loginData = await sm.auth.login({ email, password, remember_me }, { clientContext });
+            loginData = await sm.auth.login({ email, password, remember_me, device_fingerprint, challenge_token, challenge_code }, { clientContext });
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null;
             const errorCode = apiErr?.code || "LOGIN_FAILED";
-            let status = 400;
+            let status = ["LOGIN_CHALLENGE_REQUIRED", "MFA_REQUIRED"].includes(errorCode) ? 403 : 400;
+            if (errorCode === "CHALLENGE_RATE_LIMITED") status = 429;
             if (errorCode === "INVALID_CREDENTIALS" || errorCode === "UNAUTHORIZED") status = 401;
-            if (["EMAIL_NOT_VERIFIED", "PHONE_NOT_VERIFIED", "ACCOUNT_LOCKED", "ACCOUNT_DISABLED", "MFA_REQUIRED"].includes(errorCode)) {
+            if (["EMAIL_NOT_VERIFIED", "PHONE_NOT_VERIFIED", "ACCOUNT_LOCKED", "ACCOUNT_DISABLED"].includes(errorCode)) {
               status = 403;
             }
             return errorResponse(
@@ -1450,7 +1686,7 @@ function createAuthRoutes(config = {}) {
               email: loginData.user.email
             });
           }
-          const loginResponse = withSession(loginData, { user: loginData.user, sessionToken: loginData.session_token, userId: loginData.user.id }, cookieOptions);
+          const loginResponse = withSession(loginData, sessionData(loginData.user, loginData.session_token), cookieOptions);
           if (config.enableAccountSwitcher) {
             const existingKnown = getKnownAccountsCookieRaw(request);
             appendKnownAccountCookie(
@@ -1472,7 +1708,7 @@ function createAuthRoutes(config = {}) {
         }
         // ==================== Logout ====================
         case "logout": {
-          const session = await getSession();
+          const session = await getSession({ allowBearer: config.sessionMode === "bearer" });
           let rotated = null;
           if (session) {
             try {
@@ -1514,7 +1750,7 @@ function createAuthRoutes(config = {}) {
               400
             );
           }
-          return successResponse({ message: "Password reset successful" });
+          return clearSession({ message: "Password reset successful" }, cookieOptions);
         }
         // ==================== Verify Email ====================
         case "verify-email": {
@@ -1536,7 +1772,7 @@ function createAuthRoutes(config = {}) {
           if (verifyData?.session_token && verifyData?.user) {
             return withSession(
               { session_token: verifyData.session_token, user: verifyData.user },
-              { message: "Email verified successfully", verified: true, user: verifyData.user, sessionToken: verifyData.session_token, userId: verifyData.user.id },
+              { message: "Email verified successfully", verified: true, ...sessionData(verifyData.user, verifyData.session_token) },
               cookieOptions
             );
           }
@@ -1546,7 +1782,7 @@ function createAuthRoutes(config = {}) {
         // Supports both authenticated (session-based) and unauthenticated (email-based) resend
         case "resend-verification": {
           const { email } = body;
-          const session = await getSession();
+          const session = await getSession({ allowBearer: config.sessionMode === "bearer" });
           let rotated = null;
           if (email) {
             try {
@@ -1590,7 +1826,7 @@ function createAuthRoutes(config = {}) {
         }
         // ==================== Refresh Session ====================
         case "refresh": {
-          const session = await getSession();
+          const session = await getSession({ allowBearer: config.sessionMode === "bearer" });
           if (!session) {
             return errorResponse("UNAUTHORIZED", "Authentication required", 401);
           }
@@ -1614,13 +1850,13 @@ function createAuthRoutes(config = {}) {
           return withRefreshedSession(
             refreshData.session_token,
             session.userId,
-            { message: "Session refreshed" },
+            { message: "Session refreshed", ...config.sessionMode === "bearer" ? { sessionToken: refreshData.session_token, userId: session.userId } : {} },
             cookieOptions
           );
         }
         // ==================== Change Password ====================
         case "change-password": {
-          const session = await getSession();
+          const session = await getSession({ allowBearer: config.sessionMode === "bearer" });
           if (!session) {
             return errorResponse("UNAUTHORIZED", "Authentication required", 401);
           }
@@ -1665,7 +1901,7 @@ function createAuthRoutes(config = {}) {
           if (!config.enableAccountSwitcher) {
             return errorResponse("NOT_FOUND", "Account switcher not enabled", 404);
           }
-          const session = await getSession();
+          const session = await getSession({ allowBearer: config.sessionMode === "bearer" });
           if (session) {
             try {
               await sm.auth.logout(session.sessionToken);
@@ -1715,6 +1951,13 @@ function createAuthRoutes(config = {}) {
           return errorResponse("NOT_FOUND", `Unknown endpoint: ${path}`, 404);
       }
     } catch (err) {
+      if (path === "handoff/exchange" && err instanceof ScaleMuleApiError) {
+        return errorResponse(err.code, err.message, err.code === "HANDOFF_UNAVAILABLE" ? 503 : 401);
+      }
+      if (path.startsWith("mfa/") && err instanceof ScaleMuleApiError) {
+        const status = ["CHALLENGE_RATE_LIMITED", "MFA_RATE_LIMITED", "MFA_MAX_ATTEMPTS"].includes(err.code) ? 429 : 400;
+        return errorResponse(err.code, err.message, status);
+      }
       console.error("[ScaleMule Auth] Error:", err);
       return errorResponse("SERVER_ERROR", "Internal server error", 500);
     }
@@ -1731,7 +1974,7 @@ function createAuthRoutes(config = {}) {
             if (normCookie) resp.headers.append("Set-Cookie", normCookie);
             return resp;
           };
-          const session = await getSession();
+          const session = await getSession({ allowBearer: config.sessionMode === "bearer" });
           if (!session) {
             return withNorm(errorResponse("UNAUTHORIZED", "Authentication required", 401));
           }
@@ -1753,15 +1996,15 @@ function createAuthRoutes(config = {}) {
             return withNorm(withRefreshedSession(
               rotated,
               session.userId,
-              { user: userData, sessionToken: rotated, userId: session.userId },
+              sessionData(userData, rotated),
               cookieOptions
             ));
           }
-          return withNorm(successResponse({ user: userData, sessionToken: session.sessionToken, userId: session.userId }));
+          return withNorm(successResponse(sessionData(userData, session.sessionToken)));
         }
         // ==================== Get Session Status ====================
         case "session": {
-          const session = await getSession();
+          const session = await getSession({ allowBearer: config.sessionMode === "bearer" });
           return successResponse({
             authenticated: !!session,
             userId: session?.userId || null
@@ -1791,7 +2034,7 @@ function createAuthRoutes(config = {}) {
         // ==================== Delete Account ====================
         case "me":
         case "account": {
-          const session = await getSession();
+          const session = await getSession({ allowBearer: config.sessionMode === "bearer" });
           if (!session) {
             return errorResponse("UNAUTHORIZED", "Authentication required", 401);
           }
@@ -1828,7 +2071,7 @@ function createAuthRoutes(config = {}) {
         // ==================== Update Profile ====================
         case "me":
         case "profile": {
-          const session = await getSession();
+          const session = await getSession({ allowBearer: config.sessionMode === "bearer" });
           if (!session) {
             return errorResponse("UNAUTHORIZED", "Authentication required", 401);
           }
@@ -1868,7 +2111,22 @@ function createAuthRoutes(config = {}) {
       return errorResponse("SERVER_ERROR", "Internal server error", 500);
     }
   };
-  return { GET, POST, DELETE, PATCH };
+  const wrap = (handler) => async (request, context) => {
+    const params = await context.params;
+    const path = params.scalemule || [];
+    let response;
+    if (path[0] === "client") {
+      response = await browserProxy(request, path.slice(1), config);
+    } else if (!["GET", "HEAD"].includes(request.method) && (!isSameOriginRequest(request) || !request.headers.get("content-type")?.toLowerCase().startsWith("application/json"))) {
+      response = errorResponse("CSRF_ERROR", "Same-origin JSON request required", 403);
+    } else {
+      response = await handler(request, context);
+    }
+    response.headers.set("Cache-Control", "no-store");
+    response.headers.set("Vary", "Cookie");
+    return response;
+  };
+  return { GET: wrap(GET), POST: wrap(POST), DELETE: wrap(DELETE), PATCH: wrap(PATCH), PUT: wrap(async () => errorResponse("NOT_FOUND", "Unknown endpoint", 404)) };
 }
 function getPrimaryTrackingContextSource(body) {
   if (Array.isArray(body.events)) {
@@ -2272,10 +2530,10 @@ function createLedveryRoutes(config) {
     const code = url.searchParams.get("code");
     const callbackState = url.searchParams.get("state");
     if (!code) {
-      const error = url.searchParams.get("error");
+      const error2 = url.searchParams.get("error");
       const errorDesc = url.searchParams.get("error_description");
       return new Response(
-        JSON.stringify({ error: error || "missing_code", message: errorDesc || "No authorization code in callback" }),
+        JSON.stringify({ error: error2 || "missing_code", message: errorDesc || "No authorization code in callback" }),
         { status: 403, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -2699,27 +2957,27 @@ function apiHandler(handler, options) {
         return Response.json({ success: true, data: result }, { status: 200 });
       }
       return new Response(null, { status: 204 });
-    } catch (error) {
-      if (error instanceof ScaleMuleError) {
+    } catch (error2) {
+      if (error2 instanceof ScaleMuleError) {
         if (options?.onError) {
-          const custom = options.onError(error);
+          const custom = options.onError(error2);
           if (custom) return custom;
         }
-        const safeMessage = error.status >= 500 ? "An unexpected error occurred" : error.message;
-        if (error.status >= 500) {
-          console.error("Internal API error:", error.message);
+        const safeMessage = error2.status >= 500 ? "An unexpected error occurred" : error2.message;
+        if (error2.status >= 500) {
+          console.error("Internal API error:", error2.message);
         }
         return Response.json(
           {
             success: false,
-            error: { code: error.code, message: safeMessage },
-            ...error.requestId ? { meta: { request_id: error.requestId } } : {}
+            error: { code: error2.code, message: safeMessage },
+            ...error2.requestId ? { meta: { request_id: error2.requestId } } : {}
           },
-          { status: error.status }
+          { status: error2.status }
         );
       }
-      if (error instanceof Response) return error;
-      console.error("Unhandled API error:", error);
+      if (error2 instanceof Response) return error2;
+      console.error("Unhandled API error:", error2);
       return Response.json(
         { success: false, error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" } },
         { status: 500 }
@@ -2800,8 +3058,8 @@ function createWebhookRoutes(config = {}) {
         status: 200,
         headers: { "Content-Type": "application/json" }
       });
-    } catch (error) {
-      console.error("Webhook handler error:", error);
+    } catch (error2) {
+      console.error("Webhook handler error:", error2);
       return new Response(JSON.stringify({ error: "Handler failed" }), {
         status: 500,
         headers: { "Content-Type": "application/json" }
@@ -2833,7 +3091,7 @@ function createWebhookHandler(config = {}) {
         status: 200,
         headers: { "Content-Type": "application/json" }
       });
-    } catch (error) {
+    } catch (error2) {
       return new Response(JSON.stringify({ error: "Webhook processing failed" }), {
         status: 500,
         headers: { "Content-Type": "application/json" }
@@ -2979,8 +3237,8 @@ function createAuthMiddleware(config = {}) {
       try {
         const sm = createServerClient();
         await sm.auth.me(session.sessionToken);
-      } catch (error) {
-        console.error("[ScaleMule Middleware] Session validation failed, blocking request:", error);
+      } catch (error2) {
+        console.error("[ScaleMule Middleware] Session validation failed, blocking request:", error2);
         const response = NextResponse.redirect(new URL(redirectTo, request.url));
         response.cookies.delete(SESSION_COOKIE_NAME);
         response.cookies.delete(USER_ID_COOKIE_NAME);
@@ -3077,11 +3335,11 @@ async function getAppSecret(key) {
       };
     }
     return result?.value;
-  } catch (error) {
-    if (error instanceof ScaleMuleApiError && error.code === "SECRET_NOT_FOUND") {
+  } catch (error2) {
+    if (error2 instanceof ScaleMuleApiError && error2.code === "SECRET_NOT_FOUND") {
       return void 0;
     }
-    console.error(`[ScaleMule Secrets] Error fetching ${key}:`, error);
+    console.error(`[ScaleMule Secrets] Error fetching ${key}:`, error2);
     return void 0;
   }
 }
@@ -3138,11 +3396,11 @@ async function getBundle(key, resolve = true) {
       };
     }
     return result?.data;
-  } catch (error) {
-    if (error instanceof ScaleMuleApiError && error.code === "BUNDLE_NOT_FOUND") {
+  } catch (error2) {
+    if (error2 instanceof ScaleMuleApiError && error2.code === "BUNDLE_NOT_FOUND") {
       return void 0;
     }
-    console.error(`[ScaleMule Bundles] Error fetching ${key}:`, error);
+    console.error(`[ScaleMule Bundles] Error fetching ${key}:`, error2);
     return void 0;
   }
 }

@@ -80,6 +80,20 @@ describe('refresh route', () => {
     expect(cookies.some((c) => c.startsWith(`${USER_ID_COOKIE_NAME}=;`) && c.includes('Max-Age=0'))).toBe(true)
   })
 
+  it('clears partitioned and legacy cookies when a partitioned session is rejected', async () => {
+    mockRefresh.mockRejectedValue(
+      new ScaleMuleApiError({ code: 'SESSION_EXPIRED', message: 'Session expired' }, 401)
+    )
+
+    const response = await createAuthRoutes({ cookies: { partitioned: true } }).POST(refreshRequest(), context)
+    const cookies = response.headers.getSetCookie()
+
+    expect(response.status).toBe(401)
+    expect(cookies).toHaveLength(4)
+    expect(cookies.every((c) => c.includes('Max-Age=0'))).toBe(true)
+    expect(cookies.filter((c) => c.includes('Partitioned'))).toHaveLength(2)
+  })
+
   it.each([
     ['a malformed request', new ScaleMuleApiError({ code: 'BAD_REQUEST', message: 'bad body' }, 400), 400],
     ['a rate limit', new ScaleMuleApiError({ code: 'RATE_LIMITED', message: 'slow down' }, 429), 429],

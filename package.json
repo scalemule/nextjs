@@ -1,6 +1,6 @@
 {
   "name": "@scalemule/nextjs",
-  "version": "0.1.46",
+  "version": "0.1.59",
   "description": "ScaleMule SDK for Next.js applications - authentication, storage, and user management",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -46,11 +46,13 @@
       "import": "./dist/audio.mjs",
       "require": "./dist/audio.js"
     },
-    "./audio.css": "./dist/audio.css"
+    "./audio.css": "./dist/audio.css",
+    "./listening-hub.js": "./dist/listening-hub.global.js"
   },
   "files": [
     "dist",
     "README.md",
+    "docs/network-audio.md",
     "LICENSE"
   ],
   "scripts": {
@@ -67,7 +69,7 @@
   "dependencies": {
     "@scalemule/ledvery": "^0.0.1",
     "@scalemule/money": "^0.0.1",
-    "@scalemule/sdk": "^0.0.64"
+    "@scalemule/sdk": "^0.0.69"
   },
   "peerDependencies": {
     "next": ">=14.0.0",

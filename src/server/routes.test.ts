@@ -13,21 +13,30 @@ import { SESSION_COOKIE_NAME, USER_ID_COOKIE_NAME } from './cookies'
 
 // ─── Mocks ───────────────────────────────────────────────────────
 
+const mockRefresh = vi.fn()
+const mockMe = vi.fn()
 const mockVerifyEmail = vi.fn()
 const mockLogin = vi.fn()
 const mockRegister = vi.fn()
+const mockSendMfaCode = vi.fn()
+const mockCompleteMfa = vi.fn()
+const mockResetPassword = vi.fn()
+const mockExchangeHandoff = vi.fn()
 
 vi.mock('./client', () => ({
   createServerClient: () => ({
     auth: {
+      exchangeSessionHandoff: mockExchangeHandoff,
       register: mockRegister,
+      sendMfaCode: mockSendMfaCode,
+      completeMfa: mockCompleteMfa,
       login: mockLogin,
       verifyEmail: mockVerifyEmail,
       logout: vi.fn(),
-      me: vi.fn(),
-      refresh: vi.fn(),
+      me: mockMe,
+      refresh: mockRefresh,
       forgotPassword: vi.fn(),
-      resetPassword: vi.fn(),
+      resetPassword: mockResetPassword,
       resendVerification: vi.fn(),
     },
     user: {
@@ -39,6 +48,7 @@ vi.mock('./client', () => ({
 }))
 
 vi.mock('next/headers', () => ({
+  headers: vi.fn().mockResolvedValue(new Headers()),
   cookies: vi.fn().mockResolvedValue({
     get: vi.fn().mockReturnValue(null),
   }),
@@ -233,4 +243,177 @@ describe('register route cookie behavior', () => {
     const userIdCookie = cookies.find(c => c.startsWith(USER_ID_COOKIE_NAME))
     expect(userIdCookie).toContain('u-new')
   })
+})
+
+describe('adaptive login route', () => {
+  it('forwards proof and never sets cookies for a challenge', async () => {
+    mockLogin.mockReset()
+    mockLogin.mockRejectedValue(new ScaleMuleApiError({ code: 'LOGIN_CHALLENGE_REQUIRED', message: JSON.stringify({ challenge_token: 'proof' }) }))
+    const response = await createAuthRoutes().POST(createRequest('login', { email: 'reader@example.com', password: 'correct', challenge_token: 'old', challenge_code: '123456' }), contextFor('login'))
+    expect(response.status).toBe(403)
+    expect(response.headers.get('set-cookie')).toBeNull()
+    expect((await response.json()).error.code).toBe('LOGIN_CHALLENGE_REQUIRED')
+    expect(mockLogin.mock.calls[0][0]).toMatchObject({ challenge_token: 'old', challenge_code: '123456' })
+  })
+})
+
+
+describe('MFA proxy routes', () => {
+  it('preserves incorrect-code and resend-limit errors without setting cookies', async () => {
+    for (const [path, mock, code, status] of [
+      ['mfa/verify', mockCompleteMfa, 'INVALID_MFA_CODE', 400],
+      ['mfa/send-code', mockSendMfaCode, 'CHALLENGE_RATE_LIMITED', 429],
+    ] as const) {
+      mock.mockRejectedValueOnce(new ScaleMuleApiError({ code, message: 'Try again' }))
+      const response = await createAuthRoutes().POST(createRequest(path, { pending_token: 'pending', method: 'email', code: '123456' }), contextFor(path))
+      expect(response.status).toBe(status)
+      expect((await response.json()).error.code).toBe(code)
+      expect(response.headers.get('set-cookie')).toBeNull()
+    }
+  })
+  it('completes the session and account switcher without returning extra backend tokens', async () => {
+    mockCompleteMfa.mockResolvedValueOnce({ user: { id: 'user-mfa', email: 'test@example.com' }, session_token: 'session', refresh_token: 'private-refresh' })
+    const response = await createAuthRoutes({ enableAccountSwitcher: true }).POST(createRequest('mfa/verify', { pending_token: 'pending', method: 'totp', code: '123456' }), contextFor('mfa/verify'))
+    expect(response.status).toBe(200)
+    expect(response.headers.getSetCookie().join(';')).toContain('HttpOnly')
+    const data = (await response.json()).data
+    expect(data).toMatchObject({ authenticated: true, userId: 'user-mfa' })
+    expect(data).not.toHaveProperty('sessionToken')
+    expect(data).not.toHaveProperty('session_token')
+    expect(data).not.toHaveProperty('refresh_token')
+    expect(response.headers.getSetCookie().length).toBeGreaterThan(2)
+  })
+  it('rejects missing or invalid MFA methods before making upstream requests', async () => {
+    mockCompleteMfa.mockClear()
+    for (const method of [undefined, 'unknown']) {
+      const response = await createAuthRoutes().POST(createRequest('mfa/verify', { pending_token: 'pending', code: '123456', method }), contextFor('mfa/verify'))
+      expect(response.status).toBe(400)
+    }
+    expect(mockCompleteMfa).not.toHaveBeenCalled()
+  })
+})
+
+it('clears both old cookies only after successful password recovery', async () => {
+  const request = () => { const req = createRequest('reset-password', { token: 'proof', new_password: 'new-password' }); req.headers.set('cookie', 'sm_session=old; sm_user_id=user'); return req }
+  mockResetPassword.mockResolvedValueOnce({})
+  const response = await createAuthRoutes().POST(request(), contextFor('reset-password'))
+  expect(response.status).toBe(200)
+  for (const name of ['sm_session', 'sm_user_id']) expect(response.headers.getSetCookie().find(c => c.startsWith(name + '='))).toContain('Max-Age=0')
+  expect((await response.json()).data.message).toBe('Password reset successful')
+  mockResetPassword.mockRejectedValueOnce(new ScaleMuleApiError({ code: 'INVALID_TOKEN', message: 'Expired' }))
+  const failed = await createAuthRoutes().POST(request(), contextFor('reset-password'))
+  expect(failed.status).toBe(400)
+  expect(failed.headers.get('set-cookie')).toBeNull()
+})
+
+
+describe('HTTP-only session boundary', () => {
+  it.each(['login', 'register', 'mfa/verify', 'verify-email'])('never exposes session tokens in %s JSON', async (path) => {
+    const user = { id: 'private-user', email: 'person@example.invalid' }
+    const result = { user, session_token: 'private-session-value', refresh_token: 'private-refresh-value' }
+    mockLogin.mockResolvedValue(result)
+    mockRegister.mockResolvedValue(user)
+    mockCompleteMfa.mockResolvedValue(result)
+    mockVerifyEmail.mockResolvedValue(result)
+    const response = await createAuthRoutes().POST(createRequest(path, { email: user.email, password: 'test password', pending_token: 'pending', code: '123456', method: 'totp', token: 'email-proof' }), contextFor(path))
+    const body = await response.text()
+    expect(response.status).toBe(200)
+    expect(body).not.toContain('private-session-value')
+    expect(body).not.toContain('private-refresh-value')
+    expect(body).not.toContain('sessionToken')
+    expect(response.headers.getSetCookie().join(';')).toContain('sm_session=private-session-value')
+    expect(response.headers.getSetCookie().join(';')).toContain('HttpOnly')
+    expect(response.headers.get('cache-control')).toBe('no-store')
+  })
+  it('keeps both existing and rotated /me tokens out of JSON', async () => {
+    const { cookies } = await import('next/headers')
+    vi.mocked(cookies).mockResolvedValue({ get: (key: string) => ({ value: key === 'sm_session' ? 'existing-secret' : 'user' }) } as never)
+    for (const rotated of [false, true]) {
+      mockMe.mockImplementation(async (_token, options) => {
+        if (rotated) options.onTokenRotated('rotated-secret')
+        return { id: 'user', email: 'person@example.invalid' }
+      })
+      const response = await createAuthRoutes().GET(new Request('https://example.com/api/auth/me'), contextFor('me'))
+      const body = await response.text()
+      expect(body).not.toContain('existing-secret')
+      expect(body).not.toContain('rotated-secret')
+      expect(body).not.toContain('sessionToken')
+      if (rotated) expect(response.headers.getSetCookie().join(';')).toContain('sm_session=rotated-secret')
+    }
+    vi.mocked(cookies).mockResolvedValue({ get: () => null } as never)
+  })
+  it('rejects cross-origin auth and HTML form submissions', async () => {
+    for (const headers of [{ 'Content-Type': 'application/json', origin: 'https://attacker.example' }, { 'Content-Type': 'application/x-www-form-urlencoded' }] as Record<string, string>[]) {
+      const response = await createAuthRoutes().POST(new Request('https://example.com/api/auth/logout', { method: 'POST', headers }), contextFor('logout'))
+      expect(response.status).toBe(403)
+    }
+  })
+})
+
+
+it('exchanges an iframe handoff into a partitioned cookie without disclosing the token', async () => {
+  mockExchangeHandoff.mockResolvedValue({ session_token: 'handoff-session-secret', user_id: 'frame-user' })
+  const response = await createAuthRoutes({ handoffAudience: 'https://app.example.com', cookies: { partitioned: true, sameSite: 'none', secure: true } }).POST(createRequest('handoff/exchange', { code: 'single-use-code', audience: 'https://attacker.invalid' }), contextFor('handoff/exchange'))
+  expect(mockExchangeHandoff).toHaveBeenCalledWith('single-use-code', 'https://app.example.com')
+  expect(await response.json()).toEqual({ success: true, data: { authenticated: true, userId: 'frame-user' } })
+  const cookies = response.headers.getSetCookie().join(';')
+  expect(cookies).toContain('sm_session=handoff-session-secret')
+  expect(cookies).toContain('HttpOnly')
+  expect(cookies).toContain('Secure')
+  expect(cookies).toContain('Partitioned')
+})
+
+it('exports PUT from the preconfigured one-line auth entry point', async () => {
+  const entry = await import('./auth')
+  expect(typeof entry.PUT).toBe('function')
+})
+
+it('uses the same partitioned policy after handoff for rotation and logout', async () => {
+  const { cookies } = await import('next/headers')
+  vi.mocked(cookies).mockResolvedValue({ get: (key: string) => ({ value: key === 'sm_session' ? 'existing-secret' : 'user' }) } as never)
+  mockMe.mockImplementation(async (_token, options) => {
+    options.onTokenRotated('rotated-secret')
+    return { id: 'user' }
+  })
+  const routes = createAuthRoutes({ handoffAudience: 'https://app.example.com', cookies: { partitioned: true, sameSite: 'none', secure: true } })
+  const rotated = await routes.GET(new Request('https://example.com/api/auth/me'), contextFor('me'))
+  expect(rotated.headers.getSetCookie().filter(c => c.includes('rotated-secret')).every(c => c.includes('Partitioned'))).toBe(true)
+  const loggedOut = await routes.POST(createRequest('logout', {}), contextFor('logout'))
+  expect(loggedOut.headers.getSetCookie().filter(c => c.includes('Partitioned'))).toHaveLength(2)
+  expect(loggedOut.headers.getSetCookie().every(c => c.includes('Max-Age=0'))).toBe(true)
+  vi.mocked(cookies).mockResolvedValue({ get: () => null } as never)
+})
+
+it('protected cookie auth routes ignore bearer headers unless compatibility is explicit', async () => {
+  const { headers, cookies } = await import('next/headers')
+  vi.mocked(cookies).mockResolvedValue({ get: () => null } as never)
+  vi.mocked(headers).mockResolvedValue(new Headers({ authorization: 'Bearer caller-token', 'x-sm-user-id': 'caller-user' }) as never)
+  mockMe.mockReset().mockResolvedValue({ id: 'caller-user' })
+  const response = await createAuthRoutes().GET(new Request('https://example.com/api/auth/me'), contextFor('me'))
+  expect(response.status).toBe(401)
+  expect(mockMe).not.toHaveBeenCalled()
+  const compatible = await createAuthRoutes({ sessionMode: 'bearer' }).GET(new Request('https://example.com/api/auth/me'), contextFor('me'))
+  expect(compatible.status).toBe(200)
+  expect(mockMe).toHaveBeenCalledWith('caller-token', expect.any(Object))
+  vi.mocked(headers).mockResolvedValue(new Headers() as never)
+})
+
+
+it.each(['cookie', 'bearer'] as const)('refresh exposes replacement credentials only in explicit bearer mode: %s', async (sessionMode) => {
+  const { cookies } = await import('next/headers')
+  vi.mocked(cookies).mockResolvedValue({ get: (key: string) => ({ value: key === 'sm_session' ? 'old-secret' : 'user' }) } as never)
+  mockRefresh.mockResolvedValueOnce({ session_token: 'new-secret' })
+  const response = await createAuthRoutes({ sessionMode }).POST(createRequest('refresh', {}), contextFor('refresh'))
+  expect(response.status).toBe(200)
+  const data = (await response.json()).data
+  expect(data.sessionToken).toBe(sessionMode === 'bearer' ? 'new-secret' : undefined)
+  expect(response.headers.getSetCookie().join(';')).toContain('sm_session=new-secret')
+  // The server client reports a rejected session as a 401 ScaleMuleApiError;
+  // only that clears the session (transient failures keep it).
+  mockRefresh.mockRejectedValueOnce(new ScaleMuleApiError({ code: 'SESSION_EXPIRED', message: 'Expired' }, 401))
+  const failed = await createAuthRoutes({ sessionMode }).POST(createRequest('refresh', {}), contextFor('refresh'))
+  expect(failed.status).toBe(401)
+  expect((await failed.json()).success).toBe(false)
+  expect(failed.headers.getSetCookie().every(c => c.includes('Max-Age=0'))).toBe(true)
+  vi.mocked(cookies).mockResolvedValue({ get: () => null } as never)
 })

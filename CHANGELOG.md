@@ -1,10 +1,32 @@
 # Changelog
 
-## 0.1.46
+## 0.1.59
 
 - Fix proxy-mode session refresh signing users out. The server client's `auth.refresh` now sends `{ session_token }` in the request body, as the auth service requires, so explicit refreshes and the automatic refresh after a 401 no longer fail.
-- A failed refresh now signs the user out only when the backend has rejected the session (a 401 or an invalid/expired/revoked session code). The `/api/auth/refresh` route returns `401 { success: false, error }` and clears the cookies in that case; other failures (malformed request, rate limit, outage, timeout) return an error and leave the session intact, instead of the previous `200 { success: true }` with cleared cookies. `useAuth().refreshSession()` applies the same rule in proxy and direct mode.
+- A failed refresh now signs the user out only when the backend has rejected the session (a 401 or an invalid/expired/revoked session code). The `/api/auth/refresh` route returns `401 { success: false, error }` and clears the cookies in that case; other failures (malformed request, rate limit, outage, timeout) return an error and leave the session intact, instead of clearing the cookies on every failure. `useAuth().refreshSession()` applies the same rule in proxy and direct mode.
 - Server-client errors now carry the HTTP status (`ScaleMuleApiError.status`).
+
+## 0.1.52
+
+- Preserve manual proxy MFA session completion and keep code entry available during resend rate limits.
+
+- Strip authentication secrets from automatic analytics URLs, landing pages, and forwarded referrers while preserving advertising attribution parameters.
+
+## 0.1.51
+
+- Complete adaptive email challenges and enrolled MFA in the shared provider, including verification, retry, resend, cancellation, and recovery links. HTTP 202 challenges never create session cookies or enter error telemetry.
+- Clear revoked cookies and client state after password recovery; remove the spent reset token from the URL.
+- Apps still configure their own public auth URL and verified sender domain. Enforced MFA enrollment and third-party identity-provider recovery remain separate flows.
+
+## 0.1.50
+
+- Preserve the listening queue when a slow network-player window connects after the initial connection notice. The reader keeps playing while waiting and transfers its current queue and position once the host is ready.
+
+## 0.1.49
+
+- Add `NetworkAudioProvider`, `NetworkAudioPlayer`, `ArticleAudioControls` and a headless controller to the audio entry. A layout-owned audio element keeps playing across article navigation, with a bounded queue, playback controls, an expandable advertisement slot and visible-article highlighting.
+- Add an opt-in network player window with exact-origin messaging so the original reader tab can navigate between participating publications while audio stays in the open player. Popup/autoplay restrictions show actionable notices; remote closure restores paused progress.
+- Include integration instructions for publication-scoped media resolution, the dedicated player route and optional session checkpoints. Publishing the SDK and adopting it in each site are separate release steps. Account playlists, unrelated-tab discovery, podcast feeds and audio ad insertion remain outside this change.
 
 ## 0.1.42
 

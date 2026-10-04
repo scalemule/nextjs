@@ -17,7 +17,7 @@
 import { type NextRequest } from 'next/server'
 import { ScaleMuleApiError, type ClientContext } from '../types'
 import { createServerClient, type ServerConfig } from './client'
-import { extractClientContext, buildFlagContext } from './context'
+import { extractClientContext, buildFlagContext, type ClientContextOptions } from './context'
 import {
   withSession,
   withRefreshedSession,
@@ -34,6 +34,7 @@ import {
   type SessionCookieOptions,
 } from './cookies'
 import { validateCSRFToken } from './csrf'
+import { browserProxy, isSameOriginRequest } from './browser-proxy'
 import { isSessionEndedError } from '../session-errors'
 
 // ============================================================================
@@ -41,6 +42,16 @@ import { isSessionEndedError } from '../session-errors'
 // ============================================================================
 
 export interface AuthRoutesConfig {
+  /** Fixed server-controlled audience used for OAuth-to-iframe session transfer. */
+  handoffAudience?: string
+  /** Network boundary used to attest the browser IP on server-side auth calls. */
+  clientContext?: ClientContextOptions
+  /** Publishable key for the cookie-authenticated browser data proxy. */
+  publishableKey?: string
+  /** Public gateway used by the browser SDK, including WebSocket tickets. */
+  browserGatewayUrl?: string
+  /** Explicit compatibility escape hatch. Cookie mode never returns session tokens. */
+  sessionMode?: 'cookie' | 'bearer'
   /** Server client config (optional if using env vars) */
   client?: Partial<ServerConfig>
   /** Cookie options */
@@ -125,9 +136,14 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
   POST: RouteHandler
   DELETE: RouteHandler
   PATCH: RouteHandler
+  PUT: RouteHandler
 } {
   const sm = createServerClient(config.client)
   const cookieOptions = config.cookies || {}
+  const sessionData = (user: { id: string }, token: string) => ({
+    user, userId: user.id, authenticated: true,
+    ...(config.sessionMode === 'bearer' ? { sessionToken: token } : {}),
+  })
 
   // POST handler for most auth operations
   const POST: RouteHandler = async (request, context) => {
@@ -147,7 +163,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
       // Extract real client IP/UA for trust scoring — without this, the gateway
       // sees the server IP and failed logins from one user penalize all users.
-      const clientContext = extractClientContext(request as unknown as { headers: { get(name: string): string | null } })
+      const clientContext = extractClientContext(request as unknown as { headers: { get(name: string): string | null } }, config.clientContext)
 
       switch (path) {
         // ==================== Register ====================
@@ -180,10 +196,10 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             loginData = await sm.auth.login({ email, password }, { clientContext })
           } catch {
             // Registration succeeded but auto-login failed (e.g., email verification required)
-            return successResponse({ user: registeredUser, message: 'Registration successful' }, 201)
+            return successResponse({ user: registeredUser, authenticated: false, message: 'Registration successful' }, 201)
           }
 
-          const registerResponse = withSession(loginData, { user: registeredUser, sessionToken: loginData.session_token, userId: registeredUser.id }, cookieOptions)
+          const registerResponse = withSession(loginData, sessionData(registeredUser, loginData.session_token), cookieOptions)
 
           if (config.enableAccountSwitcher) {
             const existingKnown = getKnownAccountsCookieRaw(request)
@@ -206,9 +222,38 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           return registerResponse
         }
 
+        case 'handoff/exchange': {
+          if (!config.handoffAudience) return errorResponse('HANDOFF_DISABLED', 'Session transfer is not configured', 404)
+          if (typeof body.code !== 'string' || !body.code || body.code.length > 256) return errorResponse('INVALID_HANDOFF', 'Invalid sign-in transfer', 400)
+          const result = await sm.auth.exchangeSessionHandoff(body.code, config.handoffAudience)
+          return withRefreshedSession(result.session_token, result.user_id, { authenticated: true, userId: result.user_id }, cookieOptions)
+        }
+
+        case 'mfa/send-code': {
+          const { pending_token, method } = body
+          if (!pending_token || !['email', 'sms'].includes(method)) return errorResponse('VALIDATION_ERROR', 'MFA token and method required', 400)
+          return successResponse(await sm.auth.sendMfaCode(pending_token, method, { clientContext }))
+        }
+        case 'mfa/verify': {
+          const { pending_token, code, method } = body
+          if (!pending_token || !code || !['totp', 'email', 'sms', 'backup_code'].includes(method)) return errorResponse('VALIDATION_ERROR', 'MFA token, code, and valid method required', 400)
+          const result = await sm.auth.completeMfa(pending_token, code, method, { clientContext })
+          if (!result.session_token || !result.user) return errorResponse('MFA_FAILED', 'Unable to complete sign-in', 400)
+          await config.onLogin?.({ id: result.user.id, email: result.user.email })
+          const response = withSession(result, sessionData(result.user, result.session_token), cookieOptions)
+          if (config.enableAccountSwitcher) {
+            appendKnownAccountCookie(response.headers, {
+              userId: result.user.id, email: result.user.email,
+              fullName: result.user.full_name ?? undefined, avatarUrl: result.user.avatar_url ?? undefined,
+              provider: 'email', lastActiveAt: new Date().toISOString(),
+            }, getKnownAccountsCookieRaw(request), cookieOptions, config.accountSwitcherPrivacy)
+          }
+          return response
+        }
+
         // ==================== Login ====================
         case 'login': {
-          const { email, password, remember_me } = body
+          const { email, password, remember_me, device_fingerprint, challenge_token, challenge_code } = body
 
           if (!email || !password) {
             return errorResponse('VALIDATION_ERROR', 'Email and password required', 400)
@@ -216,13 +261,14 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
           let loginData
           try {
-            loginData = await sm.auth.login({ email, password, remember_me }, { clientContext })
+            loginData = await sm.auth.login({ email, password, remember_me, device_fingerprint, challenge_token, challenge_code }, { clientContext })
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
             const errorCode = apiErr?.code || 'LOGIN_FAILED'
-            let status = 400
+            let status = ['LOGIN_CHALLENGE_REQUIRED', 'MFA_REQUIRED'].includes(errorCode) ? 403 : 400
+            if (errorCode === 'CHALLENGE_RATE_LIMITED') status = 429
             if (errorCode === 'INVALID_CREDENTIALS' || errorCode === 'UNAUTHORIZED') status = 401
-            if (['EMAIL_NOT_VERIFIED', 'PHONE_NOT_VERIFIED', 'ACCOUNT_LOCKED', 'ACCOUNT_DISABLED', 'MFA_REQUIRED'].includes(errorCode)) {
+            if (['EMAIL_NOT_VERIFIED', 'PHONE_NOT_VERIFIED', 'ACCOUNT_LOCKED', 'ACCOUNT_DISABLED'].includes(errorCode)) {
               status = 403
             }
             return errorResponse(
@@ -239,9 +285,9 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             })
           }
 
-          // Return user + session token with HTTP-only session cookie
-          // Client needs the token to set Authorization headers on API requests
-          const loginResponse = withSession(loginData, { user: loginData.user, sessionToken: loginData.session_token, userId: loginData.user.id }, cookieOptions)
+          // Consume the credential into an HTTP-only cookie. Only explicit
+          // bearer compatibility mode includes it in the identity response.
+          const loginResponse = withSession(loginData, sessionData(loginData.user, loginData.session_token), cookieOptions)
 
           // Record this account in the known accounts cookie (account switcher)
           if (config.enableAccountSwitcher) {
@@ -267,7 +313,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
         // ==================== Logout ====================
         case 'logout': {
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           let rotated: string | null = null
           if (session) {
@@ -326,7 +372,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             )
           }
 
-          return successResponse({ message: 'Password reset successful' })
+          return clearSession({ message: 'Password reset successful' }, cookieOptions)
         }
 
         // ==================== Verify Email ====================
@@ -354,7 +400,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           if (verifyData?.session_token && verifyData?.user) {
             return withSession(
               { session_token: verifyData.session_token, user: verifyData.user },
-              { message: 'Email verified successfully', verified: true, user: verifyData.user, sessionToken: verifyData.session_token, userId: verifyData.user.id },
+              { message: 'Email verified successfully', verified: true, ...sessionData(verifyData.user, verifyData.session_token) },
               cookieOptions
             )
           }
@@ -366,7 +412,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
         // Supports both authenticated (session-based) and unauthenticated (email-based) resend
         case 'resend-verification': {
           const { email } = body
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           let rotated: string | null = null
           if (email) {
@@ -417,7 +463,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
         // ==================== Refresh Session ====================
         case 'refresh': {
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           if (!session) {
             return errorResponse('UNAUTHORIZED', 'Authentication required', 401)
@@ -448,14 +494,14 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           return withRefreshedSession(
             refreshData.session_token,
             session.userId,
-            { message: 'Session refreshed' },
+            { message: 'Session refreshed', ...(config.sessionMode === 'bearer' ? { sessionToken: refreshData.session_token, userId: session.userId } : {}) },
             cookieOptions
           )
         }
 
         // ==================== Change Password ====================
         case 'change-password': {
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           if (!session) {
             return errorResponse('UNAUTHORIZED', 'Authentication required', 401)
@@ -508,7 +554,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return errorResponse('NOT_FOUND', 'Account switcher not enabled', 404)
           }
 
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
           if (session) {
             try {
               await sm.auth.logout(session.sessionToken)
@@ -571,6 +617,13 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           return errorResponse('NOT_FOUND', `Unknown endpoint: ${path}`, 404)
       }
     } catch (err) {
+      if (path === 'handoff/exchange' && err instanceof ScaleMuleApiError) {
+        return errorResponse(err.code, err.message, err.code === 'HANDOFF_UNAVAILABLE' ? 503 : 401)
+      }
+      if (path.startsWith('mfa/') && err instanceof ScaleMuleApiError) {
+        const status = ['CHALLENGE_RATE_LIMITED', 'MFA_RATE_LIMITED', 'MFA_MAX_ATTEMPTS'].includes(err.code) ? 429 : 400
+        return errorResponse(err.code, err.message, status)
+      }
       console.error('[ScaleMule Auth] Error:', err)
       return errorResponse('SERVER_ERROR', 'Internal server error', 500)
     }
@@ -594,7 +647,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return resp;
           };
 
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           if (!session) {
             return withNorm(errorResponse('UNAUTHORIZED', 'Authentication required', 401))
@@ -621,17 +674,17 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
             return withNorm(withRefreshedSession(
               rotated,
               session.userId,
-              { user: userData, sessionToken: rotated, userId: session.userId },
+              sessionData(userData, rotated),
               cookieOptions
             ))
           }
 
-          return withNorm(successResponse({ user: userData, sessionToken: session.sessionToken, userId: session.userId }))
+          return withNorm(successResponse(sessionData(userData, session.sessionToken)))
         }
 
         // ==================== Get Session Status ====================
         case 'session': {
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
           return successResponse({
             authenticated: !!session,
             userId: session?.userId || null,
@@ -667,7 +720,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
         // ==================== Delete Account ====================
         case 'me':
         case 'account': {
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           if (!session) {
             return errorResponse('UNAUTHORIZED', 'Authentication required', 401)
@@ -713,7 +766,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
         // ==================== Update Profile ====================
         case 'me':
         case 'profile': {
-          const session = await getSession()
+          const session = await getSession({ allowBearer: config.sessionMode === 'bearer' })
 
           if (!session) {
             return errorResponse('UNAUTHORIZED', 'Authentication required', 401)
@@ -760,7 +813,23 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
     }
   }
 
-  return { GET, POST, DELETE, PATCH }
+  const wrap = (handler: RouteHandler): RouteHandler => async (request, context) => {
+    const params = await context.params
+    const path = params.scalemule || []
+    let response: Response
+    if (path[0] === 'client') {
+      response = await browserProxy(request, path.slice(1), config)
+    } else if (!['GET', 'HEAD'].includes(request.method) &&
+      (!isSameOriginRequest(request) || !request.headers.get('content-type')?.toLowerCase().startsWith('application/json'))) {
+      response = errorResponse('CSRF_ERROR', 'Same-origin JSON request required', 403)
+    } else {
+      response = await handler(request, context)
+    }
+    response.headers.set('Cache-Control', 'no-store')
+    response.headers.set('Vary', 'Cookie')
+    return response
+  }
+  return { GET: wrap(GET), POST: wrap(POST), DELETE: wrap(DELETE), PATCH: wrap(PATCH), PUT: wrap(async () => errorResponse('NOT_FOUND', 'Unknown endpoint', 404)) }
 }
 
 // ============================================================================

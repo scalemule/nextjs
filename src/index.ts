@@ -146,6 +146,10 @@ export type {
   RegisterRequest,
   LoginRequest,
   LoginResponse,
+  CookieLoginResponse,
+  ProxyBearerLoginResponse,
+  AuthLoginResponse,
+  CookieOAuthCallbackResponse,
   LoginResponseWithMFA,
   DeviceFingerprint,
   LoginDeviceInfo,
@@ -252,3 +256,5 @@ export type {
   UsernameValidationResult,
   PhoneCountry,
 } from './validation'
+
+export type { SecurityChallenge, SecurityChallengePrompt } from './security-challenge'

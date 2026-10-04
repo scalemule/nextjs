@@ -1,3 +1,4 @@
+import { withoutAuthSecrets } from '../url-privacy'
 /**
  * Client Context Extraction Utilities (Next.js)
  *
@@ -88,22 +89,30 @@ function validateIP(ip: string | undefined | null): string | undefined {
  * }
  * ```
  */
-export function extractClientContext(request: NextRequestLike): ClientContext {
+export interface ClientContextOptions {
+  /** Choose the header your ingress overwrites. ALB append mode uses the final XFF hop. */
+  trustedIpHeader?: 'x-forwarded-for' | 'x-real-ip' | 'cf-connecting-ip' | 'x-vercel-forwarded-for'
+}
+
+export function extractClientContext(request: NextRequestLike, options: ClientContextOptions = {}): ClientContext {
   const headers = request.headers
 
   // Extract IP address with priority order:
-  // 1. CF-Connecting-IP (Cloudflare - most reliable when behind CF)
-  // 2. DO-Connecting-IP (DigitalOcean App Platform / Load Balancers)
-  // 3. X-Real-IP (nginx proxy, DigitalOcean K8s ingress)
+  // 1. X-Real-IP (canonical hosting ingress)
+  // 2. CF-Connecting-IP (Cloudflare)
+  // 3. DO-Connecting-IP (DigitalOcean App Platform / Load Balancers)
   // 4. X-Forwarded-For (first IP - standard proxy header)
   // 5. X-Vercel-Forwarded-For (Vercel)
   // 6. True-Client-IP (Akamai, Cloudflare Enterprise)
   // 7. request.ip (Next.js built-in)
   let ip: string | undefined
 
-  // Cloudflare (most trusted when using CF)
+  // Legacy precedence is preserved for existing integrations. These headers
+  // are trustworthy only when the actual ingress overwrites them and origin
+  // access is restricted; use trustedIpHeader to configure that boundary.
+  ip = validateIP(headers.get('x-real-ip'))
   const cfConnectingIp = headers.get('cf-connecting-ip')
-  if (cfConnectingIp) {
+  if (!ip && cfConnectingIp) {
     ip = validateIP(cfConnectingIp)
   }
 
@@ -154,6 +163,13 @@ export function extractClientContext(request: NextRequestLike): ClientContext {
     ip = validateIP(request.ip)
   }
 
+  if (options.trustedIpHeader) {
+    const value = headers.get(options.trustedIpHeader)
+    // A configured trust boundary has no fallback to caller-controlled headers.
+    const hop = options.trustedIpHeader === 'x-forwarded-for' ? value?.split(',').at(-1)?.trim() : value
+    ip = validateIP(hop)
+  }
+
   // Extract user agent
   const userAgent = headers.get('user-agent') || undefined
 
@@ -162,7 +178,7 @@ export function extractClientContext(request: NextRequestLike): ClientContext {
 
   // Extract referrer from HTTP Referer header
   // This captures the actual referring URL during SSR when document.referrer is unavailable
-  const referrer = headers.get('referer') || undefined
+  const referrer = withoutAuthSecrets(headers.get('referer') || undefined)
 
   // Forward the visitor's anonymous-ID through the proxy → gateway hop.
   // The browser-side proxyFetch sets this header before calling the Next.js
@@ -219,9 +235,10 @@ export function extractClientContextFromReq(req: IncomingMessageLike): ClientCon
   // Extract IP address with priority order (same as App Router version)
   let ip: string | undefined
 
-  // Cloudflare
+  // Hosting ingress takes precedence, as in the App Router helper.
+  ip = validateIP(getHeader('x-real-ip'))
   const cfConnectingIp = getHeader('cf-connecting-ip')
-  if (cfConnectingIp) {
+  if (!ip && cfConnectingIp) {
     ip = validateIP(cfConnectingIp)
   }
 
@@ -279,7 +296,7 @@ export function extractClientContextFromReq(req: IncomingMessageLike): ClientCon
   const deviceFingerprint = getHeader('x-device-fingerprint')
 
   // Extract referrer from HTTP Referer header
-  const referrer = getHeader('referer')
+  const referrer = withoutAuthSecrets(getHeader('referer'))
 
   // Forward the visitor's anonymous-ID through the proxy → gateway hop.
   // See note in extractClientContext (App Router) for why this matters.

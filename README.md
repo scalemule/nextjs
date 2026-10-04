@@ -2,6 +2,10 @@
 
 ScaleMule SDK for Next.js applications.
 
+For persistent article playback, a bottom player bar, listening queues and an
+opt-in player window that survives navigation across publications, see the
+[network audio integration guide](docs/network-audio.md).
+
 Server-side authentication with HTTP-only cookies, CSRF protection, webhook handling, secrets management, and client-side hooks.
 
 ## Install
@@ -16,7 +20,7 @@ npm install @scalemule/nextjs
 // app/api/auth/[...scalemule]/route.ts
 import { createAuthRoutes } from '@scalemule/nextjs/server'
 
-export const { GET, POST, DELETE, PATCH } = createAuthRoutes()
+export const { GET, POST, PUT, DELETE, PATCH } = createAuthRoutes()
 ```
 
 This creates all auth endpoints automatically:
@@ -36,6 +40,35 @@ API keys never reach the browser. Session tokens are HTTP-only cookies.
 
 Need the cookie/header lifecycle or the proxy-vs-direct decision tree? See [`docs/AUTH_PROXY_PATTERN.md`](./docs/AUTH_PROXY_PATTERN.md).
 
+## Adaptive sign-in and password recovery
+
+From 0.1.51, `useAuth().login()` handles email security challenges and enrolled MFA
+through the provider's shared verification dialog. Existing login forms need no
+challenge implementation. A session cookie is set only after verification succeeds.
+Codes can be retried or resent; users can cancel or follow the password recovery link.
+
+Set `passwordRecoveryUrl` on `ScaleMuleProvider` if your forgot-password page is not
+`/auth/forgot-password`. For custom UI, pass an async `onSecurityChallenge` callback
+that returns the entered code, `"resend"`, or `null` to cancel.
+
+Before enabling `adaptive_email_challenges_enabled` in the application's auth settings,
+deploy this SDK version to every login client and verify email delivery. The setting is
+server-controlled; older clients default to observation of soft risk signals. Existing
+account restrictions, abuse limits, and required MFA policies continue to apply.
+Required MFA enrollment for users without a configured factor is a separate flow.
+
+Configure the application's `public_auth_base_url` to its own auth pages, for example
+`https://yourdomain.com/auth`. Configure a verified sending domain separately in
+communication settings, for example `noreply@email.yourdomain.com`. The sending domain
+does not determine where recovery links land. Publish SPF, DKIM, and DMARC records and
+verify delivery before enabling the domain.
+
+Your public `/auth/reset-password` page calls `useAuth().resetPassword(token, newPassword)`. Keep this page accessible even when an old session cookie exists;
+set `Referrer-Policy: no-referrer` and `Cache-Control: no-store`. After success the SDK
+clears the browser session and removes the reset token from the URL. The backend
+invalidates other sessions and grants one subsequent password login relief from soft
+risk checks for 30 minutes; it does not bypass enrolled MFA or account suspension.
+
 ## Environment Variables
 
 ```bash
@@ -48,7 +81,7 @@ SCALEMULE_COOKIE_DOMAIN=.yourdomain.com  # optional, for subdomain sharing
 ## Auth Route Options
 
 ```ts
-export const { GET, POST, DELETE, PATCH } = createAuthRoutes({
+export const { GET, POST, PUT, DELETE, PATCH } = createAuthRoutes({
   // CSRF validation (recommended for production)
   csrf: true,
 
@@ -92,7 +125,7 @@ For zero-config auth (reads from env vars):
 
 ```ts
 // app/api/auth/[...scalemule]/route.ts
-export { GET, POST, DELETE, PATCH } from '@scalemule/nextjs/server/auth'
+export { GET, POST, PUT, DELETE, PATCH } from '@scalemule/nextjs/server/auth'
 ```
 
 ## Proxy Mode (keep API keys server-side)
@@ -101,7 +134,7 @@ If you don't want a real ScaleMule API key in browser bundles, run the SDK in **
 
 ```ts
 // app/api/auth/[...scalemule]/route.ts
-export { GET, POST, DELETE, PATCH } from '@scalemule/nextjs/server/auth'
+export { GET, POST, PUT, DELETE, PATCH } from '@scalemule/nextjs/server/auth'
 ```
 
 ```ts
@@ -326,7 +359,7 @@ export function middleware(request) {
 ### Enable in Auth Routes
 
 ```ts
-export const { GET, POST, DELETE, PATCH } = createAuthRoutes({
+export const { GET, POST, PUT, DELETE, PATCH } = createAuthRoutes({
   csrf: true,  // validates x-csrf-token header against cookie
 })
 ```
@@ -425,3 +458,49 @@ For signed URLs, supply `onRefresh(signal)` returning a fresh `AudioPlayerSource
 Customize `--sm-audio-accent`, `--sm-audio-ink`, `--sm-audio-muted`, `--sm-audio-track`, and `--sm-audio-wave` on `className` or `style`, retaining accessible contrast. Default accent/track contrast is over 4:1. Keep the player outside a navigation link; links and playback controls need separate interaction targets.
 
 This patch adds reusable presentation and bounded playback recovery. It does not change media storage, transcoding, TTS generation or entitlement enforcement.
+
+
+### Cookie-only browser sessions
+
+`ScaleMuleProvider` with `authProxyUrl` and `createAuthRoutes()` now keep the
+session token exclusively in HTTP-only cookies. Auth JSON returns identity and
+`authenticated`, never `sessionToken`. The provider clears credentials persisted
+by older SDKs and sends data calls through `<authProxyUrl>/client`. Realtime uses
+30-second, single-use WebSocket tickets; it never receives the session token.
+
+Export **GET, POST, PUT, PATCH, DELETE** from your auth catch-all route. Set
+`NEXT_PUBLIC_SCALEMULE_PUBLISHABLE_KEY` (or the factory's `publishableKey`) and use
+the same `NEXT_PUBLIC_SCALEMULE_GATEWAY_URL` as the browser provider. This preserves
+WebSocket ticket routing when server auth uses a dedicated cell gateway. The data
+proxy uses only the publishable key plus the cookie session, rejects cross-origin
+requests, and never forwards a browser-supplied credential or internal header.
+
+For an app directly behind an AWS ALB in append mode, set
+`createAuthRoutes({ clientContext: { trustedIpHeader: 'x-forwarded-for' } })`.
+This attests only the final ALB-added hop and ignores `X-Real-IP` and CDN headers.
+Choose a different header only when your actual ingress overwrites it and direct
+access to the origin is restricted. The legacy automatic context helper is kept
+for existing Hosting ingress integrations; it is not a trust-boundary detector.
+
+Custom authentication callbacks must set cookies with `withSession`, return user
+identity, and refresh `/api/auth/me` in the browser. Do not return a session token
+in JSON, HTML, postMessage, or browser storage. Direct/native SDK authentication
+and member-auth providers continue to use their existing token transport.
+An explicit temporary compatibility mode, `sessionMode: 'bearer'`, exists on both
+provider and route factory for applications migrating custom transports; it
+exposes the session to JavaScript and should not be used for new browser apps.
+
+The built-in sign-in dialog inherits the host's theme through `--sm-security-text`,
+`--sm-security-background`, `--sm-security-border`, and `--sm-security-accent`.
+
+
+For OAuth popups authenticating embedded frames, call
+`createServerClient().auth.createSessionHandoff(sessionToken, audience)` only in
+the server callback after successful OAuth. Send its `code` to the exact opener
+origin. The iframe posts `{ code }` to `<authProxyUrl>/handoff/exchange` and then
+refreshes `/me`. Configure the factory's fixed `handoffAudience` and
+`cookies: { partitioned: true, sameSite: 'none', secure: true }`. This same cookie policy governs login, handoff, rotation and logout. Codes last
+60 seconds, are tenant/audience-bound, consume atomically once, and cannot recover
+a revoked session. The platform requires the customer's secret API key to issue
+or consume them. Never expose a generic browser endpoint for issuing codes from
+an existing cookie, and never place the session itself in a popup payload.
