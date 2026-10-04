@@ -408,7 +408,9 @@ it.each(['cookie', 'bearer'] as const)('refresh exposes replacement credentials 
   const data = (await response.json()).data
   expect(data.sessionToken).toBe(sessionMode === 'bearer' ? 'new-secret' : undefined)
   expect(response.headers.getSetCookie().join(';')).toContain('sm_session=new-secret')
-  mockRefresh.mockRejectedValueOnce(new Error('Expired'))
+  // The server client reports a rejected session as a 401 ScaleMuleApiError;
+  // only that clears the session (transient failures keep it).
+  mockRefresh.mockRejectedValueOnce(new ScaleMuleApiError({ code: 'SESSION_EXPIRED', message: 'Expired' }, 401))
   const failed = await createAuthRoutes({ sessionMode }).POST(createRequest('refresh', {}), contextFor('refresh'))
   expect(failed.status).toBe(401)
   expect((await failed.json()).success).toBe(false)

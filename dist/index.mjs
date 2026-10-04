@@ -1459,6 +1459,26 @@ function useMoneyClient() {
   const { money } = useScaleMule();
   return money;
 }
+
+// src/session-errors.ts
+var SESSION_ENDED_CODES = /* @__PURE__ */ new Set([
+  "UNAUTHORIZED",
+  "INVALID_SESSION",
+  "SESSION_EXPIRED",
+  "SESSION_IDLE_EXPIRED",
+  "SESSION_ABSOLUTE_EXPIRED",
+  "SESSION_REVOKED",
+  "TOKEN_EXPIRED",
+  "TOKEN_INVALID"
+]);
+function isSessionEndedError(error) {
+  if (!error || typeof error !== "object") return false;
+  const { status, code } = error;
+  if (status === 401) return true;
+  return typeof code === "string" && SESSION_ENDED_CODES.has(code);
+}
+
+// src/hooks/useAuth.ts
 function cookieLoginResult(user) {
   return { authenticated: true, userId: user.id, user };
 }
@@ -1833,11 +1853,13 @@ function useAuth() {
         "refresh"
       );
       if (!response.success) {
-        setUser(null);
         const err = response.error || {
           code: "REFRESH_FAILED",
-          message: "Session expired"
+          message: "Session refresh failed"
         };
+        if (isSessionEndedError(err)) {
+          setUser(null);
+        }
         setError(err);
         throw err;
       }
@@ -1868,8 +1890,10 @@ function useAuth() {
         await client.setSession(refreshData.session_token, userId);
       }
     } catch (err) {
-      await client.clearSession();
-      setUser(null);
+      if (isSessionEndedError(err)) {
+        await client.clearSession();
+        setUser(null);
+      }
       if (err instanceof ScaleMuleApiError) {
         setError(err);
       }

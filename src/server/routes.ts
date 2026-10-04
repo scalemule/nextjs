@@ -22,6 +22,7 @@ import {
   withSession,
   withRefreshedSession,
   clearSession,
+  clearSessionWithError,
   getSession,
   requireSession,
   appendKnownAccountCookie,
@@ -34,6 +35,7 @@ import {
 } from './cookies'
 import { validateCSRFToken } from './csrf'
 import { browserProxy, isSameOriginRequest } from './browser-proxy'
+import { isSessionEndedError } from '../session-errors'
 
 // ============================================================================
 // Types
@@ -470,11 +472,22 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
           let refreshData
           try {
             refreshData = await sm.auth.refresh(session.sessionToken)
-          } catch {
-            return clearSession(
-              { message: 'Session expired' },
-              cookieOptions,
-              401
+          } catch (err) {
+            const apiErr = err instanceof ScaleMuleApiError ? err : null
+            // Only a session the backend rejected is over: clear the cookies
+            // and report the failure so the client signs the user out.
+            if (isSessionEndedError(apiErr)) {
+              return clearSessionWithError(
+                { code: apiErr?.code || 'SESSION_EXPIRED', message: apiErr?.message || 'Session expired' },
+                cookieOptions
+              )
+            }
+            // Any other failure (malformed request, rate limit, outage) leaves
+            // the session intact; report it without touching the cookies.
+            return errorResponse(
+              apiErr?.code || 'REFRESH_FAILED',
+              apiErr?.message || 'Session refresh failed',
+              apiErr?.status && apiErr.status >= 400 ? apiErr.status : 503
             )
           }
 

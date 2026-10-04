@@ -8,6 +8,7 @@ import type { StorageAdapter } from '@scalemule/sdk'
 import { useScaleMule } from '../provider'
 import { ScaleMuleApiError } from '../types'
 import { reportSdkError } from '../sdk-telemetry'
+import { isSessionEndedError } from '../session-errors'
 import type {
   User,
   UseAuthReturn,
@@ -602,10 +603,14 @@ export function useAuth(): UseAuthReturn {
       )
 
       if (!response.success) {
-        setUser(null)
         const err = response.error || {
           code: 'REFRESH_FAILED',
-          message: 'Session expired',
+          message: 'Session refresh failed',
+        }
+        // Sign out only when the session itself is gone; a transient failure
+        // keeps the user signed in.
+        if (isSessionEndedError(err)) {
+          setUser(null)
         }
         setError(err)
         throw err
@@ -642,8 +647,10 @@ export function useAuth(): UseAuthReturn {
         await client.setSession(refreshData.session_token, userId)
       }
     } catch (err) {
-      await client.clearSession()
-      setUser(null)
+      if (isSessionEndedError(err)) {
+        await client.clearSession()
+        setUser(null)
+      }
 
       if (err instanceof ScaleMuleApiError) {
         setError(err)

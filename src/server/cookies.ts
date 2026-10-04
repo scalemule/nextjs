@@ -215,7 +215,15 @@ export function clearSession<T extends Record<string, unknown>>(
 ): Response {
   const headers = new Headers()
   headers.set('Content-Type', 'application/json')
+  appendClearSessionCookies(headers, options)
 
+  return new Response(JSON.stringify({ success: status < 300, data: responseBody }), {
+    status,
+    headers,
+  })
+}
+
+function appendClearSessionCookies(headers: Headers, options: SessionCookieOptions): void {
   // Clear legacy unpartitioned credentials as well after a CHIPS migration.
   if (options.partitioned) {
     headers.append('Set-Cookie', createClearCookieHeader(SESSION_COOKIE_NAME, { ...options, partitioned: false }))
@@ -224,8 +232,25 @@ export function clearSession<T extends Record<string, unknown>>(
   // Clear both cookies
   headers.append('Set-Cookie', createClearCookieHeader(SESSION_COOKIE_NAME, options))
   headers.append('Set-Cookie', createClearCookieHeader(USER_ID_COOKIE_NAME, options))
+}
 
-  return new Response(JSON.stringify({ success: status < 300, data: responseBody }), {
+/**
+ * Create an error Response that also clears session cookies.
+ *
+ * Use this when the backend has confirmed the session is invalid, expired or
+ * revoked, so the client both drops the cookies and sees a real failure
+ * (`{ success: false, error }`) it can act on.
+ */
+export function clearSessionWithError(
+  error: { code: string; message: string },
+  options: SessionCookieOptions = {},
+  status: number = 401
+): Response {
+  const headers = new Headers()
+  headers.set('Content-Type', 'application/json')
+  appendClearSessionCookies(headers, options)
+
+  return new Response(JSON.stringify({ success: false, error }), {
     status,
     headers,
   })
