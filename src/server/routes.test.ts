@@ -417,3 +417,31 @@ it.each(['cookie', 'bearer'] as const)('refresh exposes replacement credentials 
   expect(failed.headers.getSetCookie().every(c => c.includes('Max-Age=0'))).toBe(true)
   vi.mocked(cookies).mockResolvedValue({ get: () => null } as never)
 })
+
+describe('register honeypot trap behavior', () => {
+  beforeEach(() => {
+    mockRegister.mockReset()
+    mockLogin.mockReset()
+  })
+
+  it('silently drops registration without calling auth client when honeypot field is filled', async () => {
+    const { POST } = createAuthRoutes()
+    const response = await POST(
+      createRequest('register', {
+        email: 'spambot@example.com',
+        password: 'Password123!',
+        publication_code: 'http://malicious-link.xyz',
+      }),
+      contextFor('register')
+    )
+
+    expect(response.status).toBe(201)
+    const json = await response.json()
+    expect(json.success).toBe(true)
+    expect(json.data.message).toBe('Registration successful')
+    expect(json.data.user.email).toBe('spambot@example.com')
+    // Crucial: auth client register was NEVER called
+    expect(mockRegister).not.toHaveBeenCalled()
+    expect(mockLogin).not.toHaveBeenCalled()
+  })
+})

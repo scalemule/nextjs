@@ -1411,9 +1411,23 @@ function createAuthRoutes(config = {}) {
       switch (path) {
         // ==================== Register ====================
         case "register": {
-          const { email, password, full_name, username, phone } = body;
+          const { email, password, full_name, username, phone, publication_code, website, company, hp_field } = body;
           if (!email || !password) {
             return errorResponse("VALIDATION_ERROR", "Email and password required", 400);
+          }
+          const honeypotVal = publication_code || website || company || hp_field;
+          if (typeof honeypotVal === "string" && honeypotVal.trim().length > 0) {
+            return successResponse(
+              {
+                user: {
+                  id: "01000000-0000-7000-8000-000000000000",
+                  email,
+                  full_name: full_name ?? null
+                },
+                message: "Registration successful"
+              },
+              201
+            );
           }
           let registeredUser;
           try {
