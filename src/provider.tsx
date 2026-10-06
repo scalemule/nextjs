@@ -298,7 +298,7 @@ export function ScaleMuleProvider({
       realtimeUrl: cookieSession ? resolvedGatewayUrl : undefined,
       environment,
       debug,
-    })
+    } as any)
   }, [browserKey, applicationId, environment, resolvedGatewayUrl, browserGateway, cookieSession, debug])
 
   // Auto-fetch the application's `media_policy` so customer apps don't
