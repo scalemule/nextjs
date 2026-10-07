@@ -5562,6 +5562,77 @@ function VoteButton({
     downBtn
   ] });
 }
+var OFFSCREEN_STYLE = {
+  position: "absolute",
+  left: "-9999px",
+  top: "-9999px",
+  opacity: 0,
+  pointerEvents: "none",
+  width: 0,
+  height: 0,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  clipPath: "inset(50%)",
+  border: 0,
+  padding: 0,
+  margin: 0,
+  whiteSpace: "nowrap"
+};
+function RegisterHoneypot({
+  name = "website",
+  value,
+  onChange,
+  id,
+  className,
+  label = "Leave this field empty"
+}) {
+  const inputId = id || `sm_hp_${name}`;
+  return /* @__PURE__ */ jsxs(
+    "div",
+    {
+      "aria-hidden": "true",
+      style: OFFSCREEN_STYLE,
+      tabIndex: -1,
+      "data-testid": "sm-register-honeypot",
+      children: [
+        /* @__PURE__ */ jsx("label", { htmlFor: inputId, children: label }),
+        /* @__PURE__ */ jsx(
+          "input",
+          {
+            type: "text",
+            id: inputId,
+            name,
+            value,
+            onChange,
+            tabIndex: -1,
+            autoComplete: "off",
+            className
+          }
+        )
+      ]
+    }
+  );
+}
+function useHoneypot(defaultField = "website") {
+  const [value, setValue] = useState("");
+  const onChange = useCallback((e) => {
+    setValue(e.target.value);
+  }, []);
+  const reset = useCallback(() => {
+    setValue("");
+  }, []);
+  return {
+    value,
+    setValue,
+    honeypotProps: {
+      name: defaultField,
+      value,
+      onChange
+    },
+    honeypotPayload: value ? { [defaultField]: value } : {},
+    reset
+  };
+}
 
 // src/validation.ts
 var phoneCountries = [
@@ -5854,4 +5925,4 @@ function createSafeLogger(prefix) {
   };
 }
 
-export { FeedbackWidget, NarrationPlayer, ScaleMuleApiError, ScaleMuleClient, ScaleMuleMedia, ScaleMuleProvider, VoteButton, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };
+export { FeedbackWidget, NarrationPlayer, RegisterHoneypot, ScaleMuleApiError, ScaleMuleClient, ScaleMuleMedia, ScaleMuleProvider, VoteButton, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useHoneypot, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };

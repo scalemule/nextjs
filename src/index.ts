@@ -92,6 +92,12 @@ export { FeedbackWidget } from './components/FeedbackWidget'
 export type { FeedbackWidgetProps } from './components/FeedbackWidget'
 export { VoteButton } from './components/VoteButton'
 export type { VoteButtonProps, VoteButtonClassNames } from './components/VoteButton'
+export { RegisterHoneypot, useHoneypot } from './components/RegisterHoneypot'
+export type {
+  RegisterHoneypotProps,
+  UseHoneypotReturn,
+  HoneypotFieldName,
+} from './components/RegisterHoneypot'
 export type {
   FeedbackItem,
   FeedbackItemInput,
