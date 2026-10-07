@@ -211,6 +211,11 @@ export interface RegisterRequest {
   full_name?: string
   username?: string
   phone?: string
+  /** Hidden honeypot field (e.g. publication_code, website, company, hp_field) */
+  publication_code?: string
+  website?: string
+  company?: string
+  hp_field?: string
 }
 
 export interface LoginRequest {

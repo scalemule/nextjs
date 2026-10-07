@@ -5582,6 +5582,77 @@ function VoteButton({
     downBtn
   ] });
 }
+var OFFSCREEN_STYLE = {
+  position: "absolute",
+  left: "-9999px",
+  top: "-9999px",
+  opacity: 0,
+  pointerEvents: "none",
+  width: 0,
+  height: 0,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  clipPath: "inset(50%)",
+  border: 0,
+  padding: 0,
+  margin: 0,
+  whiteSpace: "nowrap"
+};
+function RegisterHoneypot({
+  name = "website",
+  value,
+  onChange,
+  id,
+  className,
+  label = "Leave this field empty"
+}) {
+  const inputId = id || `sm_hp_${name}`;
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    "div",
+    {
+      "aria-hidden": "true",
+      style: OFFSCREEN_STYLE,
+      tabIndex: -1,
+      "data-testid": "sm-register-honeypot",
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsx("label", { htmlFor: inputId, children: label }),
+        /* @__PURE__ */ jsxRuntime.jsx(
+          "input",
+          {
+            type: "text",
+            id: inputId,
+            name,
+            value,
+            onChange,
+            tabIndex: -1,
+            autoComplete: "off",
+            className
+          }
+        )
+      ]
+    }
+  );
+}
+function useHoneypot(defaultField = "website") {
+  const [value, setValue] = React.useState("");
+  const onChange = React.useCallback((e) => {
+    setValue(e.target.value);
+  }, []);
+  const reset = React.useCallback(() => {
+    setValue("");
+  }, []);
+  return {
+    value,
+    setValue,
+    honeypotProps: {
+      name: defaultField,
+      value,
+      onChange
+    },
+    honeypotPayload: value ? { [defaultField]: value } : {},
+    reset
+  };
+}
 
 // src/validation.ts
 var phoneCountries = [
@@ -5884,6 +5955,7 @@ Object.defineProperty(exports, "createMoneyClient", {
 });
 exports.FeedbackWidget = FeedbackWidget;
 exports.NarrationPlayer = NarrationPlayer;
+exports.RegisterHoneypot = RegisterHoneypot;
 exports.ScaleMuleApiError = ScaleMuleApiError;
 exports.ScaleMuleClient = ScaleMuleClient;
 exports.ScaleMuleMedia = ScaleMuleMedia;
@@ -5903,6 +5975,7 @@ exports.useContent = useContent;
 exports.useFeatureFlags = useFeatureFlags;
 exports.useFeedback = useFeedback;
 exports.useFileStatus = useFileStatus;
+exports.useHoneypot = useHoneypot;
 exports.useMedia = useMedia;
 exports.useMoney = useMoney;
 exports.useMoneyClient = useMoneyClient;

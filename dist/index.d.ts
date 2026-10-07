@@ -1,13 +1,13 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import { ApiError, RealtimeService, StorageService, PhotoService, VideoService, AudioService, TtsService, SocialService, SocialPolicyService, TtsJobStatus, TtsAudioInfo, FileStatus } from '@scalemule/sdk';
 import * as React from 'react';
-import { ReactNode, ReactElement } from 'react';
+import React__default, { ReactNode, ReactElement } from 'react';
 import { MoneyClient } from '@scalemule/money';
 export { MoneyClient, MoneyClientConfig, createMoneyClient } from '@scalemule/money';
 import { ScaleMuleClient } from './client.js';
 export { ClientConfig, RequestOptions, createClient } from './client.js';
-import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError$1, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-2PnO4RAF.js';
-export { h as AccountBalance, i as AnalyticsEvent, j as ApiResponse, k as AuthLoginResponse, B as BatchTrackRequest, l as BillingPayment, m as BillingPayout, n as BillingRefund, o as BillingTransaction, C as ChangeEmailRequest, p as ChangePasswordRequest, q as ClientContext, r as ConnectedAccount, s as CookieLoginResponse, t as CookieOAuthCallbackResponse, D as DeviceFingerprint, u as DeviceInfo, E as EnhancedAnalyticsEvent, F as ForgotPasswordRequest, K as KnownAccountInfo, v as LinkedAccount, w as ListFilesResponse, x as LoginDeviceInfo, y as LoginRequest, z as LoginResponseWithMFA, G as LoginRiskInfo, M as MFAChallengeResponse, H as MFAMethod, I as MFASMSSetupResponse, J as MFASetupRequest, N as MFAStatus, O as MFATOTPSetupResponse, P as MFAVerifyRequest, Q as OAuthCallbackRequest, R as OAuthCallbackResponse, T as OAuthConfig, V as OAuthProvider, W as OAuthStartResponse, X as PageViewData, Y as PayoutSchedule, Z as PhoneLoginRequest, _ as PhoneSendCodeRequest, $ as PhoneVerifyRequest, a0 as Profile, a1 as ProxyBearerLoginResponse, a2 as RefreshResponse, a3 as RegisterRequest, a4 as ResetPasswordRequest, a5 as ScaleMuleApiError, a6 as ScaleMuleEnvironment, a7 as Session, a8 as SignedUploadCompleteRequest, a9 as SignedUploadRequest, aa as SignedUploadResponse, ab as SignedUploadUrl, ac as StorageAdapter, ad as StorageFile, ae as TrackEventResponse, af as TransactionSummary, ag as UTMParams, ah as UpdateProfileRequest, ai as UploadOptions, aj as UploadResponse, ak as VerifyEmailRequest } from './index-2PnO4RAF.js';
+import { S as ScaleMuleConfig, U as User, L as LoginResponse, A as ApiError$1, a as UseAuthReturn, b as UseBillingReturn, c as ListFilesParams, d as UseContentReturn, e as UseUserReturn, f as UseAnalyticsOptions, g as UseAnalyticsReturn } from './index-CEi5Nd4L.js';
+export { h as AccountBalance, i as AnalyticsEvent, j as ApiResponse, k as AuthLoginResponse, B as BatchTrackRequest, l as BillingPayment, m as BillingPayout, n as BillingRefund, o as BillingTransaction, C as ChangeEmailRequest, p as ChangePasswordRequest, q as ClientContext, r as ConnectedAccount, s as CookieLoginResponse, t as CookieOAuthCallbackResponse, D as DeviceFingerprint, u as DeviceInfo, E as EnhancedAnalyticsEvent, F as ForgotPasswordRequest, K as KnownAccountInfo, v as LinkedAccount, w as ListFilesResponse, x as LoginDeviceInfo, y as LoginRequest, z as LoginResponseWithMFA, G as LoginRiskInfo, M as MFAChallengeResponse, H as MFAMethod, I as MFASMSSetupResponse, J as MFASetupRequest, N as MFAStatus, O as MFATOTPSetupResponse, P as MFAVerifyRequest, Q as OAuthCallbackRequest, R as OAuthCallbackResponse, T as OAuthConfig, V as OAuthProvider, W as OAuthStartResponse, X as PageViewData, Y as PayoutSchedule, Z as PhoneLoginRequest, _ as PhoneSendCodeRequest, $ as PhoneVerifyRequest, a0 as Profile, a1 as ProxyBearerLoginResponse, a2 as RefreshResponse, a3 as RegisterRequest, a4 as ResetPasswordRequest, a5 as ScaleMuleApiError, a6 as ScaleMuleEnvironment, a7 as Session, a8 as SignedUploadCompleteRequest, a9 as SignedUploadRequest, aa as SignedUploadResponse, ab as SignedUploadUrl, ac as StorageAdapter, ad as StorageFile, ae as TrackEventResponse, af as TransactionSummary, ag as UTMParams, ah as UpdateProfileRequest, ai as UploadOptions, aj as UploadResponse, ak as VerifyEmailRequest } from './index-CEi5Nd4L.js';
 
 /**
  * Tri-state file visibility — `'private' | 'app_public' | 'anonymous_visible'`.
@@ -1073,6 +1073,78 @@ interface VoteButtonProps {
 }
 declare function VoteButton({ targetType, targetId, initialState, layout, size, onSignInRequired, onError, classNames, upLabel, downLabel, }: VoteButtonProps): react_jsx_runtime.JSX.Element;
 
+type HoneypotFieldName = 'website' | 'company' | 'publication_code' | 'hp_field';
+interface RegisterHoneypotProps {
+    /**
+     * Field name recognized by ScaleMule honeypot defenses.
+     * Defaults to 'website'.
+     */
+    name?: HoneypotFieldName | string;
+    /**
+     * Controlled value if managing state in React.
+     */
+    value?: string;
+    /**
+     * Change handler for controlled state.
+     */
+    onChange?: (e: React__default.ChangeEvent<HTMLInputElement>) => void;
+    /**
+     * Optional custom id for the hidden input.
+     */
+    id?: string;
+    /**
+     * Optional additional className (field is styled off-screen regardless).
+     */
+    className?: string;
+    /**
+     * Optional custom accessible label text.
+     */
+    label?: string;
+}
+/**
+ * RegisterHoneypot — invisible honeypot input component for registration forms.
+ *
+ * Traps automated spam bots that blindly fill every visible and invisible input field.
+ * When submitted with any non-empty value, ScaleMule auth silently absorbs and drops
+ * the registration attempt with a synthetic 201/200 success response, preventing AWS SES
+ * hard bounces, dirty accounts, and email verification spam.
+ *
+ * @example
+ * ```tsx
+ * // Uncontrolled / FormData:
+ * <form onSubmit={handleRegister}>
+ *   <RegisterHoneypot />
+ *   <input name="email" type="email" />
+ *   <input name="password" type="password" />
+ *   <button type="submit">Sign Up</button>
+ * </form>
+ *
+ * // Controlled with useHoneypot:
+ * const { honeypotProps, honeypotPayload } = useHoneypot()
+ * ...
+ * await register({ email, password, ...honeypotPayload })
+ * ```
+ */
+declare function RegisterHoneypot({ name, value, onChange, id, className, label, }: RegisterHoneypotProps): react_jsx_runtime.JSX.Element;
+interface UseHoneypotReturn {
+    value: string;
+    setValue: React__default.Dispatch<React__default.SetStateAction<string>>;
+    honeypotProps: {
+        name: HoneypotFieldName | string;
+        value: string;
+        onChange: (e: React__default.ChangeEvent<HTMLInputElement>) => void;
+    };
+    /** Object with { [name]: value } ready to spread into register() */
+    honeypotPayload: Record<string, string>;
+    reset: () => void;
+}
+/**
+ * Hook to manage controlled honeypot state for React registration forms.
+ *
+ * @param defaultField The honeypot field name (defaults to 'website')
+ */
+declare function useHoneypot(defaultField?: HoneypotFieldName | string): UseHoneypotReturn;
+
 /**
  * Client-side validation helpers
  *
@@ -1231,4 +1303,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError$1 as ApiError, type AudioFile, type AudioUploadResult, type ConversationKind, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, NarrationPlayer, type NarrationPlayerAudio, type NarrationPlayerProps, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, type SecurityChallenge, type SecurityChallengePrompt, UseAnalyticsOptions, UseAnalyticsReturn, type UseAudioReturn, type UseAudioUploadOptions, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, type UseTtsJobOptions, type UseTtsJobReturn, UseUserReturn, type UseVoteOptions, type UseVoteReturn, User, type UsernameValidationResult, VoteButton, type VoteButtonClassNames, type VoteButtonProps, type VoteState, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };
+export { ApiError$1 as ApiError, type AudioFile, type AudioUploadResult, type ConversationKind, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, type HoneypotFieldName, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, NarrationPlayer, type NarrationPlayerAudio, type NarrationPlayerProps, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, RegisterHoneypot, type RegisterHoneypotProps, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, type SecurityChallenge, type SecurityChallengePrompt, UseAnalyticsOptions, UseAnalyticsReturn, type UseAudioReturn, type UseAudioUploadOptions, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseHoneypotReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, type UseTtsJobOptions, type UseTtsJobReturn, UseUserReturn, type UseVoteOptions, type UseVoteReturn, User, type UsernameValidationResult, VoteButton, type VoteButtonClassNames, type VoteButtonProps, type VoteState, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useHoneypot, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };
