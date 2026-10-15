@@ -11,6 +11,8 @@ export type {
   UseFileStatusReturn,
 } from './useFileStatus'
 export { useFeatureFlags } from './useFeatureFlags'
+export { useExperiment } from './useExperiment'
+export type { UseExperimentOptions, UseExperimentReturn } from './useExperiment'
 export { useMoney } from './useMoney'
 export { useUser } from './useUser'
 export { useRealtime } from './useRealtime'
