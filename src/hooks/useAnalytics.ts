@@ -1,5 +1,6 @@
 'use client'
 
+import { withExperiments } from '../experiments'
 import { withoutAuthSecrets } from '../url-privacy'
 
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
@@ -303,7 +304,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
   } = options
   const shouldAutoCaptureUtmParams = autoCaptureUtmParams ?? autoCapturUtmParams ?? true
 
-  const { client, user, analyticsProxyUrl, publishableKey, apiKey, gatewayUrl } = useScaleMule()
+  const { client, user, analyticsProxyUrl, publishableKey, apiKey, gatewayUrl, experiments } = useScaleMule()
 
   // One-time dev warning for the silent-401 misconfig pattern: proxy-mode
   // app (apiKey is the literal `'proxy-mode'` sentinel) with no
@@ -470,7 +471,8 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       const fullEvent: Record<string, unknown> = {
         event_name: event.event_name,
         event_category: event.event_category,
-        properties: event.properties,
+        // Experiment assignments ride on every event so the analytics experiment report can attribute it
+        properties: withExperiments(event.properties, experiments),
         // Use refs for IDs - they're always current, and this keeps the callback stable
         session_id: event.session_id || sessionIdRef.current,
         anonymous_id: event.anonymous_id || anonymousIdRef.current,
@@ -512,7 +514,7 @@ export function useAnalytics(options: UseAnalyticsOptions = {}): UseAnalyticsRet
       return fullEvent
     },
     // Note: sessionId/anonymousId removed - we use refs to keep this stable
-    [user, utmParams, getDeviceInfo]
+    [user, utmParams, getDeviceInfo, experiments]
   )
 
   /**

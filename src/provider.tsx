@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createMoneyClient, type MoneyClient } from '@scalemule/money'
+import { normalizeExperiments, type ExperimentAssignments } from './experiments'
 import {
   ScaleMule,
   type RealtimeService,
@@ -122,6 +123,10 @@ interface ScaleMuleContextValue {
   accountSwitcherPrivacy?: string
   /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
   bootstrapFlags?: Record<string, unknown>
+  /** Experiment assignments for this visitor (flag key → variant). `useAnalytics` attaches them to every event. */
+  experiments: ExperimentAssignments
+  /** Registers an assignment made by `useExperiment` (or a server-side evaluation) so analytics events carry it. */
+  registerExperiment: (flagKey: string, variant: string | null) => void
 }
 
 // ============================================================================
@@ -148,6 +153,8 @@ export interface ScaleMuleProviderProps extends ScaleMuleConfig {
   onAuthError?: (error: ApiError) => void
   /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
   bootstrapFlags?: Record<string, unknown>
+  /** Experiment assignments already made on the server (e.g. by `createServerClient().flags.experiment`). */
+  initialExperiments?: ExperimentAssignments
   /**
    * Default media-pipeline policy applied to `useMedia()` calls when no
    * per-call `policy` override is given. Five modes — see
@@ -223,6 +230,7 @@ export function ScaleMuleProvider({
   onLogout,
   onAuthError,
   bootstrapFlags,
+  initialExperiments,
   mediaPolicy,
   getToken,
   userResolver,
@@ -237,6 +245,16 @@ export function ScaleMuleProvider({
   const browserKey = cookieSession ? (publishableKey || process.env.NEXT_PUBLIC_SCALEMULE_PUBLISHABLE_KEY || apiKey) : apiKey
   const browserGateway = cookieSession ? `${authProxyUrl.replace(/\/$/, '')}/client` : undefined
   const [user, setUser] = useState<User | null>(null)
+  const [experiments, setExperiments] = useState<ExperimentAssignments>(() => normalizeExperiments(initialExperiments))
+  const registerExperiment = useCallback((flagKey: string, variant: string | null) => {
+    setExperiments((current) => {
+      const next = { ...current }
+      if (variant === null) delete next[flagKey]
+      else Object.assign(next, normalizeExperiments({ [flagKey]: variant }))
+      const same = Object.keys(next).length === Object.keys(current).length && Object.entries(next).every(([k, v]) => current[k] === v)
+      return same ? current : next
+    })
+  }, [])
   const [initializing, setInitializing] = useState(true)
   const [error, setError] = useState<ApiError | null>(null)
 
@@ -608,8 +626,10 @@ export function ScaleMuleProvider({
       enableAccountSwitcher,
       accountSwitcherPrivacy,
       bootstrapFlags,
+      experiments,
+      registerExperiment,
     }),
-    [requestSecurityCode, client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, browserKey, cookieSession, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
+    [requestSecurityCode, client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, browserKey, cookieSession, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy, experiments, registerExperiment]
   )
 
   return (

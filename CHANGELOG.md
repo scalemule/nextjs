@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.63
+
+- **Experiments (A/B tests) on flag variants.** `useExperiment(flagKey)` assigns the visitor (sticky on the anonymous id), registers the assignment on the provider, and tracks one `experiment_exposed` per session; `useAnalytics` then attaches `properties.experiments = { flag_key: variant }` to every event, so the analytics experiment report (admin Flags page) attributes engagement, scroll depth, clicks and any goal event to the variant. Server side: `createServerClient().flags.experiment(flagKey, { session_id })` and `analytics.trackExposure(flagKey, variant)`; pass server-made assignments to `<ScaleMuleProvider initialExperiments>`. Requires `@scalemule/sdk` 0.0.77.
+
 ## 0.1.59
 
 - Fix proxy-mode session refresh signing users out. The server client's `auth.refresh` now sends `{ session_token }` in the request body, as the auth service requires, so explicit refreshes and the automatic refresh after a 401 no longer fail.
