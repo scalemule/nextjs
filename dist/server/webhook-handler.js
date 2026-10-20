@@ -1,6 +1,7 @@
 'use strict';
 
 var crypto = require('crypto');
+require('@scalemule/sdk');
 require('@scalemule/money');
 
 // src/server/webhooks.ts

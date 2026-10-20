@@ -43,6 +43,9 @@ export interface DomWord {
 }
 
 const SKIPPED_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'])
+// Cards and other explicitly non-spoken content can sit between article
+// paragraphs. They must not participate in alignment or consume its look-ahead.
+const SKIPPED_CONTENT = '[data-entity-card], [data-sm-narration-skip], [data-sm-narration-layer]'
 
 /** Whitespace-split words of every text node under `root`, in order. */
 export function collectDomWords(root: Node): DomWord[] {
@@ -51,6 +54,7 @@ export function collectDomWords(root: Node): DomWord[] {
     acceptNode(node: Node) {
       const parent = node.parentElement
       if (parent && SKIPPED_TAGS.has(parent.tagName)) return 2 /* REJECT */
+      if (parent?.closest(SKIPPED_CONTENT)) return 2 /* REJECT */
       return 1 /* ACCEPT */
     },
   })

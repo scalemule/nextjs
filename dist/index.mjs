@@ -1,9 +1,9 @@
 import * as React from 'react';
-import { createContext, useState, useEffect, useMemo, useCallback, useContext, useRef } from 'react';
+import { createContext, useState, useCallback, useEffect, useMemo, useContext, useRef } from 'react';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
 import { createMoneyClient } from '@scalemule/money';
 export { MoneyClient, createMoneyClient } from '@scalemule/money';
-import { STORAGE_KEYS, ensureAnonymousId, ScaleMule, WebPushManager } from '@scalemule/sdk';
+import { STORAGE_KEYS, ensureAnonymousId, ScaleMule, isVariantKey, experimentVariant, exposureStorageKey, exposureEvent, WebPushManager } from '@scalemule/sdk';
 
 // src/security-challenge.tsx
 function useSecurityChallenge(recoveryUrl) {
@@ -135,6 +135,29 @@ async function withAdaptiveChallenge(attempt, prompt, mfa) {
       proof = code === "resend" ? {} : { challenge_token: challengeToken, challenge_code: code };
     }
   }
+}
+
+// src/experiments.ts
+var KEY = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
+var VARIANT = /^[a-z0-9][a-z0-9_.:-]{0,63}$/;
+var MAX = 10;
+function normalizeExperiments(input) {
+  const result = {};
+  if (!input || typeof input !== "object" || Array.isArray(input)) return result;
+  let count = 0;
+  for (const [key, value] of Object.entries(input)) {
+    if (count >= MAX) break;
+    if (KEY.test(key) && typeof value === "string" && VARIANT.test(value)) {
+      result[key] = value;
+      count++;
+    }
+  }
+  return result;
+}
+function withExperiments(properties, experiments) {
+  const merged = normalizeExperiments({ ...normalizeExperiments(properties?.experiments), ...experiments ?? {} });
+  if (Object.keys(merged).length === 0) return properties;
+  return { ...properties ?? {}, experiments: merged };
 }
 
 // src/types/index.ts
@@ -1147,6 +1170,7 @@ function ScaleMuleProvider({
   onLogout,
   onAuthError,
   bootstrapFlags,
+  initialExperiments,
   mediaPolicy,
   getToken,
   userResolver,
@@ -1161,6 +1185,16 @@ function ScaleMuleProvider({
   const browserKey = cookieSession ? publishableKey || process.env.NEXT_PUBLIC_SCALEMULE_PUBLISHABLE_KEY || apiKey : apiKey;
   const browserGateway = cookieSession ? `${authProxyUrl.replace(/\/$/, "")}/client` : void 0;
   const [user, setUser] = useState(null);
+  const [experiments, setExperiments] = useState(() => normalizeExperiments(initialExperiments));
+  const registerExperiment = useCallback((flagKey, variant) => {
+    setExperiments((current) => {
+      const next = { ...current };
+      if (variant === null) delete next[flagKey];
+      else Object.assign(next, normalizeExperiments({ [flagKey]: variant }));
+      const same = Object.keys(next).length === Object.keys(current).length && Object.entries(next).every(([k, v]) => current[k] === v);
+      return same ? current : next;
+    });
+  }, []);
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState(null);
   useEffect(() => {
@@ -1433,9 +1467,11 @@ function ScaleMuleProvider({
       environment: environment || void 0,
       enableAccountSwitcher,
       accountSwitcherPrivacy,
-      bootstrapFlags
+      bootstrapFlags,
+      experiments,
+      registerExperiment
     }),
-    [requestSecurityCode, client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, browserKey, cookieSession, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
+    [requestSecurityCode, client, money, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, browserKey, cookieSession, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy, experiments, registerExperiment]
   );
   return /* @__PURE__ */ jsxs(ScaleMuleContext.Provider, { value, children: [
     children,
@@ -4220,7 +4256,7 @@ function useAnalytics(options = {}) {
     eventDedupMs = DEFAULT_EVENT_DEDUP_MS
   } = options;
   const shouldAutoCaptureUtmParams = autoCaptureUtmParams ?? autoCapturUtmParams ?? true;
-  const { client, user, analyticsProxyUrl, publishableKey, apiKey, gatewayUrl } = useScaleMule();
+  const { client, user, analyticsProxyUrl, publishableKey, apiKey, gatewayUrl, experiments } = useScaleMule();
   const proxyModeMisconfigWarnedRef = useRef(false);
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
@@ -4318,7 +4354,8 @@ function useAnalytics(options = {}) {
       const fullEvent = {
         event_name: event.event_name,
         event_category: event.event_category,
-        properties: event.properties,
+        // Experiment assignments ride on every event so the analytics experiment report can attribute it
+        properties: withExperiments(event.properties, experiments),
         // Use refs for IDs - they're always current, and this keeps the callback stable
         session_id: event.session_id || sessionIdRef.current,
         anonymous_id: event.anonymous_id || anonymousIdRef.current,
@@ -4350,7 +4387,7 @@ function useAnalytics(options = {}) {
       return fullEvent;
     },
     // Note: sessionId/anonymousId removed - we use refs to keep this stable
-    [user, utmParams, getDeviceInfo]
+    [user, utmParams, getDeviceInfo, experiments]
   );
   const sendEvent = useCallback(
     async (event) => {
@@ -4681,6 +4718,47 @@ function useFeatureFlags(options = {}) {
     isEnabled,
     getFlag
   };
+}
+function useExperiment(flagKey, options = {}) {
+  const { environment, context, fallback = null, enabled = true, trackExposure = true } = options;
+  const { client, registerExperiment, experiments } = useScaleMule();
+  const { trackEvent } = useAnalytics();
+  const anonymousId = client.getAnonymousId();
+  const evaluationContext = useMemo(
+    () => ({ session_id: anonymousId, ...context ?? {} }),
+    // The anonymous id is stable for the visitor; the caller's context is merged by value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [anonymousId, JSON.stringify(context ?? {})]
+  );
+  const { flags, loading, error, refresh } = useFeatureFlags({ keys: [flagKey], environment, context: evaluationContext, enabled });
+  const evaluation = flags[flagKey] ?? null;
+  const variant = loading && !evaluation ? isVariantKey(fallback) ? fallback : null : experimentVariant(evaluation) ?? (isVariantKey(fallback) ? fallback : null);
+  useEffect(() => {
+    if (!enabled || loading) return;
+    const assigned = experimentVariant(evaluation);
+    if (experiments[flagKey] !== (assigned ?? void 0)) registerExperiment(flagKey, assigned);
+  }, [enabled, loading, evaluation, flagKey, registerExperiment, experiments]);
+  const exposedRef = useRef(null);
+  useEffect(() => {
+    if (!enabled || !trackExposure || loading) return;
+    const assigned = experimentVariant(evaluation);
+    if (!assigned || exposedRef.current === assigned) return;
+    const key = exposureStorageKey(flagKey);
+    let already = false;
+    try {
+      already = typeof sessionStorage !== "undefined" && sessionStorage.getItem(key) === assigned;
+    } catch {
+    }
+    exposedRef.current = assigned;
+    if (already) return;
+    try {
+      sessionStorage.setItem(key, assigned);
+    } catch {
+    }
+    void trackEvent(exposureEvent(flagKey, assigned)).catch(() => {
+    });
+  }, [enabled, trackExposure, loading, evaluation, flagKey, trackEvent]);
+  return { variant, loading, error, evaluation, refresh };
 }
 function getCsrfToken() {
   if (typeof document === "undefined") return "";
@@ -5925,4 +6003,4 @@ function createSafeLogger(prefix) {
   };
 }
 
-export { FeedbackWidget, NarrationPlayer, RegisterHoneypot, ScaleMuleApiError, ScaleMuleClient, ScaleMuleMedia, ScaleMuleProvider, VoteButton, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useHoneypot, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };
+export { FeedbackWidget, NarrationPlayer, RegisterHoneypot, ScaleMuleApiError, ScaleMuleClient, ScaleMuleMedia, ScaleMuleProvider, VoteButton, composePhone, createClient, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useExperiment, useFeatureFlags, useFeedback, useFileStatus, useHoneypot, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };

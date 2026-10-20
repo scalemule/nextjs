@@ -48,12 +48,14 @@ function normalizeWord(raw) {
   return raw.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 }
 var SKIPPED_TAGS = /* @__PURE__ */ new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE"]);
+var SKIPPED_CONTENT = "[data-entity-card], [data-sm-narration-skip], [data-sm-narration-layer]";
 function collectDomWords(root) {
   const doc = root.ownerDocument ?? root;
   const walker = doc.createTreeWalker(root, 4, {
     acceptNode(node) {
       const parent = node.parentElement;
       if (parent && SKIPPED_TAGS.has(parent.tagName)) return 2;
+      if (parent?.closest(SKIPPED_CONTENT)) return 2;
       return 1;
     }
   });
@@ -441,7 +443,7 @@ function PlayerSession({
     highlightAbort.current = controller;
     setHighlightBusy(true);
     try {
-      const resp = await fetch(narration.timingsUrl, { signal: controller.signal });
+      const resp = await fetch(narration.timingsUrl, { signal: controller.signal, cache: "no-store" });
       if (!resp.ok) throw new Error(`timings ${resp.status}`);
       const timings = parseTimingsPayload(await resp.json());
       const target = document.getElementById(narration.targetId);
@@ -1810,7 +1812,7 @@ function useArticleNarration(track, narration) {
     const timeout = setTimeout(() => controller.abort(), 15e3);
     void (async () => {
       try {
-        const response = await fetch(narration.timingsUrl, { signal: controller.signal });
+        const response = await fetch(narration.timingsUrl, { signal: controller.signal, cache: "no-store" });
         if (!response.ok) return;
         const timings = parseTimingsPayload(await response.json());
         const target = document.getElementById(narration.targetId);

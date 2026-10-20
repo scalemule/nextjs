@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'crypto';
+import '@scalemule/sdk';
 import '@scalemule/money';
 
 // src/server/webhooks.ts
