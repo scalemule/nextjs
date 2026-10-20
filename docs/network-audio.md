@@ -100,6 +100,12 @@ import { ArticleAudioControls } from '@scalemule/nextjs/audio'
 ```
 
 Keep the existing article body with `id="article-narration-body"`. Mounting an
+inline Event/Place card does not add its text to narration: the highlighter skips
+`data-entity-card` elements. Mark any other non-spoken block with
+`data-sm-narration-skip`. Timings are fetched without browser cache because an
+article URL can acquire a newer recording after an editorial correction.
+
+Mounting an
 article never selects or starts its audio. Listen selects it; Add to queue
 appends without interrupting playback. Identity is `(publicationId, id)` so IDs
 in different publications do not collide. The queue deduplicates entries and

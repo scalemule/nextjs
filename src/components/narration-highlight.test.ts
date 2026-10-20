@@ -37,6 +37,19 @@ describe('collectDomWords', () => {
     expect(words.map((w) => w.norm)).toEqual(['first', 'bold', 'tail', 'second', 'para'])
     expect(words[0].node.data.slice(words[0].start, words[0].end)).toBe('First')
   })
+
+  it('aligns through long event cards without highlighting their repeated article words', () => {
+    const root = document.createElement('div')
+    root.innerHTML = '<p>First paragraph.</p><section data-entity-card="event"><h2>Event details</h2>' +
+      '<p>Date time venue registration admission directions capacity organizer address.</p>' +
+      '<strong>Second paragraph. София 新聞 🎉</strong></section>' +
+      '<p>Second paragraph. София 新聞 🎉</p><aside data-sm-narration-skip>Newsletter signup</aside>'
+    const words = collectDomWords(root)
+    expect(words.map(w => w.norm)).toEqual(['first', 'paragraph', 'second', 'paragraph', 'софия', '新聞'])
+    expect(words.every(w => !w.node.parentElement?.closest('[data-entity-card], [data-sm-narration-skip]'))).toBe(true)
+    expect(alignWords(['first', 'paragraph', 'second', 'paragraph', 'софия', '新聞'], words.map(w => w.norm)))
+      .toEqual([0, 1, 2, 3, 4, 5])
+  })
 })
 
 describe('alignWords', () => {

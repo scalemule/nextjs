@@ -176,7 +176,7 @@ function PlayerSession({
     highlightAbort.current = controller
     setHighlightBusy(true)
     try {
-      const resp = await fetch(narration.timingsUrl, { signal: controller.signal })
+      const resp = await fetch(narration.timingsUrl, { signal: controller.signal, cache: 'no-store' })
       if (!resp.ok) throw new Error(`timings ${resp.status}`)
       const timings = parseTimingsPayload(await resp.json())
       const target = document.getElementById(narration.targetId)

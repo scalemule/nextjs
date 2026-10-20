@@ -210,6 +210,15 @@ interface SecurityChallenge {
 }
 type SecurityChallengePrompt = (challenge: SecurityChallenge) => Promise<string | null>;
 
+/**
+ * Experiment assignment helpers used inside this package.
+ *
+ * The canonical helpers live in `@scalemule/sdk` (`withExperiments`, `normalizeExperiments`); the
+ * provider and analytics hook keep a local copy so a test or app that mocks `@scalemule/sdk` with
+ * a partial module still renders. Same rules: slug keys and variants, at most ten per event.
+ */
+type ExperimentAssignments = Record<string, string>;
+
 interface ScaleMuleContextValue {
     requestSecurityCode: SecurityChallengePrompt;
     /** The API client instance */
@@ -274,6 +283,10 @@ interface ScaleMuleContextValue {
     accountSwitcherPrivacy?: string;
     /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
     bootstrapFlags?: Record<string, unknown>;
+    /** Experiment assignments for this visitor (flag key → variant). `useAnalytics` attaches them to every event. */
+    experiments: ExperimentAssignments;
+    /** Registers an assignment made by `useExperiment` (or a server-side evaluation) so analytics events carry it. */
+    registerExperiment: (flagKey: string, variant: string | null) => void;
 }
 interface ScaleMuleProviderProps extends ScaleMuleConfig {
     /** Recovery link in the built-in security challenge. */
@@ -289,6 +302,8 @@ interface ScaleMuleProviderProps extends ScaleMuleConfig {
     onAuthError?: (error: ApiError$1) => void;
     /** Server-evaluated flag values to bootstrap the client (eliminates loading flash) */
     bootstrapFlags?: Record<string, unknown>;
+    /** Experiment assignments already made on the server (e.g. by `createServerClient().flags.experiment`). */
+    initialExperiments?: ExperimentAssignments;
     /**
      * Default media-pipeline policy applied to `useMedia()` calls when no
      * per-call `policy` override is given. Five modes — see
@@ -340,7 +355,7 @@ interface ScaleMuleProviderProps extends ScaleMuleConfig {
      */
     memberTokenPollMs?: number | null;
 }
-declare function ScaleMuleProvider({ apiKey, applicationId, environment, gatewayUrl, debug, storage, analyticsProxyUrl, authProxyUrl, sessionMode, telemetryEndpoint, publishableKey, enableAccountSwitcher, accountSwitcherPrivacy, children, onLogin, onLogout, onAuthError, bootstrapFlags, mediaPolicy, getToken, userResolver, memberTokenPollMs, passwordRecoveryUrl, onSecurityChallenge, }: ScaleMuleProviderProps): react_jsx_runtime.JSX.Element;
+declare function ScaleMuleProvider({ apiKey, applicationId, environment, gatewayUrl, debug, storage, analyticsProxyUrl, authProxyUrl, sessionMode, telemetryEndpoint, publishableKey, enableAccountSwitcher, accountSwitcherPrivacy, children, onLogin, onLogout, onAuthError, bootstrapFlags, initialExperiments, mediaPolicy, getToken, userResolver, memberTokenPollMs, passwordRecoveryUrl, onSecurityChallenge, }: ScaleMuleProviderProps): react_jsx_runtime.JSX.Element;
 declare function useScaleMule(): ScaleMuleContextValue;
 declare function useScaleMuleClient(): ScaleMuleClient;
 declare function useMoneyClient(): MoneyClient;
@@ -842,6 +857,39 @@ interface UseFeatureFlagsReturn {
 }
 declare function useFeatureFlags(options?: UseFeatureFlagsOptions): UseFeatureFlagsReturn;
 
+interface UseExperimentOptions {
+    /** Flag environment (defaults to the provider's). */
+    environment?: string;
+    /** Extra evaluation context (attributes for targeting rules). The visitor's anonymous id is always sent as `session_id`. */
+    context?: Record<string, unknown>;
+    /** Variant to report while loading or when the flag is off or missing. */
+    fallback?: string | null;
+    /** Set false to skip evaluation (the fallback is returned and nothing is tracked). */
+    enabled?: boolean;
+    /** Set false to skip the `experiment_exposed` event (for example when the server already sent it). */
+    trackExposure?: boolean;
+}
+interface UseExperimentReturn {
+    /** The visitor's variant, the fallback while loading, or null when the flag serves no variant. */
+    variant: string | null;
+    loading: boolean;
+    error: ApiError$1 | null;
+    evaluation: FeatureFlagEvaluation | null;
+    refresh: () => Promise<void>;
+}
+/**
+ * Assigns the visitor to an experiment (a flag with weighted variants), registers the assignment
+ * so every `useAnalytics` event carries `properties.experiments`, and tracks one
+ * `experiment_exposed` per session and flag.
+ *
+ * @example
+ * ```tsx
+ * const { variant } = useExperiment('checkout_button')
+ * return variant === 'green' ? <GreenButton /> : <BlueButton />
+ * ```
+ */
+declare function useExperiment(flagKey: string, options?: UseExperimentOptions): UseExperimentReturn;
+
 interface UsePushNotificationsOptions {
     /** Service worker URL (default: '/sw.js') */
     serviceWorkerUrl?: string;
@@ -1303,4 +1351,4 @@ declare function createSafeLogger(prefix: string): {
     error: (message: string, data?: unknown) => void;
 };
 
-export { ApiError$1 as ApiError, type AudioFile, type AudioUploadResult, type ConversationKind, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, type HoneypotFieldName, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, NarrationPlayer, type NarrationPlayerAudio, type NarrationPlayerProps, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, RegisterHoneypot, type RegisterHoneypotProps, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, type SecurityChallenge, type SecurityChallengePrompt, UseAnalyticsOptions, UseAnalyticsReturn, type UseAudioReturn, type UseAudioUploadOptions, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseHoneypotReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, type UseTtsJobOptions, type UseTtsJobReturn, UseUserReturn, type UseVoteOptions, type UseVoteReturn, User, type UsernameValidationResult, VoteButton, type VoteButtonClassNames, type VoteButtonProps, type VoteState, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useFeatureFlags, useFeedback, useFileStatus, useHoneypot, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };
+export { ApiError$1 as ApiError, type AudioFile, type AudioUploadResult, type ConversationKind, type FeatureFlagEvaluation, type FeatureFlagEvaluation as FeatureFlagResult, type FeedbackItem, type FeedbackItemInput, type FeedbackPriority, type FeedbackStatus, type FeedbackType, FeedbackWidget, type FeedbackWidgetConfig, type FeedbackWidgetProps, type HoneypotFieldName, ListFilesParams, LoginResponse, type MediaPolicy, type MediaUploadResult, NarrationPlayer, type NarrationPlayerAudio, type NarrationPlayerProps, type PasswordValidationResult, type PhoneCountry, type PhoneValidationResult, type RealtimeEvent, type RealtimeMessage, type RealtimeStatus, RegisterHoneypot, type RegisterHoneypotProps, ScaleMuleClient, ScaleMuleConfig, ScaleMuleMedia, type ScaleMuleMediaProps, ScaleMuleProvider, type ScaleMuleProviderProps, type SecurityChallenge, type SecurityChallengePrompt, UseAnalyticsOptions, UseAnalyticsReturn, type UseAudioReturn, type UseAudioUploadOptions, UseAuthReturn, UseBillingReturn, UseContentReturn, type UseExperimentOptions, type UseExperimentReturn, type UseFeatureFlagsOptions, type UseFeatureFlagsReturn, type UseFeedbackOptions, type UseFeedbackResult, type UseFileStatusOptions, type UseFileStatusReturn, type UseFeatureFlagsOptions as UseFlagsOptions, type UseFeatureFlagsReturn as UseFlagsReturn, type UseHoneypotReturn, type UseMediaReturn, type UseMediaUploadOptions, type UsePushNotificationsOptions, type UsePushNotificationsReturn, type UseRealtimeOptions, type UseRealtimeReturn, type UseShareOptions, type UseShareReturn, type UseTtsJobOptions, type UseTtsJobReturn, UseUserReturn, type UseVoteOptions, type UseVoteReturn, User, type UsernameValidationResult, VoteButton, type VoteButtonClassNames, type VoteButtonProps, type VoteState, composePhone, createSafeLogger, normalizePhone, phoneCountries, sanitizeForLog, useAnalytics, useAudio, useAuth, useBilling, useContent, useExperiment, useFeatureFlags, useFeedback, useFileStatus, useHoneypot, useMedia, useMoney, useMoneyClient, usePushNotifications, useRealtime, useScaleMule, useScaleMuleClient, useShare, useTtsJob, useUser, useVote, validateForm, validators };

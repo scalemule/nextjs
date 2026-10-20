@@ -211,7 +211,7 @@ export function useArticleNarration(track: NetworkAudioTrack, narration?: AudioP
     const timeout = setTimeout(() => controller.abort(), 15000)
     void (async () => {
       try {
-        const response = await fetch(narration.timingsUrl, { signal: controller.signal })
+        const response = await fetch(narration.timingsUrl, { signal: controller.signal, cache: 'no-store' })
         if (!response.ok) return
         const timings = parseTimingsPayload(await response.json())
         const target = document.getElementById(narration.targetId)

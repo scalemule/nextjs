@@ -1,5 +1,6 @@
 'use strict';
 
+var sdk = require('@scalemule/sdk');
 var money = require('@scalemule/money');
 var headers = require('next/headers');
 require('next/server');
@@ -709,6 +710,17 @@ var ScaleMuleServer = class {
         });
       },
       /**
+       * Track that a visitor saw an experiment variant (once per visitor and flag). The event carries
+       * `properties.experiments` so the analytics experiment report attributes it.
+       */
+      trackExposure: async (flagKey, variant, data, options) => {
+        const event = sdk.exposureEvent(flagKey, variant);
+        return this.request("POST", "/v1/analytics/v2/events", {
+          body: { ...event, ...data ?? {} },
+          clientContext: options?.clientContext
+        });
+      },
+      /**
        * Track a page view
        *
        * @example
@@ -755,6 +767,21 @@ var ScaleMuleServer = class {
       }
     };
     this.flags = {
+      /**
+       * Assign a visitor to an experiment (a flag with weighted variants). Pass a stable identifier
+       * (`session_id` or `user_id`) so the assignment is sticky. Attach the returned assignment to
+       * every analytics event as `properties.experiments` and track one `experiment_exposed` with
+       * `analytics.trackExposure` when the variant is shown.
+       *
+       * @example
+       * ```typescript
+       * const { variant } = await scalemule.flags.experiment('front_page_layout', { session_id: visitorId })
+       * ```
+       */
+      experiment: async (flagKey, context = {}, environment = "prod", options) => {
+        const evaluation = await this.flags.evaluate(flagKey, context, environment, options);
+        return { flag_key: flagKey, variant: sdk.experimentVariant(evaluation), evaluation };
+      },
       evaluate: async (flagKey, context = {}, environment = "prod", options) => {
         return this.request("POST", "/v1/flags/evaluate", {
           body: {

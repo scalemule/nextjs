@@ -157,6 +157,29 @@ async function withAdaptiveChallenge(attempt, prompt, mfa) {
   }
 }
 
+// src/experiments.ts
+var KEY = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
+var VARIANT = /^[a-z0-9][a-z0-9_.:-]{0,63}$/;
+var MAX = 10;
+function normalizeExperiments(input) {
+  const result = {};
+  if (!input || typeof input !== "object" || Array.isArray(input)) return result;
+  let count = 0;
+  for (const [key, value] of Object.entries(input)) {
+    if (count >= MAX) break;
+    if (KEY.test(key) && typeof value === "string" && VARIANT.test(value)) {
+      result[key] = value;
+      count++;
+    }
+  }
+  return result;
+}
+function withExperiments(properties, experiments) {
+  const merged = normalizeExperiments({ ...normalizeExperiments(properties?.experiments), ...experiments ?? {} });
+  if (Object.keys(merged).length === 0) return properties;
+  return { ...properties ?? {}, experiments: merged };
+}
+
 // src/types/index.ts
 var ScaleMuleApiError = class extends Error {
   constructor(error, status) {
@@ -1167,6 +1190,7 @@ function ScaleMuleProvider({
   onLogout,
   onAuthError,
   bootstrapFlags,
+  initialExperiments,
   mediaPolicy,
   getToken,
   userResolver,
@@ -1181,6 +1205,16 @@ function ScaleMuleProvider({
   const browserKey = cookieSession ? publishableKey || process.env.NEXT_PUBLIC_SCALEMULE_PUBLISHABLE_KEY || apiKey : apiKey;
   const browserGateway = cookieSession ? `${authProxyUrl.replace(/\/$/, "")}/client` : void 0;
   const [user, setUser] = React.useState(null);
+  const [experiments, setExperiments] = React.useState(() => normalizeExperiments(initialExperiments));
+  const registerExperiment = React.useCallback((flagKey, variant) => {
+    setExperiments((current) => {
+      const next = { ...current };
+      if (variant === null) delete next[flagKey];
+      else Object.assign(next, normalizeExperiments({ [flagKey]: variant }));
+      const same = Object.keys(next).length === Object.keys(current).length && Object.entries(next).every(([k, v]) => current[k] === v);
+      return same ? current : next;
+    });
+  }, []);
   const [initializing, setInitializing] = React.useState(true);
   const [error, setError] = React.useState(null);
   React.useEffect(() => {
@@ -1453,9 +1487,11 @@ function ScaleMuleProvider({
       environment: environment || void 0,
       enableAccountSwitcher,
       accountSwitcherPrivacy,
-      bootstrapFlags
+      bootstrapFlags,
+      experiments,
+      registerExperiment
     }),
-    [requestSecurityCode, client, money$1, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, browserKey, cookieSession, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy]
+    [requestSecurityCode, client, money$1, baseClient, user, handleSetUser, initializing, error, analyticsProxyUrl, authProxyUrl, publishableKey, browserKey, cookieSession, apiKey, resolvedGatewayUrl, environment, enableAccountSwitcher, accountSwitcherPrivacy, bootstrapFlags, effectiveMediaPolicy, experiments, registerExperiment]
   );
   return /* @__PURE__ */ jsxRuntime.jsxs(ScaleMuleContext.Provider, { value, children: [
     children,
@@ -4240,7 +4276,7 @@ function useAnalytics(options = {}) {
     eventDedupMs = DEFAULT_EVENT_DEDUP_MS
   } = options;
   const shouldAutoCaptureUtmParams = autoCaptureUtmParams ?? autoCapturUtmParams ?? true;
-  const { client, user, analyticsProxyUrl, publishableKey, apiKey, gatewayUrl } = useScaleMule();
+  const { client, user, analyticsProxyUrl, publishableKey, apiKey, gatewayUrl, experiments } = useScaleMule();
   const proxyModeMisconfigWarnedRef = React.useRef(false);
   React.useEffect(() => {
     if (process.env.NODE_ENV === "production") return;
@@ -4338,7 +4374,8 @@ function useAnalytics(options = {}) {
       const fullEvent = {
         event_name: event.event_name,
         event_category: event.event_category,
-        properties: event.properties,
+        // Experiment assignments ride on every event so the analytics experiment report can attribute it
+        properties: withExperiments(event.properties, experiments),
         // Use refs for IDs - they're always current, and this keeps the callback stable
         session_id: event.session_id || sessionIdRef.current,
         anonymous_id: event.anonymous_id || anonymousIdRef.current,
@@ -4370,7 +4407,7 @@ function useAnalytics(options = {}) {
       return fullEvent;
     },
     // Note: sessionId/anonymousId removed - we use refs to keep this stable
-    [user, utmParams, getDeviceInfo]
+    [user, utmParams, getDeviceInfo, experiments]
   );
   const sendEvent = React.useCallback(
     async (event) => {
@@ -4701,6 +4738,47 @@ function useFeatureFlags(options = {}) {
     isEnabled,
     getFlag
   };
+}
+function useExperiment(flagKey, options = {}) {
+  const { environment, context, fallback = null, enabled = true, trackExposure = true } = options;
+  const { client, registerExperiment, experiments } = useScaleMule();
+  const { trackEvent } = useAnalytics();
+  const anonymousId = client.getAnonymousId();
+  const evaluationContext = React.useMemo(
+    () => ({ session_id: anonymousId, ...context ?? {} }),
+    // The anonymous id is stable for the visitor; the caller's context is merged by value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [anonymousId, JSON.stringify(context ?? {})]
+  );
+  const { flags, loading, error, refresh } = useFeatureFlags({ keys: [flagKey], environment, context: evaluationContext, enabled });
+  const evaluation = flags[flagKey] ?? null;
+  const variant = loading && !evaluation ? sdk.isVariantKey(fallback) ? fallback : null : sdk.experimentVariant(evaluation) ?? (sdk.isVariantKey(fallback) ? fallback : null);
+  React.useEffect(() => {
+    if (!enabled || loading) return;
+    const assigned = sdk.experimentVariant(evaluation);
+    if (experiments[flagKey] !== (assigned ?? void 0)) registerExperiment(flagKey, assigned);
+  }, [enabled, loading, evaluation, flagKey, registerExperiment, experiments]);
+  const exposedRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!enabled || !trackExposure || loading) return;
+    const assigned = sdk.experimentVariant(evaluation);
+    if (!assigned || exposedRef.current === assigned) return;
+    const key = sdk.exposureStorageKey(flagKey);
+    let already = false;
+    try {
+      already = typeof sessionStorage !== "undefined" && sessionStorage.getItem(key) === assigned;
+    } catch {
+    }
+    exposedRef.current = assigned;
+    if (already) return;
+    try {
+      sessionStorage.setItem(key, assigned);
+    } catch {
+    }
+    void trackEvent(sdk.exposureEvent(flagKey, assigned)).catch(() => {
+    });
+  }, [enabled, trackExposure, loading, evaluation, flagKey, trackEvent]);
+  return { variant, loading, error, evaluation, refresh };
 }
 function getCsrfToken() {
   if (typeof document === "undefined") return "";
@@ -5972,6 +6050,7 @@ exports.useAudio = useAudio;
 exports.useAuth = useAuth;
 exports.useBilling = useBilling;
 exports.useContent = useContent;
+exports.useExperiment = useExperiment;
 exports.useFeatureFlags = useFeatureFlags;
 exports.useFeedback = useFeedback;
 exports.useFileStatus = useFileStatus;
