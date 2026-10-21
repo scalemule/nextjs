@@ -1818,10 +1818,11 @@ function useAuth() {
     [client, setUser, setError, authProxyUrl]
   );
   const verifyEmail = React.useCallback(
-    async (token) => {
+    async (token, email) => {
       setError(null);
+      const body = email ? { token, email } : { token };
       if (authProxyUrl) {
-        const response = await proxyFetch(authProxyUrl, "verify-email", { body: { token } });
+        const response = await proxyFetch(authProxyUrl, "verify-email", { body });
         if (!response.success) {
           const err = response.error || {
             code: "VERIFY_EMAIL_FAILED",
@@ -1832,7 +1833,7 @@ function useAuth() {
         }
       } else {
         try {
-          const result = await client.post("/v1/auth/verify-email", { token });
+          const result = await client.post("/v1/auth/verify-email", body);
           if (result?.session_token && result?.user) {
             await client.setSession(result.session_token, result.user.id);
             setUser(result.user);

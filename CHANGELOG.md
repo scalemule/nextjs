@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.67
+
+- **Use this instead of 0.1.66.** 0.1.66 on npm was published from a branch that predates 0.1.65's changes. It has the narration fix (#87), but it is **missing `invitation_token` forwarding on register (0.1.65)** and `verifyEmail(token, email?)` (#89). 0.1.67 is built from `main` and includes all three.
+
 ## 0.1.66
 
 - **Code verification is bound to the address.** `verifyEmail(token, email?)` (hook, server client and the `/api/auth/verify-email` proxy route) forwards the address a 6-digit code was sent to. ScaleMule then matches the code only against that account. Code-only verification still works, but now has a tight per-app attempt budget. Pass the email whenever you show a code-entry form.
