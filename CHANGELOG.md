@@ -2,7 +2,7 @@
 
 ## 0.1.67
 
-- **Republish of 0.1.66 with a correct build.** 0.1.66 was packed from a stale committed `dist/` and did not contain the 0.1.66 or 0.1.65 changes: `invitation_token` forwarding on register, and `verifyEmail(token, email?)`. Use 0.1.67. `dist/` in the repo is rebuilt from source.
+- **Use this instead of 0.1.66.** 0.1.66 on npm was published from a branch that predates 0.1.65's changes. It has the narration fix (#87), but it is **missing `invitation_token` forwarding on register (0.1.65)** and `verifyEmail(token, email?)` (#89). 0.1.67 is built from `main` and includes all three.
 
 ## 0.1.66
 
