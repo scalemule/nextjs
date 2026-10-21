@@ -404,7 +404,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
         // ==================== Verify Email ====================
         case 'verify-email': {
-          const { token } = body
+          const { token, email } = body
 
           if (!token) {
             return errorResponse('VALIDATION_ERROR', 'Token required', 400)
@@ -412,7 +412,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
           let verifyData
           try {
-            verifyData = await sm.auth.verifyEmail(token)
+            verifyData = await sm.auth.verifyEmail(token, typeof email === 'string' && email ? email : undefined)
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(

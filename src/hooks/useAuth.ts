@@ -488,14 +488,17 @@ export function useAuth(): UseAuthReturn {
   )
 
   /**
-   * Verify email with token
+   * Verify email with a link token or a 6-digit code. Pass the address the
+   * code was sent to: ScaleMule then matches the code only against that
+   * account (code-only verification has a tight per-app attempt budget).
    */
   const verifyEmail = useCallback(
-    async (token: string): Promise<void> => {
+    async (token: string, email?: string): Promise<void> => {
       setError(null)
+      const body = email ? { token, email } : { token }
 
       if (authProxyUrl) {
-        const response = await proxyFetch(authProxyUrl, 'verify-email', { body: { token } })
+        const response = await proxyFetch(authProxyUrl, 'verify-email', { body })
         if (!response.success) {
           const err = response.error || {
             code: 'VERIFY_EMAIL_FAILED',
@@ -510,7 +513,7 @@ export function useAuth(): UseAuthReturn {
             verified?: boolean;
             session_token?: string;
             user?: User;
-          }>('/v1/auth/verify-email', { token })
+          }>('/v1/auth/verify-email', body)
           if (result?.session_token && result?.user) {
             await client.setSession(result.session_token, result.user.id)
             setUser(result.user)

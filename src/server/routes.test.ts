@@ -129,6 +129,19 @@ describe('verify-email route', () => {
     expect(body.data.message).toBe('Email verified successfully')
   })
 
+  it('forwards the address a code was sent to, and only a string one', async () => {
+    mockVerifyEmail.mockResolvedValue({ verified: true })
+    const { POST } = createAuthRoutes()
+    await POST(createRequest('verify-email', { token: '123456', email: 'Invitee@Example.com' }), contextFor('verify-email'))
+    await POST(createRequest('verify-email', { token: '123456', email: { $ne: '' } }), contextFor('verify-email'))
+    await POST(createRequest('verify-email', { token: '123456' }), contextFor('verify-email'))
+    expect(mockVerifyEmail.mock.calls).toEqual([
+      ['123456', 'Invitee@Example.com'],
+      ['123456', undefined],
+      ['123456', undefined],
+    ])
+  })
+
   it('returns error when token is missing', async () => {
     const { POST } = createAuthRoutes()
     const response = await POST(
