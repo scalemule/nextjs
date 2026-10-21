@@ -135,11 +135,12 @@ describe('verify-email route', () => {
     await POST(createRequest('verify-email', { token: '123456', email: 'Invitee@Example.com' }), contextFor('verify-email'))
     await POST(createRequest('verify-email', { token: '123456', email: { $ne: '' } }), contextFor('verify-email'))
     await POST(createRequest('verify-email', { token: '123456' }), contextFor('verify-email'))
-    expect(mockVerifyEmail.mock.calls).toEqual([
+    expect(mockVerifyEmail.mock.calls.map(([token, email]) => [token, email])).toEqual([
       ['123456', 'Invitee@Example.com'],
       ['123456', undefined],
       ['123456', undefined],
     ])
+    expect(mockVerifyEmail.mock.calls[0][2]).toHaveProperty('clientContext')
   })
 
   it('returns error when token is missing', async () => {

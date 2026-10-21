@@ -412,7 +412,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
           let verifyData
           try {
-            verifyData = await sm.auth.verifyEmail(token, typeof email === 'string' && email ? email : undefined)
+            verifyData = await sm.auth.verifyEmail(token, typeof email === 'string' && email ? email : undefined, { clientContext })
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
