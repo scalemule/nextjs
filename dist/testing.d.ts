@@ -1,6 +1,6 @@
 import * as react_jsx_runtime from 'react/jsx-runtime';
 import { ReactNode } from 'react';
-import { U as User, A as ApiError, ad as StorageFile } from './index-CEi5Nd4L.js';
+import { U as User, A as ApiError, ad as StorageFile } from './index-BOPHR50i.js';
 
 interface MockUserOptions {
     id?: string;

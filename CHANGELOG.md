@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.67
+
+- **Republish of 0.1.66 with a correct build.** 0.1.66 was packed from a stale committed `dist/` and did not contain the 0.1.66 or 0.1.65 changes: `invitation_token` forwarding on register, and `verifyEmail(token, email?)`. Use 0.1.67. `dist/` in the repo is rebuilt from source.
+
 ## 0.1.66
 
 - **Code verification is bound to the address.** `verifyEmail(token, email?)` (hook, server client and the `/api/auth/verify-email` proxy route) forwards the address a 6-digit code was sent to. ScaleMule then matches the code only against that account. Code-only verification still works, but now has a tight per-app attempt budget. Pass the email whenever you show a code-entry form.

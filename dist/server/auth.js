@@ -257,8 +257,11 @@ var ScaleMuleServer = class {
       /**
        * Verify email with token
        */
-      verifyEmail: async (token) => {
-        return this.request("POST", "/v1/auth/verify-email", { body: { token } });
+      verifyEmail: async (token, email, options) => {
+        return this.request("POST", "/v1/auth/verify-email", {
+          body: email ? { token, email } : { token },
+          clientContext: options?.clientContext
+        });
       },
       /**
        * Resend verification email.
@@ -1440,7 +1443,7 @@ function createAuthRoutes(config = {}) {
       switch (path) {
         // ==================== Register ====================
         case "register": {
-          const { email, password, full_name, username, phone, publication_code, website, company, hp_field } = body;
+          const { email, password, full_name, username, phone, publication_code, website, company, hp_field, invitation_token } = body;
           if (!email || !password) {
             return errorResponse("VALIDATION_ERROR", "Email and password required", 400);
           }
@@ -1460,7 +1463,18 @@ function createAuthRoutes(config = {}) {
           }
           let registeredUser;
           try {
-            registeredUser = await sm.auth.register({ email, password, full_name, username, phone }, { clientContext });
+            registeredUser = await sm.auth.register(
+              {
+                email,
+                password,
+                full_name,
+                username,
+                phone,
+                // Lets an invited person through a first-visit trust challenge.
+                ...typeof invitation_token === "string" && invitation_token ? { invitation_token } : {}
+              },
+              { clientContext }
+            );
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null;
             return errorResponse(
@@ -1626,13 +1640,13 @@ function createAuthRoutes(config = {}) {
         }
         // ==================== Verify Email ====================
         case "verify-email": {
-          const { token } = body;
+          const { token, email } = body;
           if (!token) {
             return errorResponse("VALIDATION_ERROR", "Token required", 400);
           }
           let verifyData;
           try {
-            verifyData = await sm.auth.verifyEmail(token);
+            verifyData = await sm.auth.verifyEmail(token, typeof email === "string" && email ? email : void 0, { clientContext });
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null;
             return errorResponse(
