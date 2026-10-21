@@ -445,3 +445,33 @@ describe('register honeypot trap behavior', () => {
     expect(mockLogin).not.toHaveBeenCalled()
   })
 })
+
+describe('register invitation token', () => {
+  beforeEach(() => {
+    mockRegister.mockReset()
+    mockLogin.mockReset()
+    mockRegister.mockResolvedValue({ id: 'u-inv', email: 'invited@test.com' })
+    mockLogin.mockRejectedValue(new Error('email verification required'))
+  })
+
+  it('forwards the invitation token to auth', async () => {
+    const token = 'a'.repeat(64)
+    const { POST } = createAuthRoutes()
+    await POST(
+      createRequest('register', { email: 'invited@test.com', password: 'Pass123!', invitation_token: token }),
+      contextFor('register')
+    )
+    expect(mockRegister.mock.calls[0][0]).toMatchObject({ email: 'invited@test.com', invitation_token: token })
+  })
+
+  it('omits the field for ordinary sign-ups and non-string values', async () => {
+    const { POST } = createAuthRoutes()
+    await POST(createRequest('register', { email: 'a@test.com', password: 'Pass123!' }), contextFor('register'))
+    await POST(
+      createRequest('register', { email: 'b@test.com', password: 'Pass123!', invitation_token: { $ne: '' } }),
+      contextFor('register')
+    )
+    expect(mockRegister.mock.calls[0][0]).not.toHaveProperty('invitation_token')
+    expect(mockRegister.mock.calls[1][0]).not.toHaveProperty('invitation_token')
+  })
+})

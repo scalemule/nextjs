@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.65
+
+- **Invitation-aware sign-up.** `register({ ..., invitation_token })` (and the `/api/auth/register` proxy route) forwards the token from an account invitation link. When ScaleMule challenges a sign-up, for example from a browser it has never seen, a pending invitation addressed to that email lets the registration through. Invitations never lift a hard block, and the invitation is still accepted separately after sign-in. Requires scalemule-auth with invitation-aware registration; older auth ignores the field.
+
 ## 0.1.63
 
 - **Experiments (A/B tests) on flag variants.** `useExperiment(flagKey)` assigns the visitor (sticky on the anonymous id), registers the assignment on the provider, and tracks one `experiment_exposed` per session; `useAnalytics` then attaches `properties.experiments = { flag_key: variant }` to every event, so the analytics experiment report (admin Flags page) attributes engagement, scroll depth, clicks and any goal event to the variant. Server side: `createServerClient().flags.experiment(flagKey, { session_id })` and `analytics.trackExposure(flagKey, variant)`; pass server-made assignments to `<ScaleMuleProvider initialExperiments>`. Requires `@scalemule/sdk` 0.0.77.

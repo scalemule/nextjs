@@ -216,6 +216,12 @@ export interface RegisterRequest {
   website?: string
   company?: string
   hp_field?: string
+  /**
+   * Token from an account invitation link. When ScaleMule challenges a sign-up
+   * (for example a first-time browser), a pending invitation addressed to this
+   * email lets the registration through. It does not accept the invitation.
+   */
+  invitation_token?: string
 }
 
 export interface LoginRequest {
