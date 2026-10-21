@@ -99,6 +99,8 @@ declare class NarrationHighlighter {
     private currentWord;
     private currentSentence;
     private follow;
+    private userScrolledAt;
+    private lastScrollAt;
     private detachUserScroll;
     private reducedMotion;
     private root;
@@ -114,7 +116,7 @@ declare class NarrationHighlighter {
      * to hide the toggle below ~0.5. */
     matchRatio(): number;
     private attachUserScroll;
-    /** Re-engage auto-scroll (the reader pressed the toggle or sought). */
+    /** Re-engage auto-scroll immediately (the reader pressed the toggle or sought). */
     resumeFollowing(): void;
     /** Lazily creates the overlay layer behind the article text. */
     private ensureLayer;

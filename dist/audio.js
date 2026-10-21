@@ -74,22 +74,43 @@ function collectDomWords(root) {
 }
 function alignWords(timingNorms, domNorms, window2 = 6) {
   const out = new Array(timingNorms.length).fill(-1);
+  const resyncWindow = Math.max(window2 * 4, 24);
   let j = 0;
+  let inSync = true;
   for (let i = 0; i < timingNorms.length; i++) {
     const target = timingNorms[i];
     if (!target) continue;
+    const nextTarget = i + 1 < timingNorms.length ? timingNorms[i + 1] : "";
     let found = -1;
-    for (let k = j; k < Math.min(domNorms.length, j + window2); k++) {
-      if (domNorms[k] === target) {
-        found = k;
-        break;
+    if (inSync && j < domNorms.length && domNorms[j] === target) {
+      found = j;
+    } else {
+      if (nextTarget) {
+        const limit = Math.min(domNorms.length - 1, j + resyncWindow);
+        for (let k = j; k < limit; k++) {
+          if (domNorms[k] === target && domNorms[k + 1] === nextTarget) {
+            found = k;
+            break;
+          }
+        }
+      }
+      if (found === -1 && (inSync || !nextTarget)) {
+        const limit = Math.min(domNorms.length, j + window2);
+        for (let k = j; k < limit; k++) {
+          if (domNorms[k] === target) {
+            found = k;
+            break;
+          }
+        }
       }
     }
     if (found === -1) {
+      inSync = false;
       continue;
     }
     out[i] = found;
     j = found + 1;
+    inSync = true;
   }
   return out;
 }
@@ -135,11 +156,15 @@ function narrationHighlightSupported() {
 }
 var PAD_X = 2;
 var PAD_Y = 1;
+var AUTO_SCROLL_THROTTLE_MS = 180;
+var USER_SCROLL_COOLDOWN_MS = 1200;
 var NarrationHighlighter = class {
   constructor(root, timings) {
     this.currentWord = -2;
     this.currentSentence = -2;
     this.follow = true;
+    this.userScrolledAt = 0;
+    this.lastScrollAt = 0;
     this.detachUserScroll = null;
     this.layer = null;
     this.sentenceLayer = null;
@@ -185,20 +210,23 @@ var NarrationHighlighter = class {
     return this.ranges.filter(Boolean).length / this.ranges.length;
   }
   attachUserScroll(doc) {
-    const stopFollowing = () => {
-      this.follow = false;
+    const onUserScroll = () => {
+      this.userScrolledAt = Date.now();
     };
     const opts = { passive: true };
-    doc.addEventListener("wheel", stopFollowing, opts);
-    doc.addEventListener("touchmove", stopFollowing, opts);
+    doc.addEventListener("wheel", onUserScroll, opts);
+    doc.addEventListener("touchmove", onUserScroll, opts);
     this.detachUserScroll = () => {
-      doc.removeEventListener("wheel", stopFollowing, opts);
-      doc.removeEventListener("touchmove", stopFollowing, opts);
+      doc.removeEventListener("wheel", onUserScroll, opts);
+      doc.removeEventListener("touchmove", onUserScroll, opts);
     };
   }
-  /** Re-engage auto-scroll (the reader pressed the toggle or sought). */
+  /** Re-engage auto-scroll immediately (the reader pressed the toggle or sought). */
   resumeFollowing() {
     this.follow = true;
+    this.userScrolledAt = 0;
+    this.lastScrollAt = 0;
+    this.currentWord = -2;
     this.currentSentence = -2;
   }
   /** Lazily creates the overlay layer behind the article text. */
@@ -298,21 +326,26 @@ var NarrationHighlighter = class {
     if (!this.ensureLayer()) return;
     this.paint(this.wordLayer, this.ranges[idx] ? this.boxesFor([idx]) : [], "word");
     const sentence = this.words[idx][3];
+    const members = this.sentenceWords.get(sentence) ?? [];
     if (sentence !== this.currentSentence) {
       this.currentSentence = sentence;
-      const members = this.sentenceWords.get(sentence) ?? [];
       this.paint(this.sentenceLayer, this.boxesFor(members), "sentence");
-      const first = members.length ? this.ranges[members[0]] : null;
-      if (first) this.scrollTo(first);
     }
+    const activeRange = this.ranges[idx] ?? (members.length ? this.ranges[members[0]] : null);
+    if (activeRange) this.scrollTo(activeRange);
   }
   scrollTo(range) {
     if (!this.follow) return;
+    const now = Date.now();
+    if (now - this.userScrolledAt < USER_SCROLL_COOLDOWN_MS) return;
+    if (now - this.lastScrollAt < AUTO_SCROLL_THROTTLE_MS) return;
     try {
       const rect = range.getBoundingClientRect();
       const viewport = window.innerHeight || 0;
-      if (rect.top < viewport * 0.15 || rect.bottom > viewport * 0.7) {
-        const target = window.scrollY + rect.top - viewport * 0.3;
+      if (viewport <= 0) return;
+      if (rect.top < viewport * 0.2 || rect.bottom > viewport * 0.75) {
+        this.lastScrollAt = now;
+        const target = Math.max(0, window.scrollY + rect.top - viewport * 0.35);
         window.scrollTo({ top: target, behavior: this.reducedMotion ? "auto" : "smooth" });
       }
     } catch {
