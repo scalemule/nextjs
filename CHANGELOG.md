@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.66
+
+- **Follow-along narration alignment & courtesy auto-scroll.** `alignWords` now uses 2-word anchor resynchronization so multi-word captions, subheadings, or inline edits cannot derail highlighting on common stop-words. `NarrationHighlighter` evaluates viewport comfort-band scrolling (`[20% vh, 75% vh]`) on every active word change and replaces the permanent manual-scroll kill-switch with a 1200ms courtesy cooldown so auto-scrolling automatically resumes after the reader stops scrolling.
+
 ## 0.1.65
 
 - **Invitation-aware sign-up.** `register({ ..., invitation_token })` (and the `/api/auth/register` proxy route) forwards the token from an account invitation link. When ScaleMule challenges a sign-up, for example from a browser it has never seen, a pending invitation addressed to that email lets the registration through. Invitations never lift a hard block, and the invitation is still accepted separately after sign-in. Requires scalemule-auth with invitation-aware registration; older auth ignores the field.
