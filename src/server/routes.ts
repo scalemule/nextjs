@@ -168,7 +168,7 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
       switch (path) {
         // ==================== Register ====================
         case 'register': {
-          const { email, password, full_name, username, phone, publication_code, website, company, hp_field } = body
+          const { email, password, full_name, username, phone, publication_code, website, company, hp_field, invitation_token } = body
 
           if (!email || !password) {
             return errorResponse('VALIDATION_ERROR', 'Email and password required', 400)
@@ -192,7 +192,18 @@ export function createAuthRoutes(config: AuthRoutesConfig = {}): {
 
           let registeredUser
           try {
-            registeredUser = await sm.auth.register({ email, password, full_name, username, phone }, { clientContext })
+            registeredUser = await sm.auth.register(
+              {
+                email,
+                password,
+                full_name,
+                username,
+                phone,
+                // Lets an invited person through a first-visit trust challenge.
+                ...(typeof invitation_token === 'string' && invitation_token ? { invitation_token } : {}),
+              },
+              { clientContext }
+            )
           } catch (err) {
             const apiErr = err instanceof ScaleMuleApiError ? err : null
             return errorResponse(
