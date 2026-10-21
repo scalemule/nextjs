@@ -75,29 +75,57 @@ export function collectDomWords(root: Node): DomWord[] {
 /**
  * Greedy sequential alignment with a small look-ahead window on both
  * sides, tolerant of stray tokens (an image caption in the DOM, a
- * normalization mismatch). Returns, per timing word, the index of its
- * DOM word or -1.
+ * normalization mismatch, or multi-word subheadings/captions present on
+ * only one side). Returns, per timing word, the index of its DOM word
+ * or -1.
  */
 export function alignWords(timingNorms: string[], domNorms: string[], window = 6): number[] {
   const out = new Array<number>(timingNorms.length).fill(-1)
+  const resyncWindow = Math.max(window * 4, 24)
   let j = 0
+  let inSync = true
   for (let i = 0; i < timingNorms.length; i++) {
     const target = timingNorms[i]
     if (!target) continue
+    const nextTarget = i + 1 < timingNorms.length ? timingNorms[i + 1] : ''
     let found = -1
-    for (let k = j; k < Math.min(domNorms.length, j + window); k++) {
-      if (domNorms[k] === target) {
-        found = k
-        break
+
+    if (inSync && j < domNorms.length && domNorms[j] === target) {
+      found = j
+    } else {
+      // Prefer a 2-word anchor within resyncWindow so multi-word captions/edits
+      // cannot derail alignment on stray prepositions/articles.
+      if (nextTarget) {
+        const limit = Math.min(domNorms.length - 1, j + resyncWindow)
+        for (let k = j; k < limit; k++) {
+          if (domNorms[k] === target && domNorms[k + 1] === nextTarget) {
+            found = k
+            break
+          }
+        }
+      }
+      // Fall back to single-word lookahead within the small window only when
+      // currently in sync or at the final timing word.
+      if (found === -1 && (inSync || !nextTarget)) {
+        const limit = Math.min(domNorms.length, j + window)
+        for (let k = j; k < limit; k++) {
+          if (domNorms[k] === target) {
+            found = k
+            break
+          }
+        }
       }
     }
+
     if (found === -1) {
       // The timing word is missing from the DOM (or too far); leave it
-      // unmatched but do not advance j, so the next words can still land.
+      // unmatched and require a 2-word anchor to resynchronize.
+      inSync = false
       continue
     }
     out[i] = found
     j = found + 1
+    inSync = true
   }
   return out
 }
@@ -170,6 +198,11 @@ export function narrationHighlightSupported(): boolean {
 // Box padding around the text so bands read as a highlighter stroke.
 const PAD_X = 2
 const PAD_Y = 1
+// Minimum interval between programmatic scroll adjustments on word changes.
+const AUTO_SCROLL_THROTTLE_MS = 180
+// Courtesy pause while the reader is actively scrolling with wheel/touch,
+// after which follow-along automatically resumes on subsequent spoken words.
+const USER_SCROLL_COOLDOWN_MS = 1200
 
 /**
  * Owns the live highlight for one narration player. Build once per
@@ -189,6 +222,8 @@ export class NarrationHighlighter {
   private currentWord = -2
   private currentSentence = -2
   private follow = true
+  private userScrolledAt = 0
+  private lastScrollAt = 0
   private detachUserScroll: (() => void) | null = null
   private reducedMotion: boolean
   private root: Element
@@ -243,21 +278,24 @@ export class NarrationHighlighter {
   }
 
   private attachUserScroll(doc: Document) {
-    const stopFollowing = () => {
-      this.follow = false
+    const onUserScroll = () => {
+      this.userScrolledAt = Date.now()
     }
     const opts = { passive: true } as AddEventListenerOptions
-    doc.addEventListener('wheel', stopFollowing, opts)
-    doc.addEventListener('touchmove', stopFollowing, opts)
+    doc.addEventListener('wheel', onUserScroll, opts)
+    doc.addEventListener('touchmove', onUserScroll, opts)
     this.detachUserScroll = () => {
-      doc.removeEventListener('wheel', stopFollowing, opts)
-      doc.removeEventListener('touchmove', stopFollowing, opts)
+      doc.removeEventListener('wheel', onUserScroll, opts)
+      doc.removeEventListener('touchmove', onUserScroll, opts)
     }
   }
 
-  /** Re-engage auto-scroll (the reader pressed the toggle or sought). */
+  /** Re-engage auto-scroll immediately (the reader pressed the toggle or sought). */
   resumeFollowing() {
     this.follow = true
+    this.userScrolledAt = 0
+    this.lastScrollAt = 0
+    this.currentWord = -2
     this.currentSentence = -2 // force a scroll on the next update
   }
 
@@ -369,24 +407,29 @@ export class NarrationHighlighter {
     this.paint(this.wordLayer, this.ranges[idx] ? this.boxesFor([idx]) : [], 'word')
 
     const sentence = this.words[idx][3]
+    const members = this.sentenceWords.get(sentence) ?? []
     if (sentence !== this.currentSentence) {
       this.currentSentence = sentence
-      const members = this.sentenceWords.get(sentence) ?? []
       this.paint(this.sentenceLayer, this.boxesFor(members), 'sentence')
-      const first = members.length ? this.ranges[members[0]] : null
-      if (first) this.scrollTo(first)
     }
+    const activeRange = this.ranges[idx] ?? (members.length ? this.ranges[members[0]] : null)
+    if (activeRange) this.scrollTo(activeRange)
   }
 
   private scrollTo(range: Range) {
     if (!this.follow) return
+    const now = Date.now()
+    if (now - this.userScrolledAt < USER_SCROLL_COOLDOWN_MS) return
+    if (now - this.lastScrollAt < AUTO_SCROLL_THROTTLE_MS) return
     try {
       const rect = range.getBoundingClientRect()
       const viewport = window.innerHeight || 0
-      // Only scroll when the sentence leaves the comfortable middle band,
-      // so the page glides rather than twitching on every sentence.
-      if (rect.top < viewport * 0.15 || rect.bottom > viewport * 0.7) {
-        const target = window.scrollY + rect.top - viewport * 0.3
+      if (viewport <= 0) return
+      // Only scroll when the active word leaves the comfortable middle band
+      // [20% vh, 75% vh], so the page glides smoothly and resumes after manual scrolls.
+      if (rect.top < viewport * 0.2 || rect.bottom > viewport * 0.75) {
+        this.lastScrollAt = now
+        const target = Math.max(0, window.scrollY + rect.top - viewport * 0.35)
         window.scrollTo({ top: target, behavior: this.reducedMotion ? 'auto' : 'smooth' })
       }
     } catch {
