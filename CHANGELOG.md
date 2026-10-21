@@ -2,6 +2,10 @@
 
 ## 0.1.66
 
+- **Code verification is bound to the address.** `verifyEmail(token, email?)` (hook, server client and the `/api/auth/verify-email` proxy route) forwards the address a 6-digit code was sent to. ScaleMule then matches the code only against that account. Code-only verification still works, but now has a tight per-app attempt budget. Pass the email whenever you show a code-entry form.
+
+## 0.1.66
+
 - **Follow-along narration alignment & courtesy auto-scroll.** `alignWords` now uses 2-word anchor resynchronization so multi-word captions, subheadings, or inline edits cannot derail highlighting on common stop-words. `NarrationHighlighter` evaluates viewport comfort-band scrolling (`[20% vh, 75% vh]`) on every active word change and replaces the permanent manual-scroll kill-switch with a 1200ms courtesy cooldown so auto-scrolling automatically resumes after the reader stops scrolling.
 
 ## 0.1.65

@@ -626,7 +626,7 @@ export interface UseAuthReturn {
   /** Reset password with token */
   resetPassword: (token: string, newPassword: string) => Promise<void>
   /** Verify email with token */
-  verifyEmail: (token: string) => Promise<void>
+  verifyEmail: (token: string, email?: string) => Promise<void>
   /** Resend verification email (optional email for unauthenticated resend) */
   resendVerification: (email?: string) => Promise<void>
   /** Refresh session token */
