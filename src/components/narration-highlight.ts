@@ -148,6 +148,140 @@ export function wordIndexAt(words: [string, number, number, number][], timeMs: n
   return ans
 }
 
+const UNSTRESSED_FUNCTION_WORDS = new Set([
+  'a', 'an', 'the', 'of', 'to', 'in', 'on', 'at', 'for', 'and',
+  'or', 'by', 'as', 'is', 'was', 'were', 'be', 'are', 'with',
+  'from', 'that', 'this',
+])
+
+const DASH_TOKENS = new Set(['—', '–', '--'])
+
+function isClauseEnd(sent: [string, number, number, number][], i: number): boolean {
+  const n = sent.length
+  if (i === n - 1) return true
+  const stripped = sent[i][0].replace(/["'\u201d\u2019)\]}]+$/u, '')
+  if (DASH_TOKENS.has(stripped)) return true
+  if (/[,;:\u2014\u2013]$/u.test(stripped)) {
+    if (i + 1 < n && DASH_TOKENS.has(sent[i + 1][0])) return false
+    if (i + 2 < n && DASH_TOKENS.has(sent[i + 2][0])) return false
+    return true
+  }
+  return false
+}
+
+function rebalanceLegacySentence(
+  sent: [string, number, number, number][]
+): [string, number, number, number][] {
+  const n = sent.length
+  const sStart = sent[0][1]
+  const sEnd = sent[n - 1][2]
+  const sDur = sEnd - sStart
+  if (n <= 1 || sDur < 600) return sent
+
+  const clauses: [number, number][] = []
+  let startIdx = 0
+  for (let i = 0; i < n; i++) {
+    if (isClauseEnd(sent, i)) {
+      clauses.push([startIdx, i])
+      startIdx = i + 1
+    }
+  }
+
+  const clauseBounds: [number, number][] = clauses.map(([i0, i1]) => [sent[i0][1], sent[i1][2]])
+  // Dateline header ("SAN RAMON, Calif. —") over-allocates linear phoneme time to
+  // the expanded state abbreviation; shift up to 24% of clause 0 into clause 1.
+  if (clauses.length >= 2) {
+    const [, i1] = clauses[0]
+    if (DASH_TOKENS.has(sent[i1][0]) && i1 <= 5) {
+      const c0Dur = clauseBounds[0][1] - clauseBounds[0][0]
+      const shift = Math.min(450, c0Dur * 0.24)
+      clauseBounds[0][1] -= shift
+      clauseBounds[1][0] -= shift
+    }
+  }
+
+  const out: [string, number, number, number][] = []
+  for (let c = 0; c < clauses.length; c++) {
+    const [i0, i1] = clauses[c]
+    const [cStart, cEnd] = clauseBounds[c]
+    const cDur = cEnd - cStart
+    const cLen = i1 - i0 + 1
+    const pauseMs =
+      cLen >= 2 && cDur > 450
+        ? Math.min(340, cDur * 0.24)
+        : cDur > 300
+          ? Math.min(180, cDur * 0.18)
+          : 0
+    const speechDur = Math.max(cDur - pauseMs, cDur * 0.72)
+
+    const weights: number[] = []
+    for (let idx = i0; idx <= i1; idx++) {
+      const [w, st, en] = sent[idx]
+      const oldD = Math.max(en - st, 40)
+      const stripped = w.replace(/["'\u201d\u2019)\]}]+$/u, '')
+      const clean = stripped
+        .replace(/^["'\u201c\u2018([{]+/u, '')
+        .replace(/[.,;:!?\u2014\u2013-]+$/u, '')
+        .toLowerCase()
+      if (DASH_TOKENS.has(w)) {
+        weights.push(30)
+      } else {
+        let weight = Math.pow(oldD, 0.85)
+        if (UNSTRESSED_FUNCTION_WORDS.has(clean) && stripped.toLowerCase() === clean) {
+          weight *= 0.58
+        }
+        weights.push(weight)
+      }
+    }
+    const totW = weights.reduce((a, b) => a + b, 0) || 1
+    let cur = cStart
+    for (let k = 0; k < cLen; k++) {
+      const idx = i0 + k
+      const [w, , , si] = sent[idx]
+      const wDur = speechDur * (weights[k] / totW)
+      const lead = idx > 0 ? Math.min(45, wDur * 0.22) : 0
+      const wSt = Math.max(sStart, cur - lead)
+      const wEn = cur + wDur
+      out.push([w, Math.round(wSt), Math.round(Math.max(wSt, wEn)), si])
+      cur = wEn
+    }
+  }
+  return out
+}
+
+/**
+ * Rebalances legacy linear intra-sentence word timings (where every word is
+ * packed end-to-end with zero pause gaps) while leaving waveform-aligned
+ * sentences untouched.
+ */
+export function rebalanceSentenceTimings(
+  words: [string, number, number, number][]
+): [string, number, number, number][] {
+  if (words.length <= 1) return words
+  const out: [string, number, number, number][] = []
+  let i = 0
+  while (i < words.length) {
+    let j = i + 1
+    const sIdx = words[i][3]
+    while (j < words.length && words[j][3] === sIdx) j++
+    const sent = words.slice(i, j)
+    let hasExplicitGaps = false
+    for (let k = 0; k < sent.length - 1; k++) {
+      if (sent[k + 1][1] - sent[k][2] >= 25) {
+        hasExplicitGaps = true
+        break
+      }
+    }
+    if (!hasExplicitGaps && j < words.length && words[j][1] - sent[sent.length - 1][2] >= 25) {
+      hasExplicitGaps = true
+    }
+    const processed = hasExplicitGaps ? sent : rebalanceLegacySentence(sent)
+    for (const row of processed) out.push(row)
+    i = j
+  }
+  return out
+}
+
 /** A rectangle in the highlight layer's coordinate space. */
 export interface Box {
   left: number
@@ -236,7 +370,7 @@ export class NarrationHighlighter {
 
   constructor(root: Element, timings: NarrationTimings) {
     this.root = root
-    this.words = timings.words
+    this.words = rebalanceSentenceTimings(timings.words)
     const domWords = collectDomWords(root)
     const matches = alignWords(
       this.words.map((w) => normalizeWord(w[0])),

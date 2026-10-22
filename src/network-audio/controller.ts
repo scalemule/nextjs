@@ -140,6 +140,12 @@ export class NetworkAudioController {
   constructor(private resolve: ResolveNetworkAudio) {}
   setResolver(resolve: ResolveNetworkAudio) { this.resolve = resolve }
   getSnapshot = () => this.snapshot
+  getPosition = (): number => {
+    if (this.audio && this.source && this.resumePosition === null && finite(this.audio.currentTime)) {
+      if (this.audio.currentTime > 0 || this.snapshot.position === 0) return this.audio.currentTime
+    }
+    return this.snapshot.position
+  }
   subscribe = (listener: () => void) => {
     this.listeners.add(listener)
     return () => { this.listeners.delete(listener) }

@@ -7,6 +7,7 @@ import {
   NarrationHighlighter,
   normalizeWord,
   parseTimingsPayload,
+  rebalanceSentenceTimings,
   wordIndexAt,
 } from './narration-highlight'
 
@@ -113,6 +114,40 @@ describe('wordIndexAt', () => {
   })
   it('is -1 before the first word', () => {
     expect(wordIndexAt([['w', 100, 200, 0]], 50)).toBe(-1)
+  })
+})
+
+describe('rebalanceSentenceTimings', () => {
+  it('carves out clause pauses and function-word discounts on legacy linear sentences', () => {
+    const legacy: [string, number, number, number][] = [
+      ['a', 7640, 7775, 1],
+      ['graduate', 7775, 8446, 1],
+      ['of', 8446, 8714, 1],
+      ['the', 8714, 8916, 1],
+      ['University', 8916, 9721, 1],
+      ['of', 9721, 9989, 1],
+      ['California,', 9989, 10929, 1],
+      ['Santa', 10929, 11398, 1],
+      ['Barbara.', 11398, 12002, 1],
+    ]
+    const rebalanced = rebalanceSentenceTimings(legacy)
+    const byWord = Object.fromEntries(rebalanced.map(([w, st, en]) => [w, [st, en]]))
+    // "University" and "California," start significantly earlier than their smeared linear start times
+    expect(byWord['University'][0]).toBeLessThan(8750)
+    expect(byWord['California,'][0]).toBeLessThan(9750)
+    // "California," finishes before the comma pause so "Santa" starts after the pause gap
+    expect(byWord['Santa'][0] - byWord['California,'][1]).toBeGreaterThanOrEqual(180)
+  })
+
+  it('leaves already waveform-aligned sentences (with explicit pause gaps) untouched', () => {
+    const aligned: [string, number, number, number][] = [
+      ['University', 0, 520, 0],
+      ['of', 520, 620, 0],
+      ['California,', 620, 1050, 0],
+      ['Santa', 1420, 1780, 0],
+      ['Barbara.', 1780, 2240, 0],
+    ]
+    expect(rebalanceSentenceTimings(aligned)).toEqual(aligned)
   })
 })
 

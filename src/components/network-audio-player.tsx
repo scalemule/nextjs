@@ -31,6 +31,7 @@ export interface NetworkAudioContextValue {
   notice: string | null
   command: (command: NetworkAudioCommand) => void
   openNetworkPlayer?: () => void
+  getPosition?: () => number
   highlightAvailable: boolean
   highlightEnabled: boolean
   setHighlightEnabled: (enabled: boolean) => void
@@ -134,7 +135,8 @@ export function NetworkAudioProvider({ children, resolveAudio, connection, host,
   const activeTrack = activeSnapshot.queue[activeSnapshot.index]
   const highlightAvailable = !!activeTrack && [...narrationTracks.values()].includes(trackKey(activeTrack))
   return <Context.Provider value={{ snapshot: activeSnapshot, remote: remoteSnapshot !== null, hosted: !!host, notice, command,
-    openNetworkPlayer: connection ? openNetworkPlayer : undefined, highlightAvailable, highlightEnabled, setHighlightEnabled, catchUp: loadRecommendations ? catchUp : undefined, recommendationsLoading }}>
+    openNetworkPlayer: connection ? openNetworkPlayer : undefined, getPosition: remoteSnapshot !== null ? undefined : controller.getPosition,
+    highlightAvailable, highlightEnabled, setHighlightEnabled, catchUp: loadRecommendations ? catchUp : undefined, recommendationsLoading }}>
     <NarrationRegistration.Provider value={registerNarration}>
       <NetworkMediaSession />
       {children}
@@ -180,7 +182,7 @@ function NetworkMediaSession() {
 const subscribeCapabilities = () => () => {}
 /** Attach in the article component. Unmount/hidden tab clears only highlighting, never playback. */
 export function useArticleNarration(track: NetworkAudioTrack, narration?: AudioPlayerNarration) {
-  const { snapshot, highlightEnabled, setHighlightEnabled } = useNetworkAudio()
+  const { snapshot, remote, getPosition, highlightEnabled, setHighlightEnabled } = useNetworkAudio()
   const supported = useSyncExternalStore(subscribeCapabilities, narrationHighlightSupported, () => false)
   const registerNarration = useContext(NarrationRegistration)
   const narrationKey = trackKey(track)
@@ -190,17 +192,30 @@ export function useArticleNarration(track: NetworkAudioTrack, narration?: AudioP
   }, [available, narrationKey, registerNarration])
   const active = snapshot.queue[snapshot.index]
   const matching = !!active && trackKey(active) === trackKey(track)
-  const clock = useRef({ snapshot, received: 0 })
-  useEffect(() => { clock.current = { snapshot, received: performance.now() } }, [snapshot])
+  const clock = useRef({ snapshot, received: 0, lastPosition: -1, lastStatus: '' })
+  useEffect(() => {
+    const prev = clock.current
+    const changed = snapshot.position !== prev.lastPosition || snapshot.status !== prev.lastStatus
+    clock.current = {
+      snapshot,
+      received: changed ? performance.now() : prev.received,
+      lastPosition: snapshot.position,
+      lastStatus: snapshot.status,
+    }
+  }, [snapshot])
   useEffect(() => {
     if (!narration || !matching || !highlightEnabled || !supported || snapshot.hidden) return
     const controller = new AbortController()
     let highlighter: NarrationHighlighter | null = null
     let frame = 0
     const render = () => {
-      const { snapshot: current, received } = clock.current
-      const elapsed = current.status === 'playing' ? Math.min((performance.now() - received) / 1000, 0.5) * current.rate : 0
-      highlighter?.update((current.position + elapsed) * 1000)
+      if (!remote && getPosition) {
+        highlighter?.update(getPosition() * 1000)
+      } else {
+        const { snapshot: current, received } = clock.current
+        const elapsed = current.status === 'playing' ? Math.min((performance.now() - received) / 1000, 0.5) * current.rate : 0
+        highlighter?.update((current.position + elapsed) * 1000)
+      }
       frame = requestAnimationFrame(render)
     }
     const visibility = () => {

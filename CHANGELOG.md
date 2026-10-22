@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.68
+
+- **Live narration media clock & clause-local timing rebalancing.** `NetworkAudioController.getPosition()` exposes the live `HTMLAudioElement.currentTime` directly to `useArticleNarration`'s animation-frame loop during local playback, eliminating `timeupdate`/React-commit latency and cross-domain listening-memory sync resets. `NarrationHighlighter` automatically rebalances legacy linear sentence timings (carving out clause-end comma/dash pauses and discounting unstressed function words) while preserving waveform-aligned sentences that already carry explicit pause gaps. Adopting the patch in each publication remains a separate rollout step.
+
 ## 0.1.67
 
 - **Use this instead of 0.1.66.** 0.1.66 on npm was published from a branch that predates 0.1.65's changes. It has the narration fix (#87), but it is **missing `invitation_token` forwarding on register (0.1.65)** and `verifyEmail(token, email?)` (#89). 0.1.67 is built from `main` and includes all three.
