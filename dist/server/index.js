@@ -2769,15 +2769,15 @@ function createPushRoutes(config) {
     }
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
-      const json = await response.json();
+      const json2 = await response.json();
       if (response.ok) {
-        return new Response(JSON.stringify(json), {
+        return new Response(JSON.stringify(json2), {
           status: response.status,
           headers: { "Content-Type": "application/json" }
         });
       } else {
-        const errMsg = json?.error?.message || json?.message || "Request failed";
-        const errCode = json?.error?.code || json?.code || "PUSH_ERROR";
+        const errMsg = json2?.error?.message || json2?.message || "Request failed";
+        const errCode = json2?.error?.code || json2?.code || "PUSH_ERROR";
         return errorResponse2(errCode, errMsg, response.status);
       }
     }
@@ -2912,6 +2912,118 @@ function createNotificationRoutes(config) {
     return proxyToGateway(request, "DELETE", subPath);
   };
   return { GET, PATCH, DELETE };
+}
+
+// src/server/newsletters.ts
+var MAX_BODY_BYTES2 = 16 * 1024;
+var SLUG = /^[a-z0-9][a-z0-9-]{0,78}[a-z0-9]$/;
+function newsletterRoute(method, action) {
+  const path = action.join("/");
+  switch (method) {
+    case "GET":
+      return ["lists", "preferences", "me/subscriptions"].includes(path) ? path : null;
+    case "PUT":
+      return ["preferences", "me/subscriptions"].includes(path) ? path : null;
+    case "POST":
+      if (path === "subscriptions/confirm" || path === "unsubscribe") return path;
+      if (action.length === 3 && action[0] === "lists" && action[2] === "subscriptions" && SLUG.test(action[1])) {
+        return `lists/${action[1]}/subscriptions`;
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+async function readCapped(request, limit) {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let offset = 0;
+  for (const c of chunks) {
+    all.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+function json(status, code, message) {
+  return new Response(JSON.stringify({ success: false, error: { code, message } }), {
+    status,
+    headers: { "Content-Type": "application/json" }
+  });
+}
+function sameOrigin(request, allowedOrigins) {
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  let originHost;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    return false;
+  }
+  const publicHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() || request.headers.get("host") || new URL(request.url).host;
+  return originHost === publicHost;
+}
+function createNewsletterRoutes(config) {
+  const { apiKey, gatewayUrl } = config;
+  if (!config.clientContext?.trustedIpHeader) {
+    throw new Error("createNewsletterRoutes: clientContext.trustedIpHeader is required");
+  }
+  const requireSameOrigin = config.requireSameOrigin ?? true;
+  async function forward(request, method, action) {
+    const route = newsletterRoute(method, action);
+    if (!route) return json(404, "NOT_FOUND", "Not found");
+    if (method !== "GET" && requireSameOrigin && !sameOrigin(request, config.allowedOrigins ?? [])) {
+      return json(403, "FORBIDDEN", "Cross-site newsletter requests are not allowed");
+    }
+    const headers3 = { "x-api-key": apiKey, "Content-Type": "application/json" };
+    const session = getSessionFromRequest(request);
+    if (session?.sessionToken) headers3["Authorization"] = `Bearer ${session.sessionToken}`;
+    Object.assign(
+      headers3,
+      buildClientContextHeaders(
+        extractClientContext(request, config.clientContext)
+      )
+    );
+    const init = { method, headers: headers3 };
+    if (method !== "GET") {
+      const declared = Number(request.headers.get("content-length") ?? "0");
+      if (declared > MAX_BODY_BYTES2) return json(413, "PAYLOAD_TOO_LARGE", "Request body too large");
+      const body = await readCapped(request, MAX_BODY_BYTES2);
+      if (body === null) return json(413, "PAYLOAD_TOO_LARGE", "Request body too large");
+      if (body) init.body = body;
+    }
+    const search = new URL(request.url).search;
+    let response;
+    try {
+      response = await fetch(`${gatewayUrl}/v1/newsletters/${route}${search}`, init);
+    } catch {
+      return json(502, "UPSTREAM_UNAVAILABLE", "The newsletter service is temporarily unavailable");
+    }
+    const out = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+    for (const h of ["x-request-id", "retry-after"]) {
+      const v = response.headers.get(h);
+      if (v) out[h] = v;
+    }
+    return new Response(await response.text(), { status: response.status, headers: out });
+  }
+  const handler = (method) => async (request, context) => {
+    const params = await context.params;
+    return forward(request, method, params.action ?? []);
+  };
+  return { GET: handler("GET"), POST: handler("POST"), PUT: handler("PUT") };
 }
 
 // src/server/errors.ts
@@ -3622,6 +3734,7 @@ exports.createAnalyticsRoutes = createAnalyticsRoutes;
 exports.createAuthMiddleware = createAuthMiddleware;
 exports.createAuthRoutes = createAuthRoutes;
 exports.createLedveryRoutes = createLedveryRoutes;
+exports.createNewsletterRoutes = createNewsletterRoutes;
 exports.createNotificationRoutes = createNotificationRoutes;
 exports.createPushRoutes = createPushRoutes;
 exports.createServerClient = createServerClient;
@@ -3650,6 +3763,7 @@ exports.getSmtpBundle = getSmtpBundle;
 exports.invalidateBundleCache = invalidateBundleCache;
 exports.invalidateSecretCache = invalidateSecretCache;
 exports.isSafeRedirect = isSafeRedirect;
+exports.newsletterRoute = newsletterRoute;
 exports.normalizeKnownAccountsCookie = normalizeKnownAccountsCookie;
 exports.parseWebhookEvent = parseWebhookEvent;
 exports.prefetchBundles = prefetchBundles;

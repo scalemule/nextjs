@@ -73,6 +73,9 @@ export type { PushRoutesConfig } from './push'
 export { createNotificationRoutes } from './notifications'
 export type { NotificationRoutesConfig } from './notifications'
 
+export { createNewsletterRoutes, newsletterRoute } from './newsletters'
+export type { NewsletterRoutesConfig } from './newsletters'
+
 export { apiHandler } from './handler'
 export type { HandlerContext, HandlerOptions } from './handler'
 

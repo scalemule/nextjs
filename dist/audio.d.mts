@@ -202,6 +202,7 @@ declare class NetworkAudioController {
     constructor(resolve: ResolveNetworkAudio);
     setResolver(resolve: ResolveNetworkAudio): void;
     getSnapshot: () => NetworkAudioSnapshot;
+    getPosition: () => number;
     subscribe: (listener: () => void) => () => void;
     private patch;
     attach(audio: HTMLAudioElement): void;
@@ -292,6 +293,7 @@ interface NetworkAudioContextValue {
     notice: string | null;
     command: (command: NetworkAudioCommand) => void;
     openNetworkPlayer?: () => void;
+    getPosition?: () => number;
     highlightAvailable: boolean;
     highlightEnabled: boolean;
     setHighlightEnabled: (enabled: boolean) => void;
