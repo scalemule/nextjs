@@ -2976,6 +2976,9 @@ function sameOrigin(request, allowedOrigins) {
 }
 function createNewsletterRoutes(config) {
   const { apiKey, gatewayUrl } = config;
+  if (!config.clientContext?.trustedIpHeader) {
+    throw new Error("createNewsletterRoutes: clientContext.trustedIpHeader is required");
+  }
   const requireSameOrigin = config.requireSameOrigin ?? true;
   async function forward(request, method, action) {
     const route = newsletterRoute(method, action);

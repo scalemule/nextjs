@@ -524,7 +524,7 @@ declare function createNotificationRoutes(config: NotificationRoutesConfig): {
  *   apiKey: process.env.SCALEMULE_API_KEY!,
  *   gatewayUrl: process.env.SCALEMULE_API_URL!,
  *   // The header your load balancer/CDN sets with the real client IP:
- *   // an AWS ALB in append mode directly in front of the app → 'x-forwarded-for'
+ *   // ScaleMule Hosting (AWS ALB straight to the app) → 'x-forwarded-for'
  *   // (last hop); Cloudflare → 'cf-connecting-ip'; Vercel → 'x-vercel-forwarded-for'.
  *   clientContext: { trustedIpHeader: 'x-forwarded-for' },
  * })

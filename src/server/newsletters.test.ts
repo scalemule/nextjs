@@ -65,12 +65,17 @@ describe('createNewsletterRoutes', () => {
       new Request('http://localhost:3000/api/newsletters/unsubscribe', {
         method: 'POST',
         body: JSON.stringify({ token: 'a'.repeat(64) }),
-        headers: { origin: 'https://paper.example', 'x-forwarded-host': 'paper.example', 'x-forwarded-for': '198.51.100.9, 10.0.0.2' },
+        // A client-supplied XFF entry, then the reader IP the ALB appended.
+        headers: { origin: 'https://paper.example', 'x-forwarded-host': 'paper.example', 'x-forwarded-for': '6.6.6.6, 198.51.100.9' },
       }),
       ctx('unsubscribe')
     )
     expect(res.status).toBe(200)
-    expect(((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>)['x-sm-forwarded-client-ip']).toBe('10.0.0.2')
+    expect(((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>)['x-sm-forwarded-client-ip']).toBe('198.51.100.9')
+  })
+
+  it('refuses to build without a trusted IP header', () => {
+    expect(() => createNewsletterRoutes({ apiKey: 'k', gatewayUrl: 'https://g' } as never)).toThrow(/trustedIpHeader/)
   })
 
   it('caps the body and turns gateway outages into a JSON 502', async () => {
