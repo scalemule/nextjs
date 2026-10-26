@@ -316,7 +316,7 @@ interface AuthRoutesConfig {
         email: string;
     }) => void | Promise<void>;
 }
-type RouteHandler$2 = (request: Request, context: {
+type RouteHandler$3 = (request: Request, context: {
     params: Promise<{
         scalemule?: string[];
     }>;
@@ -349,11 +349,11 @@ type RouteHandler$2 = (request: Request, context: {
  * - POST /api/auth/verify-email - Verify email
  */
 declare function createAuthRoutes(config?: AuthRoutesConfig): {
-    GET: RouteHandler$2;
-    POST: RouteHandler$2;
-    DELETE: RouteHandler$2;
-    PATCH: RouteHandler$2;
-    PUT: RouteHandler$2;
+    GET: RouteHandler$3;
+    POST: RouteHandler$3;
+    DELETE: RouteHandler$3;
+    PATCH: RouteHandler$3;
+    PUT: RouteHandler$3;
 };
 interface AnalyticsTrackingGateConfig {
     /** Feature flag key used to decide whether to forward analytics */
@@ -432,7 +432,7 @@ interface AnalyticsRoutesConfig {
  * ```
  */
 declare function createAnalyticsRoutes(config?: AnalyticsRoutesConfig): {
-    POST: RouteHandler$2;
+    POST: RouteHandler$3;
 };
 
 /**
@@ -460,16 +460,16 @@ interface PushRoutesConfig {
     /** Enable CSRF validation on POST/PUT/DELETE (default: true) */
     csrf?: boolean;
 }
-type RouteHandler$1 = (request: Request, context: {
+type RouteHandler$2 = (request: Request, context: {
     params: Promise<{
         action?: string[];
     }>;
 }) => Promise<Response>;
 declare function createPushRoutes(config: PushRoutesConfig): {
-    GET: RouteHandler$1;
-    POST: RouteHandler$1;
-    PUT: RouteHandler$1;
-    DELETE: RouteHandler$1;
+    GET: RouteHandler$2;
+    POST: RouteHandler$2;
+    PUT: RouteHandler$2;
+    DELETE: RouteHandler$2;
 };
 
 /**
@@ -495,15 +495,66 @@ interface NotificationRoutesConfig {
     /** Gateway URL (e.g., https://api.scalemule.com) */
     gatewayUrl: string;
 }
-type RouteHandler = (request: Request, context: {
+type RouteHandler$1 = (request: Request, context: {
     params: Promise<{
         action?: string[];
     }>;
 }) => Promise<Response>;
 declare function createNotificationRoutes(config: NotificationRoutesConfig): {
+    GET: RouteHandler$1;
+    PATCH: RouteHandler$1;
+    DELETE: RouteHandler$1;
+};
+
+/**
+ * Newsletter Proxy Routes
+ *
+ * Drop-in App Router handlers that forward newsletter sign-ups, confirmations,
+ * unsubscribes and preference changes to scalemule-newsletters with the
+ * READER's evidence (IP, browser, device fingerprint, referrer) and session,
+ * so the consent ledger records the person who subscribed, not your server.
+ * Your secret API key never reaches the browser.
+ *
+ * @example
+ * ```ts
+ * // app/api/newsletters/[...action]/route.ts
+ * import { createNewsletterRoutes } from '@scalemule/nextjs/server'
+ *
+ * export const { GET, POST, PUT } = createNewsletterRoutes({
+ *   apiKey: process.env.SCALEMULE_API_KEY!,
+ *   gatewayUrl: process.env.SCALEMULE_API_URL!,
+ * })
+ * ```
+ *
+ * Browser calls then go to `/api/newsletters/lists/{slug}/subscriptions`,
+ * `/api/newsletters/subscriptions/confirm`, `/api/newsletters/unsubscribe`,
+ * `/api/newsletters/preferences?token=…` and `/api/newsletters/me/subscriptions`.
+ */
+
+interface NewsletterRoutesConfig {
+    /** Server-side secret API key */
+    apiKey: string;
+    /** Gateway URL (e.g., https://api.scalemule.com) */
+    gatewayUrl: string;
+    /** How to read the reader's IP behind your proxy/CDN (see extractClientContext). */
+    clientContext?: ClientContextOptions;
+    /**
+     * Reject state-changing requests whose Origin is another site (default
+     * true). Sign-ups must come from your own pages.
+     */
+    requireSameOrigin?: boolean;
+}
+type RouteHandler = (request: Request, context: {
+    params: Promise<{
+        action?: string[];
+    }>;
+}) => Promise<Response>;
+/** The gateway sub-path for an allowed (method, action) pair, or null. */
+declare function newsletterRoute(method: string, action: string[]): string | null;
+declare function createNewsletterRoutes(config: NewsletterRoutesConfig): {
     GET: RouteHandler;
-    PATCH: RouteHandler;
-    DELETE: RouteHandler;
+    POST: RouteHandler;
+    PUT: RouteHandler;
 };
 
 /**
@@ -1300,4 +1351,4 @@ declare const DEFAULT_PERMISSIONS_POLICY: PermissionsPolicyMap;
  */
 declare function buildSecurityHeaders(opts?: BuildSecurityHeadersOptions): SecurityHeaderEntry[];
 
-export { type AnalyticsRoutesConfig, type AnalyticsTrackingGateConfig, type AuthMiddlewareConfig, type AuthRoutesConfig, type BuildSecurityHeadersOptions, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, DEFAULT_PERMISSIONS_POLICY, type HandlerContext, type HandlerOptions, KNOWN_ACCOUNTS_COOKIE_NAME, type KnownAccountEntry, type MySqlBundle, type NotificationRoutesConfig, OAUTH_STATE_COOKIE_NAME, type OAuthBundle, type PermissionsPolicyMap, type PermissionsPolicyValue, type PostgresBundle, type PushRoutesConfig, type RedisBundle, type S3Bundle, SESSION_COOKIE_NAME, type SafeRedirectOptions, ScaleMuleError, type SecurityHeaderEntry, ServerConfig, type SessionCookieOptions, type SessionData, type SmtpBundle, USER_ID_COOKIE_NAME, apiHandler, appendKnownAccountCookie, buildClientContextHeaders, buildFlagContext, buildSecurityHeaders, clearKnownAccountsCookie, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createNotificationRoutes, createPushRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getKnownAccountsCookieRaw, getKnownAccountsFromRequest, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, isSafeRedirect, normalizeKnownAccountsCookie, prefetchBundles, prefetchSecrets, removeKnownAccountFromCookie, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, validateSafeRedirect, withAuth, withCSRFProtection, withCSRFToken, withSession };
+export { type AnalyticsRoutesConfig, type AnalyticsTrackingGateConfig, type AuthMiddlewareConfig, type AuthRoutesConfig, type BuildSecurityHeadersOptions, CSRF_COOKIE_NAME, CSRF_HEADER_NAME, DEFAULT_PERMISSIONS_POLICY, type HandlerContext, type HandlerOptions, KNOWN_ACCOUNTS_COOKIE_NAME, type KnownAccountEntry, type MySqlBundle, type NewsletterRoutesConfig, type NotificationRoutesConfig, OAUTH_STATE_COOKIE_NAME, type OAuthBundle, type PermissionsPolicyMap, type PermissionsPolicyValue, type PostgresBundle, type PushRoutesConfig, type RedisBundle, type S3Bundle, SESSION_COOKIE_NAME, type SafeRedirectOptions, ScaleMuleError, type SecurityHeaderEntry, ServerConfig, type SessionCookieOptions, type SessionData, type SmtpBundle, USER_ID_COOKIE_NAME, apiHandler, appendKnownAccountCookie, buildClientContextHeaders, buildFlagContext, buildSecurityHeaders, clearKnownAccountsCookie, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createNewsletterRoutes, createNotificationRoutes, createPushRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getKnownAccountsCookieRaw, getKnownAccountsFromRequest, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, isSafeRedirect, newsletterRoute, normalizeKnownAccountsCookie, prefetchBundles, prefetchSecrets, removeKnownAccountFromCookie, requireAppSecret, requireBundle, requireSession, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, validateSafeRedirect, withAuth, withCSRFProtection, withCSRFToken, withSession };

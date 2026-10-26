@@ -2767,15 +2767,15 @@ function createPushRoutes(config) {
     }
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
-      const json = await response.json();
+      const json2 = await response.json();
       if (response.ok) {
-        return new Response(JSON.stringify(json), {
+        return new Response(JSON.stringify(json2), {
           status: response.status,
           headers: { "Content-Type": "application/json" }
         });
       } else {
-        const errMsg = json?.error?.message || json?.message || "Request failed";
-        const errCode = json?.error?.code || json?.code || "PUSH_ERROR";
+        const errMsg = json2?.error?.message || json2?.message || "Request failed";
+        const errCode = json2?.error?.code || json2?.code || "PUSH_ERROR";
         return errorResponse2(errCode, errMsg, response.status);
       }
     }
@@ -2910,6 +2910,81 @@ function createNotificationRoutes(config) {
     return proxyToGateway(request, "DELETE", subPath);
   };
   return { GET, PATCH, DELETE };
+}
+
+// src/server/newsletters.ts
+var MAX_BODY_BYTES2 = 16 * 1024;
+var SLUG = /^[a-z0-9][a-z0-9-]{0,78}[a-z0-9]$/;
+function newsletterRoute(method, action) {
+  const path = action.join("/");
+  switch (method) {
+    case "GET":
+      return ["lists", "preferences", "me/subscriptions"].includes(path) ? path : null;
+    case "PUT":
+      return ["preferences", "me/subscriptions"].includes(path) ? path : null;
+    case "POST":
+      if (path === "subscriptions/confirm" || path === "unsubscribe") return path;
+      if (action.length === 3 && action[0] === "lists" && action[2] === "subscriptions" && SLUG.test(action[1])) {
+        return `lists/${action[1]}/subscriptions`;
+      }
+      return null;
+    default:
+      return null;
+  }
+}
+function json(status, code, message) {
+  return new Response(JSON.stringify({ success: false, error: { code, message } }), {
+    status,
+    headers: { "Content-Type": "application/json" }
+  });
+}
+function sameOrigin(request) {
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === new URL(request.url).host;
+  } catch {
+    return false;
+  }
+}
+function createNewsletterRoutes(config) {
+  const { apiKey, gatewayUrl } = config;
+  const requireSameOrigin = config.requireSameOrigin ?? true;
+  async function forward(request, method, action) {
+    const route = newsletterRoute(method, action);
+    if (!route) return json(404, "NOT_FOUND", "Not found");
+    if (method !== "GET" && requireSameOrigin && !sameOrigin(request)) {
+      return json(403, "FORBIDDEN", "Cross-site newsletter requests are not allowed");
+    }
+    const headers3 = { "x-api-key": apiKey, "Content-Type": "application/json" };
+    const session = getSessionFromRequest(request);
+    if (session?.sessionToken) headers3["Authorization"] = `Bearer ${session.sessionToken}`;
+    Object.assign(
+      headers3,
+      buildClientContextHeaders(
+        extractClientContext(request, config.clientContext)
+      )
+    );
+    const init = { method, headers: headers3 };
+    if (method !== "GET") {
+      const body = await request.text();
+      if (new TextEncoder().encode(body).length > MAX_BODY_BYTES2) {
+        return json(413, "PAYLOAD_TOO_LARGE", "Request body too large");
+      }
+      if (body) init.body = body;
+    }
+    const search = new URL(request.url).search;
+    const response = await fetch(`${gatewayUrl}/v1/newsletters/${route}${search}`, init);
+    return new Response(await response.text(), {
+      status: response.status,
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }
+    });
+  }
+  const handler = (method) => async (request, context) => {
+    const params = await context.params;
+    return forward(request, method, params.action ?? []);
+  };
+  return { GET: handler("GET"), POST: handler("POST"), PUT: handler("PUT") };
 }
 
 // src/server/errors.ts
@@ -3592,4 +3667,4 @@ function buildSecurityHeaders(opts = {}) {
   return headers3;
 }
 
-export { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, DEFAULT_PERMISSIONS_POLICY, KNOWN_ACCOUNTS_COOKIE_NAME, OAUTH_STATE_COOKIE_NAME, SESSION_COOKIE_NAME, SM_LEDVERY_ACCESS_TOKEN_COOKIE, SM_LEDVERY_ID_TOKEN_COOKIE, SM_LEDVERY_NONCE_COOKIE, SM_LEDVERY_PKCE_VERIFIER_COOKIE, SM_LEDVERY_STATE_COOKIE, ScaleMuleError, ScaleMuleServer, USER_ID_COOKIE_NAME, apiHandler, appendKnownAccountCookie, buildClientContextHeaders, buildFlagContext, buildSecurityHeaders, clearKnownAccountsCookie, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createLedveryRoutes, createNotificationRoutes, createPushRoutes, createServerClient, createWebhookHandler, createWebhookRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getKnownAccountsCookieRaw, getKnownAccountsFromRequest, getLedverySession, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, isSafeRedirect, normalizeKnownAccountsCookie, parseWebhookEvent, prefetchBundles, prefetchSecrets, registerVideoWebhook, removeKnownAccountFromCookie, requireAppSecret, requireBundle, requireSession, resolveGatewayUrl, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, validateSafeRedirect, verifyWebhookSignature, withAuth, withCSRFProtection, withCSRFToken, withSession };
+export { CSRF_COOKIE_NAME, CSRF_HEADER_NAME, DEFAULT_PERMISSIONS_POLICY, KNOWN_ACCOUNTS_COOKIE_NAME, OAUTH_STATE_COOKIE_NAME, SESSION_COOKIE_NAME, SM_LEDVERY_ACCESS_TOKEN_COOKIE, SM_LEDVERY_ID_TOKEN_COOKIE, SM_LEDVERY_NONCE_COOKIE, SM_LEDVERY_PKCE_VERIFIER_COOKIE, SM_LEDVERY_STATE_COOKIE, ScaleMuleError, ScaleMuleServer, USER_ID_COOKIE_NAME, apiHandler, appendKnownAccountCookie, buildClientContextHeaders, buildFlagContext, buildSecurityHeaders, clearKnownAccountsCookie, clearOAuthState, clearSession, configureBundles, configureSecrets, createAnalyticsRoutes, createAuthMiddleware, createAuthRoutes, createLedveryRoutes, createNewsletterRoutes, createNotificationRoutes, createPushRoutes, createServerClient, createWebhookHandler, createWebhookRoutes, errorCodeToStatus, extractClientContext, extractClientContextFromReq, generateCSRFToken, getAppSecret, getAppSecretOrDefault, getBootstrapFlags, getBundle, getCSRFToken, getKnownAccountsCookieRaw, getKnownAccountsFromRequest, getLedverySession, getMySqlBundle, getOAuthBundle, getPostgresBundle, getRedisBundle, getS3Bundle, getSession, getSessionFromRequest, getSmtpBundle, invalidateBundleCache, invalidateSecretCache, isSafeRedirect, newsletterRoute, normalizeKnownAccountsCookie, parseWebhookEvent, prefetchBundles, prefetchSecrets, registerVideoWebhook, removeKnownAccountFromCookie, requireAppSecret, requireBundle, requireSession, resolveGatewayUrl, setOAuthState, unwrap, validateCSRFToken, validateCSRFTokenAsync, validateOAuthState, validateOAuthStateAsync, validateSafeRedirect, verifyWebhookSignature, withAuth, withCSRFProtection, withCSRFToken, withSession };

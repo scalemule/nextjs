@@ -99,6 +99,131 @@ function wordIndexAt(words, timeMs) {
   }
   return ans;
 }
+var UNSTRESSED_FUNCTION_WORDS = /* @__PURE__ */ new Set([
+  "a",
+  "an",
+  "the",
+  "of",
+  "to",
+  "in",
+  "on",
+  "at",
+  "for",
+  "and",
+  "or",
+  "by",
+  "as",
+  "is",
+  "was",
+  "were",
+  "be",
+  "are",
+  "with",
+  "from",
+  "that",
+  "this"
+]);
+var DASH_TOKENS = /* @__PURE__ */ new Set(["\u2014", "\u2013", "--"]);
+function isClauseEnd(sent, i) {
+  const n = sent.length;
+  if (i === n - 1) return true;
+  const stripped = sent[i][0].replace(/["'\u201d\u2019)\]}]+$/u, "");
+  if (DASH_TOKENS.has(stripped)) return true;
+  if (/[,;:\u2014\u2013]$/u.test(stripped)) {
+    if (i + 1 < n && DASH_TOKENS.has(sent[i + 1][0])) return false;
+    if (i + 2 < n && DASH_TOKENS.has(sent[i + 2][0])) return false;
+    return true;
+  }
+  return false;
+}
+function rebalanceLegacySentence(sent) {
+  const n = sent.length;
+  const sStart = sent[0][1];
+  const sEnd = sent[n - 1][2];
+  const sDur = sEnd - sStart;
+  if (n <= 1 || sDur < 600) return sent;
+  const clauses = [];
+  let startIdx = 0;
+  for (let i = 0; i < n; i++) {
+    if (isClauseEnd(sent, i)) {
+      clauses.push([startIdx, i]);
+      startIdx = i + 1;
+    }
+  }
+  const clauseBounds = clauses.map(([i0, i1]) => [sent[i0][1], sent[i1][2]]);
+  if (clauses.length >= 2) {
+    const [, i1] = clauses[0];
+    if (DASH_TOKENS.has(sent[i1][0]) && i1 <= 5) {
+      const c0Dur = clauseBounds[0][1] - clauseBounds[0][0];
+      const shift = Math.min(450, c0Dur * 0.24);
+      clauseBounds[0][1] -= shift;
+      clauseBounds[1][0] -= shift;
+    }
+  }
+  const out = [];
+  for (let c = 0; c < clauses.length; c++) {
+    const [i0, i1] = clauses[c];
+    const [cStart, cEnd] = clauseBounds[c];
+    const cDur = cEnd - cStart;
+    const cLen = i1 - i0 + 1;
+    const pauseMs = cLen >= 2 && cDur > 450 ? Math.min(340, cDur * 0.24) : cDur > 300 ? Math.min(180, cDur * 0.18) : 0;
+    const speechDur = Math.max(cDur - pauseMs, cDur * 0.72);
+    const weights = [];
+    for (let idx = i0; idx <= i1; idx++) {
+      const [w, st, en] = sent[idx];
+      const oldD = Math.max(en - st, 40);
+      const stripped = w.replace(/["'\u201d\u2019)\]}]+$/u, "");
+      const clean = stripped.replace(/^["'\u201c\u2018([{]+/u, "").replace(/[.,;:!?\u2014\u2013-]+$/u, "").toLowerCase();
+      if (DASH_TOKENS.has(w)) {
+        weights.push(30);
+      } else {
+        let weight = Math.pow(oldD, 0.85);
+        if (UNSTRESSED_FUNCTION_WORDS.has(clean) && stripped.toLowerCase() === clean) {
+          weight *= 0.58;
+        }
+        weights.push(weight);
+      }
+    }
+    const totW = weights.reduce((a, b) => a + b, 0) || 1;
+    let cur = cStart;
+    for (let k = 0; k < cLen; k++) {
+      const idx = i0 + k;
+      const [w, , , si] = sent[idx];
+      const wDur = speechDur * (weights[k] / totW);
+      const lead = idx > 0 ? Math.min(45, wDur * 0.22) : 0;
+      const wSt = Math.max(sStart, cur - lead);
+      const wEn = cur + wDur;
+      out.push([w, Math.round(wSt), Math.round(Math.max(wSt, wEn)), si]);
+      cur = wEn;
+    }
+  }
+  return out;
+}
+function rebalanceSentenceTimings(words) {
+  if (words.length <= 1) return words;
+  const out = [];
+  let i = 0;
+  while (i < words.length) {
+    let j = i + 1;
+    const sIdx = words[i][3];
+    while (j < words.length && words[j][3] === sIdx) j++;
+    const sent = words.slice(i, j);
+    let hasExplicitGaps = false;
+    for (let k = 0; k < sent.length - 1; k++) {
+      if (sent[k + 1][1] - sent[k][2] >= 25) {
+        hasExplicitGaps = true;
+        break;
+      }
+    }
+    if (!hasExplicitGaps && j < words.length && words[j][1] - sent[sent.length - 1][2] >= 25) {
+      hasExplicitGaps = true;
+    }
+    const processed = hasExplicitGaps ? sent : rebalanceLegacySentence(sent);
+    for (const row of processed) out.push(row);
+    i = j;
+  }
+  return out;
+}
 function mergeLineBoxes(rects) {
   const lines = [];
   const sorted = rects.filter((r) => r.width > 0 && r.height > 0).sort((a, b) => a.top - b.top || a.left - b.left);
@@ -143,7 +268,7 @@ var NarrationHighlighter = class {
     this.resizeObserver = null;
     this.onWindowResize = null;
     this.root = root;
-    this.words = timings.words;
+    this.words = rebalanceSentenceTimings(timings.words);
     const domWords = collectDomWords(root);
     const matches = alignWords(
       this.words.map((w) => normalizeWord(w[0])),
@@ -901,6 +1026,12 @@ var NetworkAudioController = class {
     this.resumePosition = null;
     this.candidates = [];
     this.getSnapshot = () => this.snapshot;
+    this.getPosition = () => {
+      if (this.audio && this.source && this.resumePosition === null && finite(this.audio.currentTime)) {
+        if (this.audio.currentTime > 0 || this.snapshot.position === 0) return this.audio.currentTime;
+      }
+      return this.snapshot.position;
+    };
     this.subscribe = (listener) => {
       this.listeners.add(listener);
       return () => {
@@ -1726,6 +1857,7 @@ function NetworkAudioProvider({ children, resolveAudio, connection, host, checkp
     notice,
     command,
     openNetworkPlayer: connection ? openNetworkPlayer : void 0,
+    getPosition: remoteSnapshot !== null ? void 0 : controller.getPosition,
     highlightAvailable,
     highlightEnabled,
     setHighlightEnabled,
@@ -1791,7 +1923,7 @@ function NetworkMediaSession() {
 var subscribeCapabilities = () => () => {
 };
 function useArticleNarration(track, narration) {
-  const { snapshot, highlightEnabled, setHighlightEnabled } = useNetworkAudio();
+  const { snapshot, remote, getPosition, highlightEnabled, setHighlightEnabled } = useNetworkAudio();
   const supported = useSyncExternalStore2(subscribeCapabilities, narrationHighlightSupported, () => false);
   const registerNarration = useContext(NarrationRegistration);
   const narrationKey = trackKey(track);
@@ -1801,9 +1933,16 @@ function useArticleNarration(track, narration) {
   }, [available, narrationKey, registerNarration]);
   const active = snapshot.queue[snapshot.index];
   const matching = !!active && trackKey(active) === trackKey(track);
-  const clock = useRef2({ snapshot, received: 0 });
+  const clock = useRef2({ snapshot, received: 0, lastPosition: -1, lastStatus: "" });
   useEffect2(() => {
-    clock.current = { snapshot, received: performance.now() };
+    const prev = clock.current;
+    const changed = snapshot.position !== prev.lastPosition || snapshot.status !== prev.lastStatus;
+    clock.current = {
+      snapshot,
+      received: changed ? performance.now() : prev.received,
+      lastPosition: snapshot.position,
+      lastStatus: snapshot.status
+    };
   }, [snapshot]);
   useEffect2(() => {
     if (!narration || !matching || !highlightEnabled || !supported || snapshot.hidden) return;
@@ -1811,9 +1950,13 @@ function useArticleNarration(track, narration) {
     let highlighter = null;
     let frame = 0;
     const render = () => {
-      const { snapshot: current, received } = clock.current;
-      const elapsed = current.status === "playing" ? Math.min((performance.now() - received) / 1e3, 0.5) * current.rate : 0;
-      highlighter?.update((current.position + elapsed) * 1e3);
+      if (!remote && getPosition) {
+        highlighter?.update(getPosition() * 1e3);
+      } else {
+        const { snapshot: current, received } = clock.current;
+        const elapsed = current.status === "playing" ? Math.min((performance.now() - received) / 1e3, 0.5) * current.rate : 0;
+        highlighter?.update((current.position + elapsed) * 1e3);
+      }
       frame = requestAnimationFrame(render);
     };
     const visibility = () => {
