@@ -2934,20 +2934,47 @@ function newsletterRoute(method, action) {
       return null;
   }
 }
+async function readCapped(request, limit) {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let offset = 0;
+  for (const c of chunks) {
+    all.set(c, offset);
+    offset += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
 function json(status, code, message) {
   return new Response(JSON.stringify({ success: false, error: { code, message } }), {
     status,
     headers: { "Content-Type": "application/json" }
   });
 }
-function sameOrigin(request) {
+function sameOrigin(request, allowedOrigins) {
   const origin = request.headers.get("origin");
   if (!origin) return true;
+  if (allowedOrigins.includes(origin)) return true;
+  let originHost;
   try {
-    return new URL(origin).host === new URL(request.url).host;
+    originHost = new URL(origin).host;
   } catch {
     return false;
   }
+  const publicHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() || request.headers.get("host") || new URL(request.url).host;
+  return originHost === publicHost;
 }
 function createNewsletterRoutes(config) {
   const { apiKey, gatewayUrl } = config;
@@ -2955,7 +2982,7 @@ function createNewsletterRoutes(config) {
   async function forward(request, method, action) {
     const route = newsletterRoute(method, action);
     if (!route) return json(404, "NOT_FOUND", "Not found");
-    if (method !== "GET" && requireSameOrigin && !sameOrigin(request)) {
+    if (method !== "GET" && requireSameOrigin && !sameOrigin(request, config.allowedOrigins ?? [])) {
       return json(403, "FORBIDDEN", "Cross-site newsletter requests are not allowed");
     }
     const headers3 = { "x-api-key": apiKey, "Content-Type": "application/json" };
@@ -2969,18 +2996,25 @@ function createNewsletterRoutes(config) {
     );
     const init = { method, headers: headers3 };
     if (method !== "GET") {
-      const body = await request.text();
-      if (new TextEncoder().encode(body).length > MAX_BODY_BYTES2) {
-        return json(413, "PAYLOAD_TOO_LARGE", "Request body too large");
-      }
+      const declared = Number(request.headers.get("content-length") ?? "0");
+      if (declared > MAX_BODY_BYTES2) return json(413, "PAYLOAD_TOO_LARGE", "Request body too large");
+      const body = await readCapped(request, MAX_BODY_BYTES2);
+      if (body === null) return json(413, "PAYLOAD_TOO_LARGE", "Request body too large");
       if (body) init.body = body;
     }
     const search = new URL(request.url).search;
-    const response = await fetch(`${gatewayUrl}/v1/newsletters/${route}${search}`, init);
-    return new Response(await response.text(), {
-      status: response.status,
-      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }
-    });
+    let response;
+    try {
+      response = await fetch(`${gatewayUrl}/v1/newsletters/${route}${search}`, init);
+    } catch {
+      return json(502, "UPSTREAM_UNAVAILABLE", "The newsletter service is temporarily unavailable");
+    }
+    const out = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+    for (const h of ["x-request-id", "retry-after"]) {
+      const v = response.headers.get(h);
+      if (v) out[h] = v;
+    }
+    return new Response(await response.text(), { status: response.status, headers: out });
   }
   const handler = (method) => async (request, context) => {
     const params = await context.params;

@@ -15,6 +15,10 @@
  * export const { GET, POST, PUT } = createNewsletterRoutes({
  *   apiKey: process.env.SCALEMULE_API_KEY!,
  *   gatewayUrl: process.env.SCALEMULE_API_URL!,
+ *   // The header your load balancer/CDN sets with the real client IP:
+ *   // an AWS ALB in append mode directly in front of the app → 'x-forwarded-for'
+ *   // (last hop); Cloudflare → 'cf-connecting-ip'; Vercel → 'x-vercel-forwarded-for'.
+ *   clientContext: { trustedIpHeader: 'x-forwarded-for' },
  * })
  * ```
  *
@@ -31,13 +35,19 @@ export interface NewsletterRoutesConfig {
   apiKey: string
   /** Gateway URL (e.g., https://api.scalemule.com) */
   gatewayUrl: string
-  /** How to read the reader's IP behind your proxy/CDN (see extractClientContext). */
-  clientContext?: ClientContextOptions
+  /**
+   * Required: which header your proxy/CDN sets with the reader's IP. Without
+   * it a caller could put any IP into the consent record (and dodge per-IP
+   * limits), because client-supplied forwarding headers would be trusted.
+   */
+  clientContext: ClientContextOptions & { trustedIpHeader: NonNullable<ClientContextOptions['trustedIpHeader']> }
   /**
    * Reject state-changing requests whose Origin is another site (default
    * true). Sign-ups must come from your own pages.
    */
   requireSameOrigin?: boolean
+  /** Extra origins allowed to write (e.g. `https://www.example.com`). */
+  allowedOrigins?: string[]
 }
 
 type RouteHandler = (request: Request, context: { params: Promise<{ action?: string[] }> }) => Promise<Response>
@@ -64,6 +74,31 @@ export function newsletterRoute(method: string, action: string[]): string | null
   }
 }
 
+/** Reads a body as text, stopping (null) once it exceeds `limit` bytes. */
+async function readCapped(request: Request, limit: number): Promise<string | null> {
+  if (!request.body) return ''
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > limit) {
+      await reader.cancel()
+      return null
+    }
+    chunks.push(value)
+  }
+  const all = new Uint8Array(size)
+  let offset = 0
+  for (const c of chunks) {
+    all.set(c, offset)
+    offset += c.byteLength
+  }
+  return new TextDecoder().decode(all)
+}
+
 function json(status: number, code: string, message: string): Response {
   return new Response(JSON.stringify({ success: false, error: { code, message } }), {
     status,
@@ -71,14 +106,24 @@ function json(status: number, code: string, message: string): Response {
   })
 }
 
-function sameOrigin(request: Request): boolean {
+/**
+ * Whether a write comes from this site. Behind an ingress `request.url` can
+ * be the internal address, so the public host comes from the forwarding
+ * headers first.
+ */
+function sameOrigin(request: Request, allowedOrigins: string[]): boolean {
   const origin = request.headers.get('origin')
   if (!origin) return true // non-browser or same-origin navigation without Origin
+  if (allowedOrigins.includes(origin)) return true
+  let originHost: string
   try {
-    return new URL(origin).host === new URL(request.url).host
+    originHost = new URL(origin).host
   } catch {
     return false
   }
+  const publicHost =
+    request.headers.get('x-forwarded-host')?.split(',')[0]?.trim() || request.headers.get('host') || new URL(request.url).host
+  return originHost === publicHost
 }
 
 export function createNewsletterRoutes(config: NewsletterRoutesConfig): {
@@ -92,7 +137,7 @@ export function createNewsletterRoutes(config: NewsletterRoutesConfig): {
   async function forward(request: Request, method: 'GET' | 'POST' | 'PUT', action: string[]): Promise<Response> {
     const route = newsletterRoute(method, action)
     if (!route) return json(404, 'NOT_FOUND', 'Not found')
-    if (method !== 'GET' && requireSameOrigin && !sameOrigin(request)) {
+    if (method !== 'GET' && requireSameOrigin && !sameOrigin(request, config.allowedOrigins ?? [])) {
       return json(403, 'FORBIDDEN', 'Cross-site newsletter requests are not allowed')
     }
 
@@ -108,18 +153,25 @@ export function createNewsletterRoutes(config: NewsletterRoutesConfig): {
 
     const init: RequestInit = { method, headers }
     if (method !== 'GET') {
-      const body = await request.text()
-      if (new TextEncoder().encode(body).length > MAX_BODY_BYTES) {
-        return json(413, 'PAYLOAD_TOO_LARGE', 'Request body too large')
-      }
+      const declared = Number(request.headers.get('content-length') ?? '0')
+      if (declared > MAX_BODY_BYTES) return json(413, 'PAYLOAD_TOO_LARGE', 'Request body too large')
+      const body = await readCapped(request, MAX_BODY_BYTES)
+      if (body === null) return json(413, 'PAYLOAD_TOO_LARGE', 'Request body too large')
       if (body) init.body = body
     }
     const search = new URL(request.url).search
-    const response = await fetch(`${gatewayUrl}/v1/newsletters/${route}${search}`, init)
-    return new Response(await response.text(), {
-      status: response.status,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
-    })
+    let response: Response
+    try {
+      response = await fetch(`${gatewayUrl}/v1/newsletters/${route}${search}`, init)
+    } catch {
+      return json(502, 'UPSTREAM_UNAVAILABLE', 'The newsletter service is temporarily unavailable')
+    }
+    const out: Record<string, string> = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
+    for (const h of ['x-request-id', 'retry-after']) {
+      const v = response.headers.get(h)
+      if (v) out[h] = v
+    }
+    return new Response(await response.text(), { status: response.status, headers: out })
   }
 
   const handler =

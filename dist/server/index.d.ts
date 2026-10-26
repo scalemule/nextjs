@@ -523,6 +523,10 @@ declare function createNotificationRoutes(config: NotificationRoutesConfig): {
  * export const { GET, POST, PUT } = createNewsletterRoutes({
  *   apiKey: process.env.SCALEMULE_API_KEY!,
  *   gatewayUrl: process.env.SCALEMULE_API_URL!,
+ *   // The header your load balancer/CDN sets with the real client IP:
+ *   // an AWS ALB in append mode directly in front of the app → 'x-forwarded-for'
+ *   // (last hop); Cloudflare → 'cf-connecting-ip'; Vercel → 'x-vercel-forwarded-for'.
+ *   clientContext: { trustedIpHeader: 'x-forwarded-for' },
  * })
  * ```
  *
@@ -536,13 +540,21 @@ interface NewsletterRoutesConfig {
     apiKey: string;
     /** Gateway URL (e.g., https://api.scalemule.com) */
     gatewayUrl: string;
-    /** How to read the reader's IP behind your proxy/CDN (see extractClientContext). */
-    clientContext?: ClientContextOptions;
+    /**
+     * Required: which header your proxy/CDN sets with the reader's IP. Without
+     * it a caller could put any IP into the consent record (and dodge per-IP
+     * limits), because client-supplied forwarding headers would be trusted.
+     */
+    clientContext: ClientContextOptions & {
+        trustedIpHeader: NonNullable<ClientContextOptions['trustedIpHeader']>;
+    };
     /**
      * Reject state-changing requests whose Origin is another site (default
      * true). Sign-ups must come from your own pages.
      */
     requireSameOrigin?: boolean;
+    /** Extra origins allowed to write (e.g. `https://www.example.com`). */
+    allowedOrigins?: string[];
 }
 type RouteHandler = (request: Request, context: {
     params: Promise<{

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createNewsletterRoutes, newsletterRoute } from './newsletters'
 
 const routes = createNewsletterRoutes({ apiKey: 'sk_test', gatewayUrl: 'https://api.example.com', clientContext: { trustedIpHeader: 'x-real-ip' } })
+const behindIngress = createNewsletterRoutes({ apiKey: 'sk_test', gatewayUrl: 'https://api.example.com', clientContext: { trustedIpHeader: 'x-forwarded-for' } })
 const ctx = (...action: string[]) => ({ params: Promise.resolve({ action }) })
 
 afterEach(() => vi.unstubAllGlobals())
@@ -56,6 +57,36 @@ describe('createNewsletterRoutes', () => {
     const unknown = await routes.GET(new Request('https://paper.example/api/newsletters/admin/overview'), ctx('admin', 'overview'))
     expect(unknown.status).toBe(404)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('accepts a same-site write behind an ingress whose request.url is internal', async () => {
+    const fetchMock = stubFetch()
+    const res = await behindIngress.POST(
+      new Request('http://localhost:3000/api/newsletters/unsubscribe', {
+        method: 'POST',
+        body: JSON.stringify({ token: 'a'.repeat(64) }),
+        headers: { origin: 'https://paper.example', 'x-forwarded-host': 'paper.example', 'x-forwarded-for': '198.51.100.9, 10.0.0.2' },
+      }),
+      ctx('unsubscribe')
+    )
+    expect(res.status).toBe(200)
+    expect(((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>)['x-sm-forwarded-client-ip']).toBe('10.0.0.2')
+  })
+
+  it('caps the body and turns gateway outages into a JSON 502', async () => {
+    stubFetch()
+    const big = await routes.POST(
+      new Request('https://paper.example/api/newsletters/unsubscribe', { method: 'POST', body: 'x'.repeat(17 * 1024) }),
+      ctx('unsubscribe')
+    )
+    expect(big.status).toBe(413)
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ECONNREFUSED') }))
+    const down = await routes.POST(
+      new Request('https://paper.example/api/newsletters/unsubscribe', { method: 'POST', body: '{}' }),
+      ctx('unsubscribe')
+    )
+    expect(down.status).toBe(502)
+    expect((await down.json()).error.code).toBe('UPSTREAM_UNAVAILABLE')
   })
 
   it('keeps the preference token query string', async () => {
