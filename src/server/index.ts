@@ -69,6 +69,8 @@ export {
 
 export { createPushRoutes } from './push'
 export type { PushRoutesConfig } from './push'
+export { createAiRoutes, createServiceAiClient } from './ai'
+export type { AiRoutesConfig, AiAccountResolver, ServiceAiClientConfig } from './ai'
 
 export { createNotificationRoutes } from './notifications'
 export type { NotificationRoutesConfig } from './notifications'

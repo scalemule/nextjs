@@ -9,6 +9,7 @@ export default defineConfig([
       'src/server/index.ts', // Server-side entry
       'src/server/auth.ts', // 1-line auth route export
       'src/server/ledvery.ts', // Ledvery OIDC route factory
+      'src/server/ai.ts', // AI facade proxy + service client
       'src/server/webhook-handler.ts', // Simplified webhook handler
       'src/testing.tsx', // Testing utilities
     ],
@@ -19,6 +20,7 @@ export default defineConfig([
     clean: false,
     external: [
       '@scalemule/sdk',
+      '@scalemule/ai',
       'react',
       'react-dom',
       'next',
