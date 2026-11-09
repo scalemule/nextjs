@@ -29,9 +29,12 @@
  * })
  * ```
  *
- * Rules (ADR-2026-11-08 D4/D7):
+ * Rules (ADR-2026-11-08 D4/D7, ADR-2026-11-09 D4/D5):
  *  - no session cookie → 401, nothing is forwarded
- *  - only `runs`, `runs/{id}`, `runs/{id}/events`, `runs/{id}/cancel`
+ *  - only `runs`, `runs/{id}`, `runs/{id}/events`, `runs/{id}/cancel`,
+ *    `operations`, `operations/{op}/preference` (PUT/DELETE) and
+ *    `operations/{op}/settings` (GET/PUT); the upstream path is built from
+ *    the validated key only, never from the browser URL
  *  - the account comes from server config, never from the browser
  *  - forwarded from the browser: body, `x-idempotency-key`, `last-event-id`
  *  - never forwarded: `Origin`, cookies, `Authorization`, `x-sm-workspace-id`,
@@ -82,7 +85,7 @@ type RouteHandler = (
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 const MAX_BODY_BYTES = 1_048_576
 const IDEMPOTENCY_KEY = /^[\x21-\x7e]{1,200}$/
-const OPERATION_KEY = /^[a-z0-9][a-z0-9_-]{0,99}$/
+const OPERATION_KEY = /^[a-z0-9_-]{1,100}$/
 
 // ============================================================================
 // Helpers
@@ -327,7 +330,7 @@ export function createAiRoutes(config: AiRoutesConfig): { GET: RouteHandler; POS
     }
   }
 
-  function mutating(method: 'POST' | 'PUT' | 'DELETE'): RouteHandler {
+  function mutating(method: Exclude<ProxyMethod, 'GET'>): RouteHandler {
     return async (request, context) => {
       if (csrf) {
         const csrfError = validateCSRFToken(csrfRequestView(request))

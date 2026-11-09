@@ -222,8 +222,10 @@ describe('createAiRoutes', () => {
   it('proxies operation selection calls with server credentials and the session bearer', async () => {
     const fetcher = upstreamJson(200, { success: true, data: { operation: 'summarize', selected: 'fast' } })
     const { GET, PUT, DELETE } = routes(fetcher as unknown as typeof fetch)
-    const list = await GET(request('operations', { cookie: SESSION_COOKIE }), ctx('operations'))
+    const list = await GET(request('operations?account=other&x=y', { cookie: SESSION_COOKIE }), ctx('operations'))
     expect(list.status).toBe(200)
+    const getSettings = await GET(request('operations/summarize/settings', { cookie: SESSION_COOKIE }), ctx('operations', 'summarize', 'settings'))
+    expect(getSettings.status).toBe(200)
     const put = await PUT(
       request('operations/summarize/preference', { method: 'PUT', body: JSON.stringify({ option: 'fast' }), cookie: SESSION_COOKIE, headers: { authorization: 'Bearer attacker' } }),
       ctx('operations', 'summarize', 'preference')
@@ -239,6 +241,7 @@ describe('createAiRoutes', () => {
     const calls = fetcher.mock.calls as unknown as [string, RequestInit][]
     expect(calls.map(([url, init]) => `${init.method} ${url}`)).toEqual([
       'GET https://api.example.com/v1/ai/operations',
+      'GET https://api.example.com/v1/ai/operations/summarize/settings',
       'PUT https://api.example.com/v1/ai/operations/summarize/preference',
       'DELETE https://api.example.com/v1/ai/operations/summarize/preference',
       'PUT https://api.example.com/v1/ai/operations/summarize/settings',
@@ -249,9 +252,9 @@ describe('createAiRoutes', () => {
       expect(headers.authorization).toBe('Bearer sess-123')
       expect(headers['x-requested-account-id']).toBe('acct-config')
     }
-    expect(calls[1][1].body).toBe(JSON.stringify({ option: 'fast' }))
-    expect(calls[2][1].body).toBeUndefined()
-    expect(calls[3][1].body).toBe(JSON.stringify({ default_option: null }))
+    expect(calls[2][1].body).toBe(JSON.stringify({ option: 'fast' }))
+    expect(calls[3][1].body).toBeUndefined()
+    expect(calls[4][1].body).toBe(JSON.stringify({ default_option: null }))
   })
 
   it('requires a JSON body on PUT and enforces CSRF on PUT and DELETE by default', async () => {
