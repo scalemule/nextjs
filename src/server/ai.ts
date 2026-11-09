@@ -11,7 +11,7 @@
  * // app/api/ai/[...action]/route.ts
  * import { createAiRoutes } from '@scalemule/nextjs/server/ai'
  *
- * export const { GET, POST } = createAiRoutes({
+ * export const { GET, POST, PUT, DELETE } = createAiRoutes({
  *   apiKey: process.env.SCALEMULE_API_KEY!,
  *   gatewayUrl: process.env.SCALEMULE_API_URL!,
  *   accountId: process.env.SCALEMULE_ACCOUNT_ID!,
@@ -29,9 +29,12 @@
  * })
  * ```
  *
- * Rules (ADR-2026-11-08 D4/D7):
+ * Rules (ADR-2026-11-08 D4/D7, ADR-2026-11-09 D4/D5):
  *  - no session cookie → 401, nothing is forwarded
- *  - only `runs`, `runs/{id}`, `runs/{id}/events`, `runs/{id}/cancel`
+ *  - only `runs`, `runs/{id}`, `runs/{id}/events`, `runs/{id}/cancel`,
+ *    `operations`, `operations/{op}/preference` (PUT/DELETE) and
+ *    `operations/{op}/settings` (GET/PUT); the upstream path is built from
+ *    the validated key only, never from the browser URL
  *  - the account comes from server config, never from the browser
  *  - forwarded from the browser: body, `x-idempotency-key`, `last-event-id`
  *  - never forwarded: `Origin`, cookies, `Authorization`, `x-sm-workspace-id`,
@@ -68,7 +71,7 @@ export interface AiRoutesConfig {
    * account-bound (workspace-site key).
    */
   accountId?: string | AiAccountResolver
-  /** Enable CSRF validation on POST (default: true) */
+  /** Enable CSRF validation on POST, PUT and DELETE (default: true) */
   csrf?: boolean
   /** Custom fetch (tests). Defaults to `globalThis.fetch`. */
   fetch?: typeof fetch
@@ -82,6 +85,7 @@ type RouteHandler = (
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/
 const MAX_BODY_BYTES = 1_048_576
 const IDEMPOTENCY_KEY = /^[\x21-\x7e]{1,200}$/
+const OPERATION_KEY = /^[a-z0-9_-]{1,100}$/
 
 // ============================================================================
 // Helpers
@@ -99,9 +103,22 @@ type Target =
   | { kind: 'get'; runId: string }
   | { kind: 'events'; runId: string }
   | { kind: 'cancel'; runId: string }
+  | { kind: 'operations' }
+  | { kind: 'preference'; method: 'PUT' | 'DELETE'; operation: string }
+  | { kind: 'settings'; method: 'GET' | 'PUT'; operation: string }
+
+type ProxyMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
 /** Allow-list the proxied surface. Anything else is a 404, never forwarded. */
 export function resolveAiTarget(method: string, segments: string[]): Target | null {
+  if (segments[0] === 'operations') {
+    if (segments.length === 1) return method === 'GET' ? { kind: 'operations' } : null
+    const operation = segments[1]
+    if (!operation || !OPERATION_KEY.test(operation) || segments.length !== 3) return null
+    if (segments[2] === 'preference' && (method === 'PUT' || method === 'DELETE')) return { kind: 'preference', method, operation }
+    if (segments[2] === 'settings' && (method === 'GET' || method === 'PUT')) return { kind: 'settings', method, operation }
+    return null
+  }
   if (segments[0] !== 'runs') return null
   if (segments.length === 1) return method === 'POST' ? { kind: 'create' } : null
   const runId = segments[1]
@@ -159,14 +176,27 @@ async function resolveAccount(
 // createAiRoutes
 // ============================================================================
 
-export function createAiRoutes(config: AiRoutesConfig): { GET: RouteHandler; POST: RouteHandler } {
+export function createAiRoutes(config: AiRoutesConfig): { GET: RouteHandler; POST: RouteHandler; PUT: RouteHandler; DELETE: RouteHandler } {
   const { apiKey, gatewayUrl, csrf = true } = config
   const fetcher = config.fetch ?? globalThis.fetch
   if (!apiKey) throw new Error('createAiRoutes: apiKey is required')
   if (!gatewayUrl) throw new Error('createAiRoutes: gatewayUrl is required')
   const base = gatewayUrl.replace(/\/+$/, '')
 
-  async function proxy(request: Request, method: 'GET' | 'POST', segments: string[]): Promise<Response> {
+  async function readJsonBody(request: Request): Promise<{ body: string } | { error: Response }> {
+    const declared = Number(request.headers.get('content-length') ?? '0')
+    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+      return { error: errorResponse('INPUT_INVALID', 'Request body too large', 413) }
+    }
+    const body = await request.text()
+    if (new TextEncoder().encode(body).byteLength > MAX_BODY_BYTES) {
+      return { error: errorResponse('INPUT_INVALID', 'Request body too large', 413) }
+    }
+    if (!body) return { error: errorResponse('INPUT_INVALID', 'A JSON body is required', 400) }
+    return { body }
+  }
+
+  async function proxy(request: Request, method: ProxyMethod, segments: string[]): Promise<Response> {
     const target = resolveAiTarget(method, segments)
     if (!target) return errorResponse('NOT_FOUND', 'Unknown AI route', 404)
 
@@ -210,18 +240,34 @@ export function createAiRoutes(config: AiRoutesConfig): { GET: RouteHandler; POS
           )
         }
         headers['x-idempotency-key'] = key
-        const declared = Number(request.headers.get('content-length') ?? '0')
-        if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
-          return errorResponse('INPUT_INVALID', 'Request body too large', 413)
-        }
-        const body = await request.text()
-        if (new TextEncoder().encode(body).byteLength > MAX_BODY_BYTES) {
-          return errorResponse('INPUT_INVALID', 'Request body too large', 413)
-        }
-        if (!body) return errorResponse('INPUT_INVALID', 'A JSON body is required', 400)
+        const read = await readJsonBody(request)
+        if ('error' in read) return read.error
         headers['content-type'] = 'application/json'
-        init.body = body
+        init.body = read.body
         path = '/v1/ai/runs'
+        break
+      }
+      case 'operations':
+        path = '/v1/ai/operations'
+        break
+      case 'preference': {
+        if (target.method === 'PUT') {
+          const read = await readJsonBody(request)
+          if ('error' in read) return read.error
+          headers['content-type'] = 'application/json'
+          init.body = read.body
+        }
+        path = `/v1/ai/operations/${encodeURIComponent(target.operation)}/preference`
+        break
+      }
+      case 'settings': {
+        if (target.method === 'PUT') {
+          const read = await readJsonBody(request)
+          if ('error' in read) return read.error
+          headers['content-type'] = 'application/json'
+          init.body = read.body
+        }
+        path = `/v1/ai/operations/${encodeURIComponent(target.operation)}/settings`
         break
       }
       case 'get':
@@ -284,19 +330,21 @@ export function createAiRoutes(config: AiRoutesConfig): { GET: RouteHandler; POS
     }
   }
 
-  const POST: RouteHandler = async (request, context) => {
-    if (csrf) {
-      const csrfError = validateCSRFToken(csrfRequestView(request))
-      if (csrfError) return errorResponse('CSRF_ERROR', 'CSRF validation failed', 403)
-    }
-    try {
-      return await proxy(request, 'POST', await segmentsOf(context))
-    } catch (error) {
-      return errorResponse('INTERNAL_ERROR', String(error), 500)
+  function mutating(method: Exclude<ProxyMethod, 'GET'>): RouteHandler {
+    return async (request, context) => {
+      if (csrf) {
+        const csrfError = validateCSRFToken(csrfRequestView(request))
+        if (csrfError) return errorResponse('CSRF_ERROR', 'CSRF validation failed', 403)
+      }
+      try {
+        return await proxy(request, method, await segmentsOf(context))
+      } catch (error) {
+        return errorResponse('INTERNAL_ERROR', String(error), 500)
+      }
     }
   }
 
-  return { GET, POST }
+  return { GET, POST: mutating('POST'), PUT: mutating('PUT'), DELETE: mutating('DELETE') }
 }
 
 // ============================================================================

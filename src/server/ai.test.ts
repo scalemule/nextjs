@@ -45,7 +45,21 @@ describe('resolveAiTarget', () => {
     expect(resolveAiTarget('POST', ['runs', 'r1', 'cancel'])).toEqual({ kind: 'cancel', runId: 'r1' })
     expect(resolveAiTarget('GET', ['runs', 'r1', 'cancel'])).toBeNull()
     expect(resolveAiTarget('POST', ['runs', '../admin', 'cancel'])).toBeNull()
-    expect(resolveAiTarget('GET', ['operations'])).toBeNull()
+  })
+
+  it('allow-lists the operation selection routes with the option-key grammar', () => {
+    expect(resolveAiTarget('GET', ['operations'])).toEqual({ kind: 'operations' })
+    expect(resolveAiTarget('POST', ['operations'])).toBeNull()
+    expect(resolveAiTarget('PUT', ['operations', 'summarize', 'preference'])).toEqual({ kind: 'preference', method: 'PUT', operation: 'summarize' })
+    expect(resolveAiTarget('DELETE', ['operations', 'summarize', 'preference'])).toEqual({ kind: 'preference', method: 'DELETE', operation: 'summarize' })
+    expect(resolveAiTarget('GET', ['operations', 'summarize', 'preference'])).toBeNull()
+    expect(resolveAiTarget('GET', ['operations', 'summarize', 'settings'])).toEqual({ kind: 'settings', method: 'GET', operation: 'summarize' })
+    expect(resolveAiTarget('PUT', ['operations', 'summarize', 'settings'])).toEqual({ kind: 'settings', method: 'PUT', operation: 'summarize' })
+    expect(resolveAiTarget('DELETE', ['operations', 'summarize', 'settings'])).toBeNull()
+    expect(resolveAiTarget('PUT', ['operations', 'Summarize', 'preference'])).toBeNull()
+    expect(resolveAiTarget('PUT', ['operations', '../admin', 'preference'])).toBeNull()
+    expect(resolveAiTarget('PUT', ['operations', 'summarize', 'preference', 'x'])).toBeNull()
+    expect(resolveAiTarget('GET', ['operations', 'summarize'])).toBeNull()
     expect(resolveAiTarget('GET', [])).toBeNull()
   })
 })
@@ -95,7 +109,8 @@ describe('createAiRoutes', () => {
     const fetcher = upstreamJson(200, {})
     const { GET, POST } = routes(fetcher as unknown as typeof fetch)
     expect((await GET(request('runs', { cookie: SESSION_COOKIE }), ctx('runs'))).status).toBe(404)
-    expect((await GET(request('operations', { cookie: SESSION_COOKIE }), ctx('operations'))).status).toBe(404)
+    expect((await GET(request('offerings', { cookie: SESSION_COOKIE }), ctx('offerings'))).status).toBe(404)
+    expect((await GET(request('operations/summarize', { cookie: SESSION_COOKIE }), ctx('operations', 'summarize'))).status).toBe(404)
     expect(
       (await POST(request('runs/r1/approve', { method: 'POST', cookie: SESSION_COOKIE }), ctx('runs', 'r1', 'approve'))).status
     ).toBe(404)
@@ -201,6 +216,65 @@ describe('createAiRoutes', () => {
       ctx('runs', 'r1', 'cancel')
     )
     expect(allowed.status).toBe(202)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+
+  it('proxies operation selection calls with server credentials and the session bearer', async () => {
+    const fetcher = upstreamJson(200, { success: true, data: { operation: 'summarize', selected: 'fast' } })
+    const { GET, PUT, DELETE } = routes(fetcher as unknown as typeof fetch)
+    const list = await GET(request('operations?account=other&x=y', { cookie: SESSION_COOKIE }), ctx('operations'))
+    expect(list.status).toBe(200)
+    const getSettings = await GET(request('operations/summarize/settings', { cookie: SESSION_COOKIE }), ctx('operations', 'summarize', 'settings'))
+    expect(getSettings.status).toBe(200)
+    const put = await PUT(
+      request('operations/summarize/preference', { method: 'PUT', body: JSON.stringify({ option: 'fast' }), cookie: SESSION_COOKIE, headers: { authorization: 'Bearer attacker' } }),
+      ctx('operations', 'summarize', 'preference')
+    )
+    expect(put.status).toBe(200)
+    const del = await DELETE(request('operations/summarize/preference', { method: 'DELETE', cookie: SESSION_COOKIE }), ctx('operations', 'summarize', 'preference'))
+    expect(del.status).toBe(200)
+    const settings = await PUT(
+      request('operations/summarize/settings', { method: 'PUT', body: JSON.stringify({ default_option: null }), cookie: SESSION_COOKIE }),
+      ctx('operations', 'summarize', 'settings')
+    )
+    expect(settings.status).toBe(200)
+    const calls = fetcher.mock.calls as unknown as [string, RequestInit][]
+    expect(calls.map(([url, init]) => `${init.method} ${url}`)).toEqual([
+      'GET https://api.example.com/v1/ai/operations',
+      'GET https://api.example.com/v1/ai/operations/summarize/settings',
+      'PUT https://api.example.com/v1/ai/operations/summarize/preference',
+      'DELETE https://api.example.com/v1/ai/operations/summarize/preference',
+      'PUT https://api.example.com/v1/ai/operations/summarize/settings',
+    ])
+    for (const [, init] of calls) {
+      const headers = init.headers as Record<string, string>
+      expect(headers['x-api-key']).toBe('sk_server')
+      expect(headers.authorization).toBe('Bearer sess-123')
+      expect(headers['x-requested-account-id']).toBe('acct-config')
+    }
+    expect(calls[2][1].body).toBe(JSON.stringify({ option: 'fast' }))
+    expect(calls[3][1].body).toBeUndefined()
+    expect(calls[4][1].body).toBe(JSON.stringify({ default_option: null }))
+  })
+
+  it('requires a JSON body on PUT and enforces CSRF on PUT and DELETE by default', async () => {
+    const fetcher = upstreamJson(200, {})
+    const open = routes(fetcher as unknown as typeof fetch)
+    const empty = await open.PUT(request('operations/summarize/preference', { method: 'PUT', cookie: SESSION_COOKIE }), ctx('operations', 'summarize', 'preference'))
+    expect(empty.status).toBe(400)
+    const guarded = routes(fetcher as unknown as typeof fetch, { csrf: true })
+    const noToken = await guarded.PUT(
+      request('operations/summarize/preference', { method: 'PUT', body: '{"option":"fast"}', cookie: SESSION_COOKIE }),
+      ctx('operations', 'summarize', 'preference')
+    )
+    expect(noToken.status).toBe(403)
+    const noTokenDelete = await guarded.DELETE(request('operations/summarize/preference', { method: 'DELETE', cookie: SESSION_COOKIE }), ctx('operations', 'summarize', 'preference'))
+    expect(noTokenDelete.status).toBe(403)
+    const withToken = await guarded.DELETE(
+      request('operations/summarize/preference', { method: 'DELETE', cookie: `${SESSION_COOKIE}; ${CSRF_COOKIE_NAME}=tok`, headers: { [CSRF_HEADER_NAME]: 'tok' } }),
+      ctx('operations', 'summarize', 'preference')
+    )
+    expect(withToken.status).toBe(200)
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
