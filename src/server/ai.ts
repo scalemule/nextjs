@@ -34,14 +34,16 @@
  *  - only `runs`, `runs/{id}`, `runs/{id}/events`, `runs/{id}/cancel`
  *  - the account comes from server config, never from the browser
  *  - forwarded from the browser: body, `x-idempotency-key`, `last-event-id`
- *  - never forwarded: `Origin`, `x-sm-workspace-id`, `x-requested-account-id`,
- *    any `x-app-*` / `x-sm-*` / internal header
+ *  - never forwarded: `Origin`, cookies, `Authorization`, `x-sm-workspace-id`,
+ *    `x-requested-account-id`, any `x-app-*` or internal header. The only
+ *    `x-sm-*` header added is the gateway's own client-IP hint
+ *    (`x-sm-forwarded-client-ip`, derived server-side for trust scoring).
  */
 
 import { ScaleMuleAi, createFetchTransport } from '@scalemule/ai'
 import type { AiTransport } from '@scalemule/ai'
 import { validateCSRFToken } from './csrf'
-import { getSessionFromRequest } from './cookies'
+import { getSessionFromRequest, SESSION_COOKIE_NAME } from './cookies'
 import type { SessionData } from './cookies'
 import { extractClientContext, buildClientContextHeaders } from './context'
 
@@ -110,6 +112,16 @@ export function resolveAiTarget(method: string, segments: string[]): Target | nu
   return null
 }
 
+function hasSessionCookie(request: Request): boolean {
+  const cookieHeader = request.headers.get('cookie') ?? ''
+  return cookieHeader
+    .split(';')
+    .some((part) => {
+      const [name, ...rest] = part.trim().split('=')
+      return name === SESSION_COOKIE_NAME && rest.join('=').length > 0
+    })
+}
+
 /**
  * `validateCSRFToken` expects a NextRequest (`request.cookies`). Route handlers
  * get one in production; tests and edge shims may pass a plain Request, so
@@ -158,7 +170,13 @@ export function createAiRoutes(config: AiRoutesConfig): { GET: RouteHandler; POS
     const target = resolveAiTarget(method, segments)
     if (!target) return errorResponse('NOT_FOUND', 'Unknown AI route', 404)
 
-    // Fail closed: the facade is user-delegated. No session, no call.
+    // Fail closed: the facade is user-delegated and cookie-bound. A browser-
+    // supplied Authorization header is never accepted in place of the session
+    // cookie, so this route cannot be used to lend the server key to an
+    // arbitrary bearer.
+    if (!hasSessionCookie(request)) {
+      return errorResponse('SESSION_REQUIRED', 'Sign in to use AI features', 401)
+    }
     const session = getSessionFromRequest(request)
     if (!session?.sessionToken) {
       return errorResponse('SESSION_REQUIRED', 'Sign in to use AI features', 401)
@@ -192,8 +210,14 @@ export function createAiRoutes(config: AiRoutesConfig): { GET: RouteHandler; POS
           )
         }
         headers['x-idempotency-key'] = key
+        const declared = Number(request.headers.get('content-length') ?? '0')
+        if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+          return errorResponse('INPUT_INVALID', 'Request body too large', 413)
+        }
         const body = await request.text()
-        if (body.length > MAX_BODY_BYTES) return errorResponse('INPUT_INVALID', 'Request body too large', 413)
+        if (new TextEncoder().encode(body).byteLength > MAX_BODY_BYTES) {
+          return errorResponse('INPUT_INVALID', 'Request body too large', 413)
+        }
         if (!body) return errorResponse('INPUT_INVALID', 'A JSON body is required', 400)
         headers['content-type'] = 'application/json'
         init.body = body
@@ -229,7 +253,6 @@ export function createAiRoutes(config: AiRoutesConfig): { GET: RouteHandler; POS
         headers: {
           'Content-Type': 'text/event-stream; charset=utf-8',
           'Cache-Control': 'no-cache, no-transform',
-          Connection: 'keep-alive',
           'X-Accel-Buffering': 'no',
         },
       })

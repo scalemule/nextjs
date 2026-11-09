@@ -64,6 +64,33 @@ describe('createAiRoutes', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
+  it('does not accept a browser bearer token in place of the session cookie', async () => {
+    const fetcher = upstreamJson(200, {})
+    const { GET } = routes(fetcher as unknown as typeof fetch)
+    const response = await GET(
+      request('runs/r1', { headers: { authorization: 'Bearer attacker-token', 'x-sm-user-id': 'user-9' } }),
+      ctx('runs', 'r1')
+    )
+    expect(response.status).toBe(401)
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it('rejects oversized bodies by declared and actual byte length', async () => {
+    const fetcher = upstreamJson(202, {})
+    const { POST } = routes(fetcher as unknown as typeof fetch)
+    const declared = await POST(
+      request('runs', { method: 'POST', cookie: SESSION_COOKIE, body: '{}', headers: { 'x-idempotency-key': 'k', 'content-length': String(2 * 1024 * 1024) } }),
+      ctx('runs')
+    )
+    expect(declared.status).toBe(413)
+    const actual = await POST(
+      request('runs', { method: 'POST', cookie: SESSION_COOKIE, body: JSON.stringify({ text: '😀'.repeat(300_000) }), headers: { 'x-idempotency-key': 'k' } }),
+      ctx('runs')
+    )
+    expect(actual.status).toBe(413)
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
   it('returns 404 for anything outside the allow-list without forwarding', async () => {
     const fetcher = upstreamJson(200, {})
     const { GET, POST } = routes(fetcher as unknown as typeof fetch)
