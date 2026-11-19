@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.72
+
+- **Current internal ScaleMule packages.** `@scalemule/sdk` ^0.0.83 (was ^0.0.77, which under 0.0.x caret rules meant exactly 0.0.77), `@scalemule/money` ^0.0.4 (was ^0.0.2), `@scalemule/ledvery` ^0.0.2 (was ^0.0.1). Apps on 0.1.71 were still getting SDK 0.0.77 inside this package even when they installed the newest `@scalemule/sdk` themselves. No API changes.
+
 ## 0.1.68
 
 - **Live narration media clock & clause-local timing rebalancing.** `NetworkAudioController.getPosition()` exposes the live `HTMLAudioElement.currentTime` directly to `useArticleNarration`'s animation-frame loop during local playback, eliminating `timeupdate`/React-commit latency and cross-domain listening-memory sync resets. `NarrationHighlighter` automatically rebalances legacy linear sentence timings (carving out clause-end comma/dash pauses and discounting unstressed function words) while preserving waveform-aligned sentences that already carry explicit pause gaps. Adopting the patch in each publication remains a separate rollout step.
