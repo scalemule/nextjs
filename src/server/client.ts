@@ -484,9 +484,12 @@ export class ScaleMuleServer {
      * ```
      */
     set: async (key: string, value: string): Promise<{ value: string; version: number }> => {
-      return this.request<{ value: string; version: number }>('PUT', `/v1/vault/secrets/${encodeURIComponent(key)}`, {
+      // The vault answers a write with metadata only (never the stored value).
+      // `value` is what the caller passed in, kept for API compatibility.
+      const written = await this.request<{ version: number }>('PUT', `/v1/vault/secrets/${encodeURIComponent(key)}`, {
         body: { value },
       })
+      return { value, version: written.version }
     },
 
     /**
@@ -517,22 +520,32 @@ export class ScaleMuleServer {
      * Rollback to a specific version
      */
     rollback: async (key: string, version: number): Promise<{ value: string; version: number }> => {
-      return this.request<{ value: string; version: number }>(
+      // The vault answers a write with metadata only. The restored value is
+      // read back with an explicit GET, so the returned shape is unchanged.
+      const written = await this.request<{ version: number }>(
         'POST',
         `/v1/vault/actions/rollback/${encodeURIComponent(key)}`,
         { body: { version } }
       )
+      const current = await this.request<{ value: string; version: number }>(
+        'GET',
+        `/v1/vault/secrets/${encodeURIComponent(key)}`
+      )
+      return { value: current.value, version: written.version ?? current.version }
     },
 
     /**
      * Rotate a secret (copy current version as new version)
      */
     rotate: async (key: string, newValue: string): Promise<{ value: string; version: number }> => {
-      return this.request<{ value: string; version: number }>(
+      // The vault answers with metadata only ({ new_version, previous_version, ... }).
+      // `value` is what the caller passed in, kept for API compatibility.
+      const rotated = await this.request<{ version?: number; new_version?: number }>(
         'POST',
         `/v1/vault/actions/rotate/${encodeURIComponent(key)}`,
         { body: { value: newValue } }
       )
+      return { value: newValue, version: (rotated.new_version ?? rotated.version) as number }
     },
   }
 
@@ -597,7 +610,10 @@ export class ScaleMuleServer {
       data: T,
       inheritsFrom?: string
     ): Promise<{ type: string; data: T; version: number }> => {
-      return this.request<{ type: string; data: T; version: number }>(
+      // The vault answers a write with metadata only (field names, never
+      // values). `type` and `data` are what the caller passed in, kept for
+      // API compatibility.
+      const written = await this.request<{ version: number }>(
         'PUT',
         `/v1/vault/bundles/${encodeURIComponent(key)}`,
         {
@@ -608,6 +624,7 @@ export class ScaleMuleServer {
           },
         }
       )
+      return { type, data, version: written.version }
     },
 
     /**

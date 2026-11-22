@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.74
+
+- **Vault writes no longer depend on the server echoing the secret.** ScaleMule Vault now answers writes with metadata only (path, version, type, timestamps; bundles add field names), never the stored value or a connection URL. The server client keeps its return shapes: `secrets.set` and `secrets.rotate` return the `value` you passed in, `bundles.set` returns the `type` and `data` you passed in, and `secrets.rollback` reads the restored value back with an explicit GET. A value echoed by an older server is never passed through. No API changes.
+
 ## 0.1.73
 
 - **Security: push and notification routes no longer proxy arbitrary gateway paths.** `createPushRoutes` and `createNotificationRoutes` joined the catch-all segments into the upstream URL without validation and always attached the secret key. Next decodes `%2F` inside a segment, so a request such as `GET /api/push/..%2F..%2Fauth%2Fme` reached any gateway path, with any method, as the app's server. Every app that mounts either factory must upgrade.
