@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.73
+
+- **Security: push and notification routes no longer proxy arbitrary gateway paths.** `createPushRoutes` and `createNotificationRoutes` joined the catch-all segments into the upstream URL without validation and always attached the secret key. Next decodes `%2F` inside a segment, so a request such as `GET /api/push/..%2F..%2Fauth%2Fme` reached any gateway path, with any method, as the app's server. Every app that mounts either factory must upgrade.
+  - Both factories now allow-list exact operations and build the upstream path from the validated route only. Push: `GET settings/me`, `POST register`, `DELETE tokens/by-id/{id}` (anonymous allowed), `PUT|DELETE tokens/by-id/{id}/user`, `PUT tokens/by-id/{id}/notifications`, `GET|PUT preferences` (session required). Notifications: list (`GET`, query limited to `unread_only`, `kind`, `since`, `limit`, `cursor`), `GET unread-count`, `PATCH {id}/read`, `PATCH read-all`, `DELETE {id}`, all session required. Ids must be UUIDs. Every other path is a 404 and is never forwarded. Segments that are empty, `.`, `..`, or contain `/`, `\`, `%`, `?`, `#` or control characters are refused.
+  - The secret key is sent only together with the signed-in user's session (the gateway rejects an invalid session). Signed-out push sign-up uses the publishable key: pass `publishableKey` or set `NEXT_PUBLIC_SCALEMULE_PUBLISHABLE_KEY` (`sm_pb_…`). Without one, signed-out push requests get 401. Sending, broadcasts, topics, campaigns, routing and push settings writes are no longer reachable through the browser route; call them from your own server code.
+  - Writes must be same-origin (`Sec-Fetch-Site`, else `Origin` must match `Host`) in addition to the double-submit CSRF token. `validateCSRFToken` now also reads the cookie from a plain Fetch `Request`. The routes no longer forward the caller's `x-sm-workspace-id`, use `redirect: 'manual'`, cap bodies (push 64 KB, notifications 16 KB) and set `Cache-Control: no-store`.
+- **Server client ids are encoded.** `storage.get/delete` and `webhooks.delete/update` validate and `encodeURIComponent` the id, and every server-client request refuses a path with a dot segment (`.`, `..`, `%2e` forms) or a backslash before it is sent. New helpers in `server/path-safety.ts` (`isSafePathSegment`, `encodePathSegment`, `hasUnsafePathSyntax`).
+
 ## 0.1.72
 
 - **Current internal ScaleMule packages.** `@scalemule/sdk` ^0.0.83 (was ^0.0.77, which under 0.0.x caret rules meant exactly 0.0.77), `@scalemule/money` ^0.0.4 (was ^0.0.2), `@scalemule/ledvery` ^0.0.2 (was ^0.0.1). Apps on 0.1.71 were still getting SDK 0.0.77 inside this package even when they installed the newest `@scalemule/sdk` themselves. No API changes.

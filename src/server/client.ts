@@ -24,6 +24,15 @@ import type {
   ClientContext,
 } from '../types'
 import { buildClientContextHeaders } from './context'
+import { isSafePathSegment, hasUnsafePathSyntax } from './path-safety'
+
+/** Validate and encode an id placed in a gateway path. */
+function encodePathSegment(value: unknown, name: string): string {
+  if (!isSafePathSegment(value)) {
+    throw new ScaleMuleApiError({ code: 'INVALID_PATH', message: `Invalid ${name}` }, 400)
+  }
+  return encodeURIComponent(value)
+}
 import { withErrorContext } from '../error-context'
 
 // ============================================================================
@@ -124,6 +133,9 @@ export class ScaleMuleServer {
       isAutoRefresh?: boolean
     } = {}
   ): Promise<T> {
+    if (hasUnsafePathSyntax(path)) {
+      throw new ScaleMuleApiError({ code: 'INVALID_PATH', message: 'Refusing a request path with dot segments or backslashes' }, 400)
+    }
     const url = `${this.gatewayUrl}${path}`
 
     const headers: Record<string, string> = {
@@ -706,14 +718,14 @@ export class ScaleMuleServer {
      * Get file info
      */
     get: async (fileId: string): Promise<StorageFile> => {
-      return this.request<StorageFile>('GET', `/v1/storage/files/${fileId}/info`)
+      return this.request<StorageFile>('GET', `/v1/storage/files/${encodePathSegment(fileId, 'file id')}/info`)
     },
 
     /**
      * Delete file
      */
     delete: async (userId: string, fileId: string): Promise<void> => {
-      return this.request<void>('DELETE', `/v1/storage/files/${fileId}`, { userId })
+      return this.request<void>('DELETE', `/v1/storage/files/${encodePathSegment(fileId, 'file id')}`, { userId })
     },
 
     /**
@@ -867,7 +879,7 @@ export class ScaleMuleServer {
      * Delete a webhook subscription
      */
     delete: async (id: string): Promise<void> => {
-      return this.request<void>('DELETE', `/v1/webhooks/${id}`)
+      return this.request<void>('DELETE', `/v1/webhooks/${encodePathSegment(id, 'webhook id')}`)
     },
 
     /**
@@ -879,7 +891,7 @@ export class ScaleMuleServer {
     ): Promise<{ id: string; url: string; events: string[] }> => {
       return this.request<{ id: string; url: string; events: string[] }>(
         'PATCH',
-        `/v1/webhooks/${id}`,
+        `/v1/webhooks/${encodePathSegment(id, 'webhook id')}`,
         { body: data }
       )
     },

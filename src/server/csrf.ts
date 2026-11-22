@@ -66,9 +66,31 @@ export function withCSRFToken(response: NextResponse, token?: string): NextRespo
  * 2. CSRF header or body field exists
  * 3. Values match
  */
-export function validateCSRFToken(request: NextRequest): string | undefined {
+/**
+ * Read the CSRF cookie from a NextRequest (`request.cookies`) or, for a plain
+ * Fetch API `Request`, from the Cookie header.
+ */
+function readCsrfCookie(request: NextRequest | Request): string | undefined {
+  const jar = (request as NextRequest).cookies
+  if (jar && typeof jar.get === 'function') return jar.get(CSRF_COOKIE_NAME)?.value
+  const header = request.headers.get('cookie')
+  if (!header) return undefined
+  for (const part of header.split(';')) {
+    const [name, ...rest] = part.trim().split('=')
+    if (name === CSRF_COOKIE_NAME) {
+      try {
+        return decodeURIComponent(rest.join('='))
+      } catch {
+        return undefined
+      }
+    }
+  }
+  return undefined
+}
+
+export function validateCSRFToken(request: NextRequest | Request): string | undefined {
   // Get token from cookie
-  const cookieToken = request.cookies.get(CSRF_COOKIE_NAME)?.value
+  const cookieToken = readCsrfCookie(request)
 
   if (!cookieToken) {
     return 'Missing CSRF cookie'
@@ -96,7 +118,7 @@ export async function validateCSRFTokenAsync(
   request: NextRequest,
   body?: Record<string, unknown>
 ): Promise<string | undefined> {
-  const cookieToken = request.cookies.get(CSRF_COOKIE_NAME)?.value
+  const cookieToken = readCsrfCookie(request)
 
   if (!cookieToken) {
     return 'Missing CSRF cookie'
