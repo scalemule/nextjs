@@ -67,12 +67,13 @@ export {
   SM_LEDVERY_ACCESS_TOKEN_COOKIE,
 } from './ledvery-cookies'
 
-export { createPushRoutes } from './push'
-export type { PushRoutesConfig } from './push'
+export { createPushRoutes, resolvePushTarget } from './push'
+export type { PushRoutesConfig, PushTarget } from './push'
+export { isSafePathSegment, encodePathSegment, hasUnsafePathSyntax } from './path-safety'
 export { createAiRoutes, createServiceAiClient } from './ai'
 export type { AiRoutesConfig, AiAccountResolver, ServiceAiClientConfig } from './ai'
 
-export { createNotificationRoutes } from './notifications'
+export { createNotificationRoutes, resolveNotificationTarget } from './notifications'
 export type { NotificationRoutesConfig } from './notifications'
 
 export { createNewsletterRoutes, newsletterRoute } from './newsletters'
